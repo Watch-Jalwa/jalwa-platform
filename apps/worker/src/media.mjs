@@ -32,12 +32,35 @@ export function run(command, args) {
   });
 }
 
+export function capture(command, args) {
+  return new Promise((resolve, reject) => {
+    const process = spawn(command, args, { stdio: ["ignore","pipe","pipe"] });
+    let stdout = ""; let stderr = "";
+    process.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+    process.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    process.once("error", reject);
+    process.once("exit", (code) => code === 0 ? resolve(stdout.trim()) : reject(new Error(`${basename(command)} exited ${code}: ${stderr.slice(-2000)}`)));
+  });
+}
+
+export async function hasAudioStream(input) {
+  const result = await capture(process.env.FFPROBE_PATH ?? "ffprobe", ["-v","error","-select_streams","a:0","-show_entries","stream=index","-of","csv=p=0",input]);
+  return Boolean(result);
+}
+
+function bucket() {
+  const value = process.env.R2_BUCKET ?? process.env.R2_PROCESSED_BUCKET;
+  if (!value) throw new Error("R2 processed media bucket is not configured.");
+  return value;
+}
+
 function r2Client() {
-  return new S3Client({ region: "auto", endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`, credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY } });
+  if (!process.env.R2_ACCOUNT_ID || !process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_KEY) throw new Error("R2 credentials are not configured.");
+  return new S3Client({ region: "auto", endpoint: process.env.R2_ENDPOINT ?? `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`, credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY } });
 }
 
 export async function downloadObject(key, target) {
-  const response = await r2Client().send(new GetObjectCommand({ Bucket: process.env.R2_BUCKET, Key: key }));
+  const response = await r2Client().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
   if (!response.Body) throw new Error("R2 object has no body");
   await mkdir(dirname(target), { recursive: true });
   await pipeline(response.Body, createWriteStream(target));
@@ -49,14 +72,23 @@ async function walk(directory) {
   for (const entry of entries) { const path = join(directory, entry.name); if (entry.isDirectory()) paths.push(...await walk(path)); else paths.push(path); }
   return paths;
 }
-function contentType(path) { if (path.endsWith(".m3u8")) return "application/vnd.apple.mpegurl"; if (path.endsWith(".ts")) return "video/mp2t"; if (path.endsWith(".mp4")) return "video/mp4"; return "application/octet-stream"; }
+
+function contentType(path) {
+  if (path.endsWith(".m3u8")) return "application/vnd.apple.mpegurl";
+  if (path.endsWith(".mpd")) return "application/dash+xml";
+  if (path.endsWith(".m4s")) return "video/iso.segment";
+  if (path.endsWith(".ts")) return "video/mp2t";
+  if (path.endsWith(".mp4")) return "video/mp4";
+  if (path.endsWith(".vtt")) return "text/vtt";
+  return "application/octet-stream";
+}
 
 export async function uploadDirectory(directory, prefix) {
   const uploaded = [];
   for (const path of await walk(directory)) {
     const key = `${prefix}${relative(directory, path).replaceAll("\\", "/")}`;
     const info = await stat(path);
-    await r2Client().send(new PutObjectCommand({ Bucket: process.env.R2_BUCKET, Key: key, Body: createReadStream(path), ContentLength: info.size, ContentType: contentType(path) }));
+    await r2Client().send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: createReadStream(path), ContentLength: info.size, ContentType: contentType(path) }));
     uploaded.push(key);
   }
   return uploaded;

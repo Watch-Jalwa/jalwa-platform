@@ -1,0 +1,31 @@
+name: Refresh recommendations
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "25 1 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-recommendations-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Refresh behavioural and semantic models
+        env:
+          DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
+          SECRET: ${{ secrets.RECOMMENDATION_REFRESH_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$DOMAIN" && test -n "$SECRET"
+          curl --fail-with-body --retry 3 --retry-all-errors \
+            --connect-timeout 15 --max-time 900 \
+            -X POST "https://$DOMAIN/api/internal/recommendations/refresh" \
+            -H "Authorization: Bearer $SECRET" \
+            -H "Content-Type: application/json"

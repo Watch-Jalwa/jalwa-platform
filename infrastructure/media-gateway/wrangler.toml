@@ -2,6 +2,9 @@ name = "jalwa-media-gateway"
 main = "src/index.ts"
 compatibility_date = "2026-07-30"
 
+[vars]
+ALLOWED_ORIGINS = "https://watch-jalwa.com,https://www.watch-jalwa.com"
+
 [[r2_buckets]]
 binding = "MEDIA_BUCKET"
 bucket_name = "jalwa-media"

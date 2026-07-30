@@ -1,18 +1,19 @@
 import { createClient } from "@supabase/supabase-js";
+import { processDrmPackagingJob } from "./drm.mjs";
 import { processMediaJob } from "./media.mjs";
 
 const pollIntervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
 const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
+let running = false;
+
 export function buildHealth() { return { service: "jalwa-worker", status: "ready", version: process.env.GIT_SHA ?? "local", workerId }; }
-function configured() { return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.R2_ACCOUNT_ID && process.env.R2_BUCKET); }
+function configured() { return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY && process.env.R2_ACCOUNT_ID && (process.env.R2_BUCKET || process.env.R2_PROCESSED_BUCKET)); }
 function adminClient() { return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, { auth: { persistSession: false, autoRefreshToken: false } }); }
 
-async function tick() {
-  if (!configured()) { console.log(JSON.stringify({ ...buildHealth(), mode: "idle", at: new Date().toISOString() })); return; }
-  const supabase = adminClient();
+async function handleMedia(supabase) {
   const { data, error } = await supabase.rpc("claim_media_job", { p_worker_id: workerId });
   if (error) throw error;
-  const job = data?.[0]; if (!job) return;
+  const job = data?.[0]; if (!job) return false;
   try {
     await processMediaJob({ supabase, job });
     console.log(JSON.stringify({ event: "media_job_completed", jobId: job.id, workerId }));
@@ -22,6 +23,42 @@ async function tick() {
     await supabase.from("media_assets").update({ status: retry ? "queued" : "failed" }).eq("id", job.media_asset_id);
     console.error(JSON.stringify({ event: "media_job_failed", jobId: job.id, retry, message }));
   }
+  return true;
 }
 
-if (process.env.NODE_ENV !== "test") { console.log(JSON.stringify(buildHealth())); await tick().catch((error) => console.error(error)); setInterval(() => void tick().catch((error) => console.error(error)), pollIntervalMs).unref(); }
+async function handleDrm(supabase) {
+  if (process.env.ENABLE_WEB_DRM !== "true") return false;
+  const { data, error } = await supabase.rpc("claim_drm_packaging_job", { p_worker_id: workerId });
+  if (error) {
+    if (error.message?.includes("claim_drm_packaging_job")) return false;
+    throw error;
+  }
+  const job = data?.[0]; if (!job) return false;
+  try {
+    await processDrmPackagingJob({ supabase, job });
+    console.log(JSON.stringify({ event: "drm_packaging_completed", jobId: job.id, workerId }));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error); const retry = job.attempts < job.max_attempts;
+    await supabase.from("drm_packaging_jobs").update({ status: retry ? "queued" : "failed", available_at: new Date(Date.now() + Math.min(job.attempts * 60000, 300000)).toISOString(), error_message: message.slice(0,4000), locked_at: null, locked_by: null }).eq("id",job.id);
+    await supabase.from("drm_assets").update({ status: retry ? "pending" : "failed" }).eq("id",job.drm_asset_id);
+    console.error(JSON.stringify({ event: "drm_packaging_failed", jobId: job.id, retry, message }));
+  }
+  return true;
+}
+
+async function tick() {
+  if (running) return;
+  running = true;
+  try {
+    if (!configured()) { console.log(JSON.stringify({ ...buildHealth(), mode: "idle", at: new Date().toISOString() })); return; }
+    const supabase = adminClient();
+    await handleDrm(supabase);
+    await handleMedia(supabase);
+  } finally { running = false; }
+}
+
+if (process.env.NODE_ENV !== "test") {
+  console.log(JSON.stringify(buildHealth()));
+  await tick().catch((error) => console.error(JSON.stringify({ event: "worker_tick_failed", message: error instanceof Error ? error.message : String(error) })));
+  setInterval(() => void tick().catch((error) => console.error(JSON.stringify({ event: "worker_tick_failed", message: error instanceof Error ? error.message : String(error) }))), pollIntervalMs).unref();
+}
