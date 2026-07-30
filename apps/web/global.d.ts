@@ -33,6 +33,9 @@ declare module "@/lib/ai/grounding.mjs" {
   };
   export function buildRetrievalQuery(question: string): string;
   export function extractResponseText(response: unknown): string;
+  export function extractChatCompletionText(response: unknown): string;
   export function sanitizeSourceCitations(text: string, sourceCount: number): string;
   export function buildSourceContext(sources: GroundingSource[]): string;
+  export function hasHardSafetyRisk(text: string): boolean;
+  export function parseModerationDecision(text: string): boolean | null;
 }
