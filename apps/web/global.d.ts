@@ -20,3 +20,19 @@ declare module "@/lib/payments/signature.mjs" {
   export function signPaymentPayload(payload: string, secret: string): string;
   export function verifyPaymentSignature(payload: string, signature: string | null | undefined, secret: string): boolean;
 }
+
+declare module "@/lib/ai/grounding.mjs" {
+  export type GroundingSource = {
+    id: string;
+    slug: string;
+    title: string;
+    description?: string | null;
+    category?: string | null;
+    language?: string | null;
+    attribution?: string | null;
+  };
+  export function buildRetrievalQuery(question: string): string;
+  export function extractResponseText(response: unknown): string;
+  export function sanitizeSourceCitations(text: string, sourceCount: number): string;
+  export function buildSourceContext(sources: GroundingSource[]): string;
+}
