@@ -17,9 +17,29 @@ env:
   WORKER_IMAGE: ghcr.io/watch-jalwa/jalwa-platform-worker
 
 jobs:
+  database:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Apply Supabase migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          test -n "$SUPABASE_PROJECT_REF"
+          supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
+          supabase db push
+
   build:
     runs-on: ubuntu-latest
     environment: production
+    needs: database
     steps:
       - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v4
@@ -28,6 +48,19 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve Supabase client key
+        id: supabase
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          keys=$(curl -fsS "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/api-keys" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN")
+          publishable=$(jq -r '[.[] | select(.name=="publishable" or .name=="anon")][0].api_key // empty' <<<"$keys")
+          test -n "$publishable"
+          echo "::add-mask::$publishable"
+          echo "publishable=$publishable" >> "$GITHUB_OUTPUT"
 
       - name: Build and push web
         uses: docker/build-push-action@v6
@@ -39,9 +72,9 @@ jobs:
             ${{ env.WEB_IMAGE }}:${{ github.sha }}
             ${{ env.WEB_IMAGE }}:latest
           build-args: |
-            NEXT_PUBLIC_APP_URL=https://watch-jalwa.com
-            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_APP_URL=https://${{ vars.PRODUCTION_DOMAIN || 'watch-jalwa.com' }}
+            NEXT_PUBLIC_SUPABASE_URL=${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ steps.supabase.outputs.publishable }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
@@ -81,35 +114,114 @@ jobs:
     needs: [build, media-gateway]
     steps:
       - uses: actions/checkout@v6
+      - name: Resolve Supabase runtime keys
+        id: supabase
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+        run: |
+          set -euo pipefail
+          keys=$(curl -fsS "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/api-keys" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN")
+          publishable=$(jq -r '[.[] | select(.name=="publishable" or .name=="anon")][0].api_key // empty' <<<"$keys")
+          service_role=$(jq -r '.[] | select(.name=="service_role") | .api_key' <<<"$keys" | head -n1)
+          test -n "$publishable" && test -n "$service_role"
+          echo "::add-mask::$publishable"
+          echo "::add-mask::$service_role"
+          echo "publishable=$publishable" >> "$GITHUB_OUTPUT"
+          echo "service_role=$service_role" >> "$GITHUB_OUTPUT"
+
       - name: Configure SSH
         env:
           SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
-          HOST: ${{ secrets.PRODUCTION_HOST }}
+          HOST: ${{ vars.PRODUCTION_HOST }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
           chmod 600 ~/.ssh/jalwa
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
 
+      - name: Generate production runtime environment
+        env:
+          DOMAIN: ${{ vars.PRODUCTION_DOMAIN || 'watch-jalwa.com' }}
+          SUPABASE_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+          SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_PUBLISHABLE_KEY: ${{ steps.supabase.outputs.publishable }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ steps.supabase.outputs.service_role }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          MEDIA_SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
+          RATE_LIMIT_SALT: ${{ secrets.RATE_LIMIT_SALT }}
+          DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+          PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER || 'mock' }}
+          PAYMENT_WEBHOOK_SECRET: ${{ secrets.PAYMENT_WEBHOOK_SECRET }}
+          PAYFAST_MERCHANT_ID: ${{ secrets.PAYFAST_MERCHANT_ID }}
+          PAYFAST_SECRET: ${{ secrets.PAYFAST_SECRET }}
+          JAZZCASH_MERCHANT_ID: ${{ secrets.JAZZCASH_MERCHANT_ID }}
+          JAZZCASH_PASSWORD: ${{ secrets.JAZZCASH_PASSWORD }}
+          EASYPAISA_STORE_ID: ${{ secrets.EASYPAISA_STORE_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          cat > /tmp/jalwa.env <<EOF
+          NODE_ENV=production
+          APP_URL=https://$DOMAIN
+          NEXT_PUBLIC_APP_URL=https://$DOMAIN
+          NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY
+          SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
+          DATABASE_URL=postgresql://postgres:$SUPABASE_DB_PASSWORD@db.$SUPABASE_REF.supabase.co:5432/postgres
+          AUTH_REDIRECT_URL=https://$DOMAIN/auth/callback
+          R2_ACCOUNT_ID=$CLOUDFLARE_ACCOUNT_ID
+          R2_ACCESS_KEY_ID=$R2_ACCESS_KEY_ID
+          R2_SECRET_ACCESS_KEY=$R2_SECRET_ACCESS_KEY
+          R2_ENDPOINT=https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com
+          R2_INCOMING_BUCKET=jalwa-incoming
+          R2_PROCESSED_BUCKET=jalwa-media
+          NEXT_PUBLIC_MEDIA_GATEWAY_URL=https://media.$DOMAIN
+          MEDIA_SIGNING_SECRET=$MEDIA_SIGNING_SECRET
+          RATE_LIMIT_SALT=$RATE_LIMIT_SALT
+          AI_PROVIDER=deepseek
+          AI_API_KEY=$DEEPSEEK_API_KEY
+          AI_BASE_URL=https://api.deepseek.com
+          AI_MODEL=deepseek-v4-flash
+          AI_MODERATION_MODE=provider
+          AI_MODERATION_MODEL=deepseek-v4-flash
+          AI_MAX_OUTPUT_TOKENS=700
+          AI_FREE_DAILY_LIMIT=5
+          AI_PREMIUM_DAILY_LIMIT=50
+          PAYMENT_PROVIDER=$PAYMENT_PROVIDER
+          PAYMENT_WEBHOOK_SECRET=$PAYMENT_WEBHOOK_SECRET
+          ALLOW_MOCK_PAYMENTS=false
+          PAYFAST_MERCHANT_ID=$PAYFAST_MERCHANT_ID
+          PAYFAST_SECRET=$PAYFAST_SECRET
+          JAZZCASH_MERCHANT_ID=$JAZZCASH_MERCHANT_ID
+          JAZZCASH_PASSWORD=$JAZZCASH_PASSWORD
+          EASYPAISA_STORE_ID=$EASYPAISA_STORE_ID
+          JALWA_IMAGE_TAG=${{ github.sha }}
+          GIT_SHA=${{ github.sha }}
+          EOF
+
       - name: Copy production configuration and operations scripts
         env:
-          HOST: ${{ secrets.PRODUCTION_HOST }}
-          USER: ${{ secrets.PRODUCTION_USER }}
+          HOST: ${{ vars.PRODUCTION_HOST }}
+          USER: ${{ vars.PRODUCTION_USER || 'jalwa' }}
         run: |
           ssh -i ~/.ssh/jalwa "$USER@$HOST" 'mkdir -p /opt/jalwa/scripts'
           scp -i ~/.ssh/jalwa infrastructure/production/docker-compose.yml infrastructure/production/Caddyfile "$USER@$HOST:/opt/jalwa/"
           scp -i ~/.ssh/jalwa infrastructure/production/scripts/*.sh "$USER@$HOST:/opt/jalwa/scripts/"
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'chmod 750 /opt/jalwa/scripts/*.sh'
+          scp -i ~/.ssh/jalwa /tmp/jalwa.env "$USER@$HOST:/opt/jalwa/.env.production"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'chmod 600 /opt/jalwa/.env.production && chmod 750 /opt/jalwa/scripts/*.sh'
 
       - name: Pull, restart and verify Jalwa
         env:
-          HOST: ${{ secrets.PRODUCTION_HOST }}
-          USER: ${{ secrets.PRODUCTION_USER }}
+          HOST: ${{ vars.PRODUCTION_HOST }}
+          USER: ${{ vars.PRODUCTION_USER || 'jalwa' }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_DEPLOY_TOKEN: ${{ secrets.GHCR_DEPLOY_TOKEN }}
-          IMAGE_TAG: ${{ github.sha }}
+          DOMAIN: ${{ vars.PRODUCTION_DOMAIN || 'watch-jalwa.com' }}
         run: |
           printf '%s' "$GHCR_DEPLOY_TOKEN" | ssh -i ~/.ssh/jalwa "$USER@$HOST" "docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin"
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" "if grep -q '^JALWA_IMAGE_TAG=' /opt/jalwa/.env.production; then sed -i 's/^JALWA_IMAGE_TAG=.*/JALWA_IMAGE_TAG=$IMAGE_TAG/' /opt/jalwa/.env.production; else printf '\\nJALWA_IMAGE_TAG=$IMAGE_TAG\\n' >> /opt/jalwa/.env.production; fi"
           ssh -i ~/.ssh/jalwa "$USER@$HOST" "cd /opt/jalwa && docker compose --env-file .env.production pull && docker compose --env-file .env.production up -d --remove-orphans"
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" '/opt/jalwa/scripts/smoke-test.sh https://watch-jalwa.com'
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/smoke-test.sh https://$DOMAIN"
