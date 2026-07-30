@@ -4,7 +4,7 @@ set -Eeuo pipefail
 TAG="${1:-}"
 APP_DIR="${APP_DIR:-/opt/jalwa}"
 ENV_FILE="${APP_DIR}/.env.production"
-COMPOSE_FILE="${APP_DIR}/docker-compose.production.yml"
+COMPOSE_FILE="${APP_DIR}/docker-compose.yml"
 
 if [[ -z "$TAG" ]]; then
   echo "Usage: $0 <previous-image-tag>" >&2
