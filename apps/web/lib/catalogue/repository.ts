@@ -26,10 +26,10 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
     if (error || !data) return null;
     const [{ data: category }, { data: playback }, { data: rights }] = await Promise.all([
       data.primary_category_id ? supabase.from("categories").select("slug,name_en").eq("id", data.primary_category_id).maybeSingle() : Promise.resolve({ data: null }),
-      supabase.from("playback_sources").select("provider,provider_content_id,embed_url,media_url,external_url,media_asset_id,format").eq("content_id", data.id).eq("is_primary", true).maybeSingle(),
+      supabase.from("playback_sources").select("provider,provider_content_id,embed_url,media_url,external_url,media_asset_id,drm_asset_id,format").eq("content_id", data.id).eq("is_primary", true).maybeSingle(),
       supabase.from("rights_records").select("source_url,attribution_text").eq("content_id", data.id).eq("status", "approved").maybeSingle(),
     ]);
-    const source: PlaybackSource | null = playback ? { provider: playback.provider, providerContentId: playback.provider_content_id, embedUrl: playback.embed_url, mediaUrl: playback.media_url, externalUrl: playback.external_url, mediaAssetId: playback.media_asset_id, format: playback.format } : null;
+    const source: PlaybackSource | null = playback ? { provider: playback.provider, providerContentId: playback.provider_content_id, embedUrl: playback.embed_url, mediaUrl: playback.media_url, externalUrl: playback.external_url, mediaAssetId: playback.media_asset_id, drmAssetId: playback.drm_asset_id, format: playback.format as PlaybackSource["format"] } : null;
     return { id: data.id, slug: data.slug, title: data.title_en, titleUrdu: data.title_ur, description: data.description_en, category: category?.name_en ?? "Jalwa", categorySlug: category?.slug ?? "all", durationSeconds: data.duration_seconds, accessLevel: data.access_level, contentType: data.content_type, hostingMode: data.hosting_mode, thumbnailUrl: data.thumbnail_url, playback: source, sourceUrl: rights?.source_url ?? source?.externalUrl, attribution: rights?.attribution_text };
   } catch { return featuredContent.find((item) => item.slug === slug) ?? null; }
 }
