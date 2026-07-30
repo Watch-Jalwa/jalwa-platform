@@ -37,9 +37,10 @@ export async function POST(request: Request) {
   if (rateError) return NextResponse.json({ error: "Support is temporarily unavailable." }, { status: 503 });
   if (!allowed) return NextResponse.json({ error: "Too many requests. Please try again later." }, { status: 429 });
 
+  const contactEmail = user?.email ?? (email || null);
   const { data, error } = await admin.from("support_cases").insert({
     user_id: user?.id ?? null,
-    email: user?.email ?? email || null,
+    email: contactEmail,
     case_type: caseType,
     subject,
     message,
