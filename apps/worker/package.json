@@ -6,10 +6,10 @@
   "scripts": {
     "dev": "node --watch src/index.mjs",
     "start": "node src/index.mjs",
-    "lint": "node --check src/index.mjs && node --check src/media.mjs",
-    "typecheck": "node --check src/index.mjs && node --check src/media.mjs",
+    "lint": "node --check src/index.mjs && node --check src/media.mjs && node --check src/drm.mjs",
+    "typecheck": "node --check src/index.mjs && node --check src/media.mjs && node --check src/drm.mjs",
     "test": "node --test tests/*.test.mjs",
-    "build": "node --check src/index.mjs && node --check src/media.mjs"
+    "build": "node --check src/index.mjs && node --check src/media.mjs && node --check src/drm.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.850.0",
