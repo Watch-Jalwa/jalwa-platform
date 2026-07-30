@@ -5,7 +5,7 @@ export const metadata = { title: "Operations" };
 export const dynamic = "force-dynamic";
 
 const requiredConfiguration = [
-  "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "OPENAI_API_KEY", "R2_ACCOUNT_ID",
+  "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "R2_ACCOUNT_ID",
   "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "MEDIA_SIGNING_SECRET", "PAYMENT_WEBHOOK_SECRET", "RATE_LIMIT_SALT",
 ] as const;
 
@@ -30,7 +30,7 @@ export default async function OperationsPage() {
     <div className="studio-page">
       <div className="section-heading"><div><span className="eyebrow">Launch</span><h1>Operations</h1></div></div>
       <div className="operations-grid">{cards.map(([label, value]) => <article className="operation-card" key={String(label)}><strong>{value}</strong><span>{label}</span></article>)}</div>
-      <section className="account-card"><h2>Production configuration</h2>{missing.length ? <><p className="form-message">Missing runtime configuration:</p><code>{missing.join(", ")}</code></> : <p className="form-success">Required runtime variables are present.</p>}</section>
+      <section className="account-card"><h2>Production configuration</h2>{missing.length ? <><p className="form-message">Missing runtime configuration:</p><code>{missing.join(", ")}</code></> : <p className="form-success">Required runtime variables are present.</p>}<p>AI provider: <strong>{process.env.AI_PROVIDER ?? "unconfigured"}</strong></p></section>
       <section className="account-card"><h2>Checks</h2><p>Use <code>/api/health</code> for process liveness and <code>/api/readiness</code> for database and configuration readiness.</p></section>
     </div>
   );
