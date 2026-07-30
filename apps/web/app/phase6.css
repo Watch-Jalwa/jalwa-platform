@@ -1,3 +1,5 @@
+.preview-banner { display: flex; flex-wrap: wrap; justify-content: center; gap: .35rem .75rem; padding: .65rem 1rem; border-bottom: 1px solid rgba(251,191,36,.3); background: #2a2108; color: #fde68a; text-align: center; font-size: .82rem; }
+.preview-banner strong { color: #fef3c7; }
 .site-footer { display: grid; gap: 1.25rem; padding: 2rem max(1rem, calc((100% - 1180px) / 2)) calc(6rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); color: var(--muted); background: #0d0d10; }
 .site-footer > div { max-width: 36rem; }
 .site-footer p { line-height: 1.6; }
