@@ -1,17 +1,29 @@
 # Jalwa Agent Guide
 
-## Goal
+## Mission
 
-Build a mobile-first Pakistani content portal with rights-aware playback, freemium subscriptions and grounded AI.
+Build a mobile-first Pakistani content portal with rights-aware playback, paid entitlements and grounded AI.
 
-## Non-negotiable rules
+## Development rules
 
-- Never self-host content without an approved rights record.
+- Read the relevant `docs/` file before changing a domain.
+- Keep one modular monolith until a measured boundary requires separation.
+- Never self-host media without an approved rights record.
 - Never download YouTube media.
 - Never activate premium from a browser return URL alone.
-- Never send payment secrets or raw card data to AI.
-- Keep Urdu and mobile behaviour in acceptance criteria.
-- Prompts must be versioned and evaluated.
-- Prefer a simple modular monolith over new services.
-- Every privileged mutation must be audited.
-- Every AI factual response must cite approved catalogue sources.
+- Keep Urdu, RTL, accessibility and low-data behaviour in acceptance criteria.
+- Keep prompts and evaluations in version control.
+- Add tests for business rules and security-sensitive paths.
+- Never expose server secrets to client components.
+- Every privileged mutation must be auditable.
+
+## Commands
+
+```bash
+npm install
+npm run dev
+npm run lint
+npm run typecheck
+npm test
+npm run build
+```

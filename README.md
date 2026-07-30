@@ -43,11 +43,15 @@ Launch a working paid product quickly with:
 - Health & Life
 - Live
 
-The existing product deck proposes Deen, Learn, Tech, Pakistan, Grow, Explore, Kids and Life. Jalwa retains that logic while elevating **Kissan & Farming**, **Originals**, **Entertainment** and **Shorts** as explicit acquisition surfaces for Pakistan.
+The existing product deck already proposes Deen, Learn, Tech, Pakistan, Grow, Explore, Kids and Life. Jalwa retains that logic while elevating **Kissan & Farming**, **Originals**, **Entertainment** and **Shorts** as explicit acquisition surfaces for Pakistan.
 
 ## Repository strategy
 
-This repository, `Watch-Jalwa/jalwa-platform`, is the primary product monorepo. Do not create separate frontend, backend, admin and AI repositories at MVP stage.
+Create **one repository now**:
+
+`Watch-Jalwa/jalwa-platform`
+
+Use a monorepo. Do not create separate frontend, backend, admin and AI repositories at MVP stage.
 
 ```text
 jalwa-platform/
@@ -109,3 +113,16 @@ Create additional repositories only after an operational need appears:
 - Start with Urdu, English and Roman Urdu metadata.
 - Make every content item carry a source, licence and attribution record.
 - Put all AI calls behind a server-side AI gateway with quotas and audit logs.
+
+## Implementation status
+
+Phase 1 foundation is implemented on `agent/phase-1-foundation`:
+
+- npm workspaces for the web and worker;
+- Next.js mobile-first PWA shell;
+- Supabase SSR authentication scaffold;
+- Urdu/RTL-ready design foundation;
+- PostgreSQL profiles, roles and audit migration;
+- Docker and GitHub Actions CI.
+
+See [Phase 1 Foundation](docs/15-phase-1-foundation.md).

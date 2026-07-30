@@ -1,0 +1,1 @@
+-- Seed data will be added with the catalogue schema in Phase 2.
