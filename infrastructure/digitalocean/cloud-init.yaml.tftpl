@@ -6,6 +6,7 @@ packages:
   - curl
   - docker.io
   - docker-compose-v2
+  - fail2ban
   - postgresql-client
   - unattended-upgrades
 
@@ -36,7 +37,6 @@ write_files:
       provisioned_by=terraform
 
 runcmd:
-  - apt-get install -y fail2ban
   - systemctl enable --now docker
   - systemctl enable --now fail2ban
   - mkdir -p /opt/jalwa/backups
