@@ -91,15 +91,17 @@ jobs:
           chmod 600 ~/.ssh/jalwa
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
 
-      - name: Copy production configuration
+      - name: Copy production configuration and operations scripts
         env:
           HOST: ${{ secrets.PRODUCTION_HOST }}
           USER: ${{ secrets.PRODUCTION_USER }}
         run: |
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'mkdir -p /opt/jalwa'
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'mkdir -p /opt/jalwa/scripts'
           scp -i ~/.ssh/jalwa infrastructure/production/docker-compose.yml infrastructure/production/Caddyfile "$USER@$HOST:/opt/jalwa/"
+          scp -i ~/.ssh/jalwa infrastructure/production/scripts/*.sh "$USER@$HOST:/opt/jalwa/scripts/"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'chmod 750 /opt/jalwa/scripts/*.sh'
 
-      - name: Pull and restart Jalwa
+      - name: Pull, restart and verify Jalwa
         env:
           HOST: ${{ secrets.PRODUCTION_HOST }}
           USER: ${{ secrets.PRODUCTION_USER }}
@@ -108,5 +110,6 @@ jobs:
           IMAGE_TAG: ${{ github.sha }}
         run: |
           printf '%s' "$GHCR_DEPLOY_TOKEN" | ssh -i ~/.ssh/jalwa "$USER@$HOST" "docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin"
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" "cd /opt/jalwa && JALWA_IMAGE_TAG='$IMAGE_TAG' docker compose pull && JALWA_IMAGE_TAG='$IMAGE_TAG' docker compose up -d --remove-orphans"
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" "curl --fail --retry 12 --retry-delay 5 https://watch-jalwa.com/api/health"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "if grep -q '^JALWA_IMAGE_TAG=' /opt/jalwa/.env.production; then sed -i 's/^JALWA_IMAGE_TAG=.*/JALWA_IMAGE_TAG=$IMAGE_TAG/' /opt/jalwa/.env.production; else printf '\\nJALWA_IMAGE_TAG=$IMAGE_TAG\\n' >> /opt/jalwa/.env.production; fi"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "cd /opt/jalwa && docker compose --env-file .env.production pull && docker compose --env-file .env.production up -d --remove-orphans"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" '/opt/jalwa/scripts/smoke-test.sh https://watch-jalwa.com'
