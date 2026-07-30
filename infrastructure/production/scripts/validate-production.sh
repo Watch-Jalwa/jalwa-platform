@@ -32,5 +32,22 @@ mapfile -t migrations < <(find supabase/migrations -maxdepth 1 -type f -name '*.
 for migration in "${migrations[@]}"; do
   [[ "$migration" =~ ^[0-9]{12,}_[a-z0-9_]+\.sql$ ]] || { echo "Invalid migration filename: $migration" >&2; exit 1; }
 done
+for migration in 202607310001_social_recommendations.sql 202607310002_social_controls.sql 202607310003_semantic_recommendations.sql 202607310004_live_drm.sql; do
+  test -s "supabase/migrations/$migration" || { echo "Missing browser expansion migration: $migration" >&2; exit 1; }
+done
+
+grep -q 'SHAKA_PACKAGER_VERSION=3.7.2' Dockerfile || { echo 'Pinned Shaka Packager version is missing.' >&2; exit 1; }
+grep -q '88b022b8cb12602ddb539972efd07a3496ea64f8662a484798c96e95afa41fd8' Dockerfile
+grep -q 'e4a43aaa8fdb87d0306876bc41581b371d7082e9d1b8469aef06a4e74004fd69' Dockerfile
+grep -q 'persistentState: "not-allowed"' apps/web/components/drm-player.tsx
+grep -q 'rewritePlaylist' infrastructure/media-gateway/src/index.ts
+if grep -n -E 'stream_key|srt_passphrase|content_key[[:space:]]+text' supabase/migrations/202607310004_live_drm.sql; then
+  echo 'Live ingest secrets or plaintext DRM keys must not be stored in PostgreSQL.' >&2
+  exit 1
+fi
+
+node --check apps/worker/src/index.mjs
+node --check apps/worker/src/media.mjs
+node --check apps/worker/src/drm.mjs
 
 echo "Static production validation passed."
