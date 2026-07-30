@@ -1,0 +1,68 @@
+name: Production release acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: Production URL
+        required: true
+        default: https://watch-jalwa.com
+      minimum_content_items:
+        description: Minimum published catalogue size
+        required: true
+        default: "100"
+  workflow_run:
+    workflows: ["Deploy production"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-production-acceptance
+  cancel-in-progress: false
+
+jobs:
+  public-acceptance:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      BASE_URL: ${{ inputs.base_url || format('https://{0}', vars.PRODUCTION_DOMAIN) }}
+      MIN_CONTENT_ITEMS: ${{ inputs.minimum_content_items || vars.MINIMUM_LAUNCH_CONTENT_ITEMS || '100' }}
+      SUPABASE_ANON_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_ANON_KEY }}
+      REPORT_FILE: ${{ github.workspace }}/production-acceptance.json
+    steps:
+      - uses: actions/checkout@v6
+      - name: Run public production acceptance
+        run: infrastructure/production/scripts/production-acceptance.sh "$BASE_URL"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: production-acceptance-${{ github.run_id }}
+          path: production-acceptance.json
+          if-no-files-found: error
+          retention-days: 90
+
+  host-acceptance:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    env:
+      HOST: ${{ vars.PRODUCTION_HOST }}
+      USER: ${{ vars.PRODUCTION_USER || 'jalwa' }}
+      SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$SSH_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          chmod 600 ~/.ssh/jalwa
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+      - name: Run host acceptance
+        run: |
+          set -euo pipefail
+          scp -i ~/.ssh/jalwa infrastructure/production/scripts/host-acceptance.sh "$USER@$HOST:/tmp/jalwa-host-acceptance.sh"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'chmod 700 /tmp/jalwa-host-acceptance.sh && sudo /tmp/jalwa-host-acceptance.sh'

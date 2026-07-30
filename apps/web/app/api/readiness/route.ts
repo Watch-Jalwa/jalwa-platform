@@ -24,12 +24,26 @@ export async function GET() {
     }
   }
 
-  const ready = missing.length === 0 && database === "ready";
+  const paymentProvider = process.env.PAYMENT_PROVIDER ?? "unconfigured";
+  const frontendPreview = process.env.NEXT_PUBLIC_FRONTEND_PREVIEW === "true" || process.env.VERCEL_ENV === "preview";
+  const paymentReady = process.env.NODE_ENV !== "production" || frontendPreview || !["mock", "unconfigured"].includes(paymentProvider);
+  const ready = missing.length === 0 && database === "ready" && paymentReady;
+
   return NextResponse.json({
     service: "jalwa-web",
     status: ready ? "ready" : "not_ready",
     database,
     aiProvider: process.env.AI_PROVIDER ?? "unconfigured",
+    paymentProvider,
+    paymentReady,
+    frontendPreview,
+    authProviders: {
+      email: true,
+      phone: process.env.NEXT_PUBLIC_ENABLE_PHONE_AUTH === "true",
+      google: process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true",
+      apple: process.env.NEXT_PUBLIC_ENABLE_APPLE_AUTH === "true",
+      facebook: process.env.NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH === "true",
+    },
     missingConfiguration: missing,
     version: process.env.GIT_SHA ?? "local",
     time: new Date().toISOString(),
