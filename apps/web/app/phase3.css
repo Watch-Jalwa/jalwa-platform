@@ -5,9 +5,10 @@
 .asset-list > div { display: flex; justify-content: space-between; border-top: 1px solid var(--border); padding-top: .6rem; }
 .shorts-feed { height: calc(100dvh - 9rem); overflow-y: auto; scroll-snap-type: y mandatory; border-radius: 1rem; }
 .short-card { min-height: calc(100dvh - 9rem); scroll-snap-align: start; position: relative; display: grid; place-items: center; background: #000; overflow: hidden; }
-.short-player { width: min(100%, 30rem); height: calc(100dvh - 9rem); }
-.short-player video { width: 100%; height: 100%; object-fit: cover; }
-.short-copy { position: absolute; inset: auto 1rem 1rem; max-width: 28rem; padding: 1rem; border-radius: .9rem; background: linear-gradient(180deg, transparent, rgba(0,0,0,.86)); }
+.short-player { width: min(100%, 30rem); height: calc(100dvh - 9rem); background: #000; }
+.short-player video, .short-player iframe { width: 100%; height: 100%; border: 0; object-fit: cover; }
+.short-player .player-placeholder { height: 100%; }
+.short-copy { position: absolute; inset: auto 1rem 1rem; max-width: 28rem; padding: 1rem; border-radius: .9rem; background: linear-gradient(180deg, transparent, rgba(0,0,0,.86)); pointer-events: none; }
 .short-copy h2, .short-copy p { margin: .35rem 0; }
-.short-copy a { color: white; font-weight: 700; }
+.short-copy a { color: white; font-weight: 700; pointer-events: auto; }
 @media (min-width: 900px) { .short-card { grid-template-columns: minmax(20rem, 30rem); } }
