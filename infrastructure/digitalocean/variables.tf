@@ -14,8 +14,9 @@ variable "region" {
 }
 
 variable "droplet_size" {
-  type    = string
-  default = "s-2vcpu-4gb"
+  type        = string
+  default     = "s-4vcpu-8gb"
+  description = "Combined web, worker and self-hosted Supabase require at least 4 vCPU and 8 GB RAM."
 }
 
 variable "droplet_image" {

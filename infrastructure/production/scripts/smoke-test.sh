@@ -2,26 +2,29 @@
 set -Eeuo pipefail
 
 BASE_URL="${1:-https://watch-jalwa.com}"
+API_URL="${2:-https://api.watch-jalwa.com}"
 BASE_URL="${BASE_URL%/}"
+API_URL="${API_URL%/}"
 
 check() {
-  local path="$1"
+  local url="$1"
   local expected="$2"
   local code
-  code="$(curl --silent --show-error --location --output /tmp/jalwa-smoke-body --write-out '%{http_code}' --max-time 20 "${BASE_URL}${path}")"
+  code="$(curl --silent --show-error --location --output /tmp/jalwa-smoke-body --write-out '%{http_code}' --max-time 20 "$url")"
   if [[ "$code" != "$expected" ]]; then
-    echo "FAIL ${path}: expected ${expected}, received ${code}" >&2
+    echo "FAIL ${url}: expected ${expected}, received ${code}" >&2
     cat /tmp/jalwa-smoke-body >&2 || true
     exit 1
   fi
-  echo "PASS ${path} (${code})"
+  echo "PASS ${url} (${code})"
 }
 
-check "/api/health" "200"
-check "/api/readiness" "200"
-check "/" "200"
-check "/pricing" "200"
-check "/support" "200"
-check "/legal/privacy" "200"
+check "${BASE_URL}/api/health" "200"
+check "${BASE_URL}/api/readiness" "200"
+check "${BASE_URL}/" "200"
+check "${BASE_URL}/pricing" "200"
+check "${BASE_URL}/support" "200"
+check "${BASE_URL}/legal/privacy" "200"
+check "${API_URL}/auth/v1/health" "200"
 
 echo "Jalwa production smoke test passed."

@@ -2,12 +2,16 @@
 package_update: true
 package_upgrade: true
 packages:
+  - awscli
   - ca-certificates
   - curl
   - docker.io
   - docker-compose-v2
   - fail2ban
+  - git
+  - jq
   - postgresql-client
+  - rsync
   - unattended-upgrades
 
 users:
@@ -24,12 +28,34 @@ write_files:
     content: |
       PermitRootLogin no
       PasswordAuthentication no
+      KbdInteractiveAuthentication no
       PubkeyAuthentication yes
+      AllowUsers jalwa
   - path: /etc/fail2ban/jail.d/jalwa.local
     permissions: "0644"
     content: |
       [sshd]
       enabled = true
+      maxretry = 5
+      bantime = 1h
+  - path: /etc/docker/daemon.json
+    permissions: "0644"
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": {
+          "max-size": "20m",
+          "max-file": "5"
+        },
+        "live-restore": true
+      }
+  - path: /etc/sysctl.d/99-jalwa.conf
+    permissions: "0644"
+    content: |
+      vm.swappiness=10
+      vm.max_map_count=262144
+      net.core.somaxconn=4096
+      net.ipv4.tcp_syncookies=1
   - path: /opt/jalwa/HOST_INFO
     permissions: "0644"
     content: |
@@ -39,7 +65,9 @@ write_files:
 runcmd:
   - systemctl enable --now docker
   - systemctl enable --now fail2ban
-  - mkdir -p /opt/jalwa/backups
+  - sysctl --system
+  - mkdir -p /opt/jalwa/backups/postgres /opt/jalwa/migrations /opt/jalwa/scripts /opt/jalwa/supabase
   - chown -R jalwa:jalwa /opt/jalwa
   - chmod 750 /opt/jalwa
+  - systemctl restart docker
   - systemctl restart ssh
