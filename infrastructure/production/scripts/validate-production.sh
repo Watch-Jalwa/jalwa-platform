@@ -32,7 +32,7 @@ mapfile -t migrations < <(find supabase/migrations -maxdepth 1 -type f -name '*.
 for migration in "${migrations[@]}"; do
   [[ "$migration" =~ ^[0-9]{12,}_[a-z0-9_]+\.sql$ ]] || { echo "Invalid migration filename: $migration" >&2; exit 1; }
 done
-for migration in 202607310001_social_recommendations.sql 202607310002_social_controls.sql 202607310003_semantic_recommendations.sql 202607310004_live_drm.sql 202607310005_community_reads.sql; do
+for migration in 202607310001_social_recommendations.sql 202607310002_social_controls.sql 202607310003_semantic_recommendations.sql 202607310004_live_drm.sql 202607310005_community_reads.sql 202607310006_social_live_hardening.sql; do
   test -s "supabase/migrations/$migration" || { echo "Missing browser expansion migration: $migration" >&2; exit 1; }
 done
 
@@ -41,6 +41,7 @@ grep -q '88b022b8cb12602ddb539972efd07a3496ea64f8662a484798c96e95afa41fd8' Docke
 grep -q 'e4a43aaa8fdb87d0306876bc41581b371d7082e9d1b8469aef06a4e74004fd69' Dockerfile
 grep -q 'persistentState: "not-allowed"' apps/web/components/drm-player.tsx
 grep -q 'rewritePlaylist' infrastructure/media-gateway/src/index.ts
+grep -q 'revoke insert,update,delete on public.comments' supabase/migrations/202607310006_social_live_hardening.sql
 if grep -n -E 'stream_key|srt_passphrase|content_key[[:space:]]+text' supabase/migrations/202607310004_live_drm.sql; then
   echo 'Live ingest secrets or plaintext DRM keys must not be stored in PostgreSQL.' >&2
   exit 1
