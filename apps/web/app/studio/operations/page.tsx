@@ -18,12 +18,12 @@ export default async function OperationsPage() {
     admin.from("checkout_orders").select("id", { count: "exact", head: true }).eq("status", "pending"),
     admin.from("entitlements").select("id", { count: "exact", head: true }).eq("status", "active"),
     admin.from("account_requests").select("id", { count: "exact", head: true }).in("status", ["requested", "in_review"]),
-    admin.from("analytics_events").select("id", { count: "exact", head: true }).gte("created_at", new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
+    admin.from("analytics_events").select("id", { count: "exact", head: true }),
   ]);
   const missing = requiredConfiguration.filter((name) => !process.env[name]);
   const cards = [
     ["Catalogue items", content.count ?? 0], ["Open support cases", support.count ?? 0], ["Pending checkouts", checkout.count ?? 0],
-    ["Active entitlements", entitlements.count ?? 0], ["Privacy requests", accountRequests.count ?? 0], ["Events in 24 hours", analytics.count ?? 0],
+    ["Active entitlements", entitlements.count ?? 0], ["Privacy requests", accountRequests.count ?? 0], ["Recorded events", analytics.count ?? 0],
   ];
 
   return (
