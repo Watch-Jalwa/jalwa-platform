@@ -25,6 +25,17 @@ export function extractResponseText(response) {
   return parts.join("\n").trim();
 }
 
+export function extractChatCompletionText(response) {
+  const content = response?.choices?.[0]?.message?.content;
+  if (typeof content === "string") return content.trim();
+  if (!Array.isArray(content)) return "";
+  return content
+    .map((part) => typeof part?.text === "string" ? part.text : "")
+    .filter(Boolean)
+    .join("\n")
+    .trim();
+}
+
 export function sanitizeSourceCitations(text, sourceCount) {
   if (typeof text !== "string") return "";
   return text.replace(/\[(\d+)\]/g, (match, value) => {
@@ -45,4 +56,25 @@ export function buildSourceContext(sources) {
     ].filter(Boolean);
     return details.join("\n");
   }).join("\n\n");
+}
+
+const HARD_RISK_PATTERNS = [
+  /(?:how|kaise).{0,40}(?:suicide|khudkushi|self[- ]?harm)/iu,
+  /(?:make|banana|build).{0,40}(?:bomb|explosive|grenade)/iu,
+  /(?:sexual|nude|porn).{0,30}(?:child|minor|bach)/iu,
+];
+
+export function hasHardSafetyRisk(text) {
+  if (typeof text !== "string") return false;
+  return HARD_RISK_PATTERNS.some((pattern) => pattern.test(text));
+}
+
+export function parseModerationDecision(text) {
+  if (typeof text !== "string") return null;
+  try {
+    const parsed = JSON.parse(text);
+    return typeof parsed?.blocked === "boolean" ? parsed.blocked : null;
+  } catch {
+    return null;
+  }
 }
