@@ -17,9 +17,7 @@ export async function PATCH(request: Request) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
-  let query = supabase.from("notifications").update({ read_at: new Date().toISOString() }).eq("user_id", user.id).is("read_at", null);
-  if (!body.all && body.id) query = query.eq("id", body.id);
-  const { error } = await query;
+  const { data, error } = await supabase.rpc("mark_notifications_read", { p_notification_id: body.all ? null : body.id ?? null });
   if (error) return NextResponse.json({ error: error.message }, { status: 400 });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, updated: data });
 }
