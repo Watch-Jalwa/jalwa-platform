@@ -1,0 +1,16 @@
+services:
+  web:
+    build:
+      context: .
+      target: web
+    env_file: .env
+    ports:
+      - "3000:3000"
+
+  worker:
+    build:
+      context: .
+      target: worker
+    env_file: .env
+    depends_on:
+      - web

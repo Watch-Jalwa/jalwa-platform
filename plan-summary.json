@@ -1,0 +1,26 @@
+{
+  "platform": "Jalwa",
+  "domain": "watch-jalwa.com",
+  "market": "Pakistan",
+  "repository": "Watch-Jalwa/jalwa-platform",
+  "architecture": "TypeScript modular monolith with Next.js web and FFmpeg worker",
+  "launch_categories": [
+    "Jalwa Originals",
+    "Shorts",
+    "Entertainment",
+    "Deen",
+    "Kissan & Farming",
+    "Learn",
+    "Tech & AI",
+    "Rozgar, Business & Freelancing",
+    "Pakistan",
+    "Kids & Family",
+    "Health & Life",
+    "Live"
+  ],
+  "recommended_price_hypothesis_pkr": {
+    "monthly": 299,
+    "annual": 2999
+  },
+  "mvp_weeks": 12
+}
