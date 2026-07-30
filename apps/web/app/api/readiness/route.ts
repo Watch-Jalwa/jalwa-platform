@@ -6,7 +6,7 @@ export const runtime = "nodejs";
 
 const required = [
   "NEXT_PUBLIC_APP_URL", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY", "OPENAI_API_KEY", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID",
+  "SUPABASE_SERVICE_ROLE_KEY", "AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID",
   "R2_SECRET_ACCESS_KEY", "R2_PROCESSED_BUCKET", "MEDIA_SIGNING_SECRET", "NEXT_PUBLIC_MEDIA_GATEWAY_URL",
   "PAYMENT_WEBHOOK_SECRET", "RATE_LIMIT_SALT",
 ] as const;
@@ -29,6 +29,7 @@ export async function GET() {
     service: "jalwa-web",
     status: ready ? "ready" : "not_ready",
     database,
+    aiProvider: process.env.AI_PROVIDER ?? "unconfigured",
     missingConfiguration: missing,
     version: process.env.GIT_SHA ?? "local",
     time: new Date().toISOString(),
