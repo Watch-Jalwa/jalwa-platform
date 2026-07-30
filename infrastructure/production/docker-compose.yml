@@ -1,0 +1,43 @@
+services:
+  web:
+    image: ghcr.io/watch-jalwa/jalwa-platform-web:${JALWA_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env.production
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks: [jalwa]
+
+  worker:
+    image: ghcr.io/watch-jalwa/jalwa-platform-worker:${JALWA_IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env.production
+    networks: [jalwa]
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks: [jalwa]
+
+networks:
+  jalwa:
+
+volumes:
+  caddy_data:
+  caddy_config:
