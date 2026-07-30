@@ -3,11 +3,11 @@ import { getActiveViewerProfile } from "@/lib/customer/active-profile";
 import { hasSupabaseConfig, isFrontendPreview } from "@/lib/runtime";
 import { createClient } from "@/lib/supabase/server";
 
+type CommentRow = { id: string; user_id: string; parent_id: string | null; author: string; body: string; body_language: string; score: number; reply_count: number; liked_by_me: boolean; edited_at: string | null; created_at: string; mine: boolean };
 const demoComments = [
-  { id: "demo-comment-1", userId: "demo-user-1", parentId: null, author: "Jalwa Viewer", body: "The player and Urdu presentation look good together.", language: "en", score: 4, replyCount: 1, likedByMe: false, editedAt: null, createdAt: new Date(Date.now()-3600000).toISOString(), mine: false },
-  { id: "demo-comment-2", userId: "demo-user-2", parentId: "demo-comment-1", author: "Ayesha", body: "جی، موبائل براؤزر پر بھی ترتیب واضح ہے۔", language: "ur", score: 2, replyCount: 0, likedByMe: false, editedAt: null, createdAt: new Date(Date.now()-1800000).toISOString(), mine: false },
+  { id: "demo-comment-1", userId: "demo-user-1", parentId: null, author: "Jalwa Viewer", body: "The player and Urdu presentation look good together.", language: "en", score: 4, replyCount: 1, likedByMe: false, editedAt: null, createdAt: "2026-07-30T18:00:00.000Z", mine: false },
+  { id: "demo-comment-2", userId: "demo-user-2", parentId: "demo-comment-1", author: "Ayesha", body: "جی، موبائل براؤزر پر بھی ترتیب واضح ہے۔", language: "ur", score: 2, replyCount: 0, likedByMe: false, editedAt: null, createdAt: "2026-07-30T18:30:00.000Z", mine: false },
 ];
-
 function validUuid(value: string | null | undefined) { return Boolean(value && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)); }
 
 export async function GET(request: Request) {
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
     supabase.rpc("get_content_comments", { p_content_id: contentId }),
   ]);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  const comments = (rows ?? []).map((row) => ({ id: row.id, userId: row.user_id, parentId: row.parent_id, author: row.author, body: row.body, language: row.body_language, score: row.score, replyCount: row.reply_count, likedByMe: row.liked_by_me, editedAt: row.edited_at, createdAt: row.created_at, mine: row.mine }));
+  const comments = ((rows ?? []) as CommentRow[]).map((row) => ({ id: row.id, userId: row.user_id, parentId: row.parent_id, author: row.author, body: row.body, language: row.body_language, score: row.score, replyCount: row.reply_count, likedByMe: row.liked_by_me, editedAt: row.edited_at, createdAt: row.created_at, mine: row.mine }));
   return NextResponse.json({ comments, preview: false, settings: { commentsEnabled: settings?.comments_enabled ?? true, repliesEnabled: settings?.replies_enabled ?? true, approvalRequired: settings?.approval_required ?? false, slowModeSeconds: settings?.slow_mode_seconds ?? 15 } });
 }
 
