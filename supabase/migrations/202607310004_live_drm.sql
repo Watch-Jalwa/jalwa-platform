@@ -89,7 +89,6 @@ create table public.drm_policies (
 );
 
 create trigger drm_policies_touch before update on public.drm_policies for each row execute procedure public.touch_updated_at();
-
 insert into public.drm_policies(name) values('Premium browser default') on conflict do nothing;
 
 create table public.drm_assets (
@@ -113,6 +112,9 @@ create table public.drm_assets (
 create trigger drm_assets_touch before update on public.drm_assets for each row execute procedure public.touch_updated_at();
 
 alter table public.playback_sources add column if not exists drm_asset_id uuid references public.drm_assets(id) on delete set null;
+alter table public.playback_sources drop constraint if exists playback_sources_format_check;
+alter table public.playback_sources add constraint playback_sources_format_check check(format is null or format in ('youtube','mp4','hls','dash','drm_hls','external'));
+create index playback_drm_asset_idx on public.playback_sources(drm_asset_id);
 
 create table public.drm_packaging_jobs (
   id uuid primary key default gen_random_uuid(),
@@ -129,6 +131,7 @@ create table public.drm_packaging_jobs (
   completed_at timestamptz
 );
 
+create unique index drm_packaging_jobs_active_idx on public.drm_packaging_jobs(drm_asset_id) where status in ('queued','processing');
 create index drm_packaging_queue_idx on public.drm_packaging_jobs(status,available_at) where status='queued';
 
 create table public.drm_license_events (
@@ -155,12 +158,10 @@ as $$
 declare v_id uuid;
 begin
   select id into v_id from public.drm_packaging_jobs
-  where status='queued' and available_at<=now()
-  order by created_at
-  for update skip locked limit 1;
+  where status='queued' and available_at<=now() and attempts<max_attempts
+  order by created_at for update skip locked limit 1;
   if v_id is null then return; end if;
-  return query update public.drm_packaging_jobs
-    set status='processing',attempts=attempts+1,locked_at=now(),locked_by=left(p_worker_id,120)
+  return query update public.drm_packaging_jobs set status='processing',attempts=attempts+1,locked_at=now(),locked_by=left(p_worker_id,120)
     where id=v_id returning *;
 end;
 $$;
@@ -170,19 +171,17 @@ returns uuid
 language plpgsql
 security definer set search_path=''
 as $$
-declare
-  v_user uuid := (select auth.uid());
-  v_id uuid;
+declare v_user uuid := (select auth.uid()); v_id uuid;
 begin
   if p_viewer_profile_id is not null and not exists(select 1 from public.viewer_profiles where id=p_viewer_profile_id and user_id=v_user) then raise exception 'viewer profile unavailable'; end if;
   insert into public.live_viewer_sessions(channel_id,user_id,viewer_profile_id,session_key,last_seen_at,watch_seconds,quality)
   values(p_channel_id,v_user,p_viewer_profile_id,left(p_session_key,120),now(),greatest(coalesce(p_watch_seconds,0),0),left(p_quality,40))
   on conflict(channel_id,session_key) do update set last_seen_at=now(),watch_seconds=greatest(public.live_viewer_sessions.watch_seconds,excluded.watch_seconds),quality=coalesce(excluded.quality,public.live_viewer_sessions.quality)
-  returning id into v_id;
-  return v_id;
+  returning id into v_id; return v_id;
 end;
 $$;
 
+grant execute on function public.claim_drm_packaging_job(text) to service_role;
 grant execute on function public.touch_live_session(uuid,text,uuid,integer,text) to anon,authenticated;
 
 alter table public.live_channels enable row level security;
@@ -202,7 +201,10 @@ create policy "live health staff read" on public.live_health_checks for select t
 create policy "live sessions own read" on public.live_viewer_sessions for select to authenticated using(user_id=(select auth.uid()));
 create policy "drm policies staff manage" on public.drm_policies for all to authenticated using(exists(select 1 from public.profiles where id=(select auth.uid()) and role='admin')) with check(exists(select 1 from public.profiles where id=(select auth.uid()) and role='admin'));
 create policy "drm assets staff read" on public.drm_assets for select to authenticated using(exists(select 1 from public.profiles where id=(select auth.uid()) and role in ('editor','rights_reviewer','admin')));
+create policy "drm assets staff create" on public.drm_assets for insert to authenticated with check(exists(select 1 from public.profiles where id=(select auth.uid()) and role in ('editor','admin')));
+create policy "drm assets staff update" on public.drm_assets for update to authenticated using(exists(select 1 from public.profiles where id=(select auth.uid()) and role in ('editor','admin'))) with check(exists(select 1 from public.profiles where id=(select auth.uid()) and role in ('editor','admin')));
 create policy "drm jobs staff read" on public.drm_packaging_jobs for select to authenticated using(exists(select 1 from public.profiles where id=(select auth.uid()) and role in ('editor','admin')));
+create policy "drm jobs staff create" on public.drm_packaging_jobs for insert to authenticated with check(exists(select 1 from public.profiles where id=(select auth.uid()) and role in ('editor','admin')));
 create policy "drm events own read" on public.drm_license_events for select to authenticated using(user_id=(select auth.uid()));
 create policy "drm events staff read" on public.drm_license_events for select to authenticated using(exists(select 1 from public.profiles where id=(select auth.uid()) and role in ('support','admin')));
 
