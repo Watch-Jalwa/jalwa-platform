@@ -16,9 +16,9 @@ export function deterministicEmbedding(input: string) {
   for (const token of tokens(input)) {
     const digest = createHash("sha256").update(token).digest();
     const index = digest.readUInt16BE(0) % DIMENSIONS;
-    const sign = digest[2] % 2 ? 1 : -1;
-    const weight = 1 + digest[3] / 255;
-    vector[index] += sign * weight;
+    const sign = (digest[2] ?? 0) % 2 ? 1 : -1;
+    const weight = 1 + (digest[3] ?? 0) / 255;
+    vector[index] = (vector[index] ?? 0) + sign * weight;
   }
   const norm = Math.sqrt(vector.reduce((sum, value) => sum + value*value, 0)) || 1;
   return vector.map((value) => Number((value/norm).toFixed(8)));
