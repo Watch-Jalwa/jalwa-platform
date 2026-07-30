@@ -1,4 +1,4 @@
-import { buildSourceContext, extractResponseText, sanitizeSourceCitations } from "./grounding.mjs";
+import { buildSourceContext, extractResponseText, sanitizeSourceCitations } from "@/lib/ai/grounding.mjs";
 
 export type GroundedSource = {
   id: string;
