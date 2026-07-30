@@ -20,8 +20,7 @@ create table public.account_requests (
   status text not null default 'requested' check (status in ('requested','in_review','completed','rejected','cancelled')),
   requested_at timestamptz not null default now(),
   completed_at timestamptz,
-  internal_note text,
-  unique(user_id,request_type,status)
+  internal_note text
 );
 
 create table public.analytics_events (
@@ -45,6 +44,8 @@ create table public.rate_limit_buckets (
 create index support_cases_status_idx on public.support_cases(status,created_at desc);
 create index support_cases_user_idx on public.support_cases(user_id,created_at desc);
 create index account_requests_user_idx on public.account_requests(user_id,requested_at desc);
+create unique index account_requests_one_pending_idx on public.account_requests(user_id,request_type)
+  where status in ('requested','in_review');
 create index analytics_events_name_time_idx on public.analytics_events(event_name,created_at desc);
 create index analytics_events_user_time_idx on public.analytics_events(user_id,created_at desc);
 
