@@ -29,6 +29,8 @@ jobs:
       ENABLE_GOOGLE_AUTH: ${{ vars.ENABLE_GOOGLE_AUTH || 'false' }}
       ENABLE_APPLE_AUTH: ${{ vars.ENABLE_APPLE_AUTH || 'false' }}
       ENABLE_FACEBOOK_AUTH: ${{ vars.ENABLE_FACEBOOK_AUTH || 'false' }}
+      ENABLE_LIVE_STREAMING: ${{ vars.ENABLE_LIVE_STREAMING || 'false' }}
+      ENABLE_WEB_DRM: ${{ vars.ENABLE_WEB_DRM || 'false' }}
       PRODUCTION_SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
       GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
       GHCR_DEPLOY_TOKEN: ${{ secrets.GHCR_DEPLOY_TOKEN }}
@@ -38,6 +40,7 @@ jobs:
       R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       MEDIA_SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
       RATE_LIMIT_SALT: ${{ secrets.RATE_LIMIT_SALT }}
+      RECOMMENDATION_REFRESH_SECRET: ${{ secrets.RECOMMENDATION_REFRESH_SECRET }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       PAYMENT_WEBHOOK_SECRET: ${{ secrets.PAYMENT_WEBHOOK_SECRET }}
       POSTGRES_PASSWORD: ${{ secrets.SELF_HOSTED_POSTGRES_PASSWORD }}
@@ -75,52 +78,35 @@ jobs:
       EASYPAISA_CHECKOUT_URL: ${{ secrets.EASYPAISA_CHECKOUT_URL }}
       EASYPAISA_STORE_ID: ${{ secrets.EASYPAISA_STORE_ID }}
       EASYPAISA_SECRET: ${{ secrets.EASYPAISA_SECRET }}
+      CLOUDFLARE_STREAM_API_TOKEN: ${{ secrets.CLOUDFLARE_STREAM_API_TOKEN }}
+      CLOUDFLARE_STREAM_CUSTOMER_CODE: ${{ secrets.CLOUDFLARE_STREAM_CUSTOMER_CODE }}
+      DRM_WIDEVINE_LICENSE_URL: ${{ secrets.DRM_WIDEVINE_LICENSE_URL }}
+      DRM_FAIRPLAY_LICENSE_URL: ${{ secrets.DRM_FAIRPLAY_LICENSE_URL }}
+      DRM_FAIRPLAY_CERTIFICATE_URL: ${{ secrets.DRM_FAIRPLAY_CERTIFICATE_URL }}
+      DRM_PROVIDER_AUTHORIZATION: ${{ secrets.DRM_PROVIDER_AUTHORIZATION }}
+      DRM_PACKAGING_KEY_URL: ${{ secrets.DRM_PACKAGING_KEY_URL }}
+      DRM_PACKAGING_KEY_AUTHORIZATION: ${{ secrets.DRM_PACKAGING_KEY_AUTHORIZATION }}
     steps:
       - uses: actions/checkout@v6
       - name: Validate production configuration
         run: |
           set -euo pipefail
-          required=(
-            SUPABASE_DOCKER_REF PRODUCTION_HOST PRODUCTION_DOMAIN
-            PRODUCTION_SSH_KEY GHCR_USERNAME GHCR_DEPLOY_TOKEN
-            CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
-            R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY MEDIA_SIGNING_SECRET
-            RATE_LIMIT_SALT DEEPSEEK_API_KEY PAYMENT_WEBHOOK_SECRET
-            POSTGRES_PASSWORD JWT_SECRET ANON_KEY SERVICE_ROLE_KEY
-            DASHBOARD_PASSWORD SECRET_KEY_BASE VAULT_ENC_KEY PG_META_CRYPTO_KEY
-            LOGFLARE_PUBLIC_TOKEN LOGFLARE_PRIVATE_TOKEN POOLER_TENANT_ID
-            SMTP_HOST SMTP_USER SMTP_PASS SMTP_ADMIN_EMAIL SMTP_SENDER_NAME
-          )
-          for name in "${required[@]}"; do
-            test -n "${!name:-}" || { echo "Missing $name" >&2; exit 1; }
-          done
-          [[ "$SUPABASE_DOCKER_REF" =~ ^[0-9a-f]{40}$ ]] || {
-            echo "SUPABASE_DOCKER_REF must be a pinned 40-character commit SHA." >&2
-            exit 1
-          }
-          [[ "$PAYMENT_PROVIDER" =~ ^(payfast|jazzcash|easypaisa)$ ]] || {
-            echo "PAYMENT_PROVIDER must be payfast, jazzcash or easypaisa in production." >&2
-            exit 1
-          }
+          required=(SUPABASE_DOCKER_REF PRODUCTION_HOST PRODUCTION_DOMAIN PRODUCTION_SSH_KEY GHCR_USERNAME GHCR_DEPLOY_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY MEDIA_SIGNING_SECRET RATE_LIMIT_SALT RECOMMENDATION_REFRESH_SECRET DEEPSEEK_API_KEY PAYMENT_WEBHOOK_SECRET POSTGRES_PASSWORD JWT_SECRET ANON_KEY SERVICE_ROLE_KEY DASHBOARD_PASSWORD SECRET_KEY_BASE VAULT_ENC_KEY PG_META_CRYPTO_KEY LOGFLARE_PUBLIC_TOKEN LOGFLARE_PRIVATE_TOKEN POOLER_TENANT_ID SMTP_HOST SMTP_USER SMTP_PASS SMTP_ADMIN_EMAIL SMTP_SENDER_NAME)
+          for name in "${required[@]}"; do test -n "${!name:-}" || { echo "Missing $name" >&2; exit 1; }; done
+          [[ "$SUPABASE_DOCKER_REF" =~ ^[0-9a-f]{40}$ ]] || { echo 'SUPABASE_DOCKER_REF must be a pinned commit SHA.' >&2; exit 1; }
+          [[ "$PAYMENT_PROVIDER" =~ ^(payfast|jazzcash|easypaisa)$ ]] || { echo 'A real payment provider is required.' >&2; exit 1; }
           case "$PAYMENT_PROVIDER" in
-            payfast)
-              for name in PAYFAST_CHECKOUT_URL PAYFAST_MERCHANT_ID PAYFAST_SECRET; do test -n "${!name:-}" || exit 1; done
-              ;;
-            jazzcash)
-              for name in JAZZCASH_CHECKOUT_URL JAZZCASH_MERCHANT_ID JAZZCASH_SECRET; do test -n "${!name:-}" || exit 1; done
-              ;;
-            easypaisa)
-              for name in EASYPAISA_CHECKOUT_URL EASYPAISA_STORE_ID EASYPAISA_SECRET; do test -n "${!name:-}" || exit 1; done
-              ;;
+            payfast) names=(PAYFAST_CHECKOUT_URL PAYFAST_MERCHANT_ID PAYFAST_SECRET) ;;
+            jazzcash) names=(JAZZCASH_CHECKOUT_URL JAZZCASH_MERCHANT_ID JAZZCASH_SECRET) ;;
+            easypaisa) names=(EASYPAISA_CHECKOUT_URL EASYPAISA_STORE_ID EASYPAISA_SECRET) ;;
           esac
-          if [[ "$ENABLE_PHONE_AUTH" == "true" ]]; then
-            for name in SMS_PROVIDER SMS_TWILIO_ACCOUNT_SID SMS_TWILIO_AUTH_TOKEN SMS_TWILIO_MESSAGE_SERVICE_SID; do
-              test -n "${!name:-}" || { echo "Phone auth enabled but $name is missing." >&2; exit 1; }
-            done
-          fi
-          if [[ "$ENABLE_GOOGLE_AUTH" == "true" ]]; then test -n "$GOOGLE_CLIENT_ID" && test -n "$GOOGLE_SECRET"; fi
-          if [[ "$ENABLE_APPLE_AUTH" == "true" ]]; then test -n "$APPLE_CLIENT_ID" && test -n "$APPLE_SECRET"; fi
-          if [[ "$ENABLE_FACEBOOK_AUTH" == "true" ]]; then test -n "$FACEBOOK_CLIENT_ID" && test -n "$FACEBOOK_SECRET"; fi
+          for name in "${names[@]}"; do test -n "${!name:-}" || { echo "Missing payment setting $name" >&2; exit 1; }; done
+          if [[ "$ENABLE_PHONE_AUTH" == true ]]; then for name in SMS_PROVIDER SMS_TWILIO_ACCOUNT_SID SMS_TWILIO_AUTH_TOKEN SMS_TWILIO_MESSAGE_SERVICE_SID; do test -n "${!name:-}" || exit 1; done; fi
+          if [[ "$ENABLE_GOOGLE_AUTH" == true ]]; then test -n "$GOOGLE_CLIENT_ID" && test -n "$GOOGLE_SECRET"; fi
+          if [[ "$ENABLE_APPLE_AUTH" == true ]]; then test -n "$APPLE_CLIENT_ID" && test -n "$APPLE_SECRET"; fi
+          if [[ "$ENABLE_FACEBOOK_AUTH" == true ]]; then test -n "$FACEBOOK_CLIENT_ID" && test -n "$FACEBOOK_SECRET"; fi
+          if [[ "$ENABLE_LIVE_STREAMING" == true ]]; then for name in CLOUDFLARE_STREAM_API_TOKEN CLOUDFLARE_STREAM_CUSTOMER_CODE; do test -n "${!name:-}" || { echo "Live enabled but $name is missing." >&2; exit 1; }; done; fi
+          if [[ "$ENABLE_WEB_DRM" == true ]]; then for name in DRM_WIDEVINE_LICENSE_URL DRM_FAIRPLAY_LICENSE_URL DRM_FAIRPLAY_CERTIFICATE_URL DRM_PROVIDER_AUTHORIZATION DRM_PACKAGING_KEY_URL DRM_PACKAGING_KEY_AUTHORIZATION; do test -n "${!name:-}" || { echo "DRM enabled but $name is missing." >&2; exit 1; }; done; fi
           infrastructure/production/scripts/validate-production.sh
 
   build:
@@ -152,6 +138,8 @@ jobs:
             NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=${{ vars.ENABLE_GOOGLE_AUTH || 'false' }}
             NEXT_PUBLIC_ENABLE_APPLE_AUTH=${{ vars.ENABLE_APPLE_AUTH || 'false' }}
             NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH=${{ vars.ENABLE_FACEBOOK_AUTH || 'false' }}
+            NEXT_PUBLIC_ENABLE_LIVE_STREAMING=${{ vars.ENABLE_LIVE_STREAMING || 'false' }}
+            NEXT_PUBLIC_ENABLE_WEB_DRM=${{ vars.ENABLE_WEB_DRM || 'false' }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
       - name: Build and push worker
@@ -204,7 +192,6 @@ jobs:
           printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
           chmod 600 ~/.ssh/jalwa
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
-
       - name: Generate production runtime environments
         env:
           POSTGRES_PASSWORD: ${{ secrets.SELF_HOSTED_POSTGRES_PASSWORD }}
@@ -238,11 +225,22 @@ jobs:
           ENABLE_FACEBOOK_AUTH: ${{ vars.ENABLE_FACEBOOK_AUTH || 'false' }}
           FACEBOOK_CLIENT_ID: ${{ secrets.FACEBOOK_CLIENT_ID }}
           FACEBOOK_SECRET: ${{ secrets.FACEBOOK_SECRET }}
+          ENABLE_LIVE_STREAMING: ${{ vars.ENABLE_LIVE_STREAMING || 'false' }}
+          ENABLE_WEB_DRM: ${{ vars.ENABLE_WEB_DRM || 'false' }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_STREAM_API_TOKEN: ${{ secrets.CLOUDFLARE_STREAM_API_TOKEN }}
+          CLOUDFLARE_STREAM_CUSTOMER_CODE: ${{ secrets.CLOUDFLARE_STREAM_CUSTOMER_CODE }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           MEDIA_SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
           RATE_LIMIT_SALT: ${{ secrets.RATE_LIMIT_SALT }}
+          RECOMMENDATION_REFRESH_SECRET: ${{ secrets.RECOMMENDATION_REFRESH_SECRET }}
+          DRM_WIDEVINE_LICENSE_URL: ${{ secrets.DRM_WIDEVINE_LICENSE_URL }}
+          DRM_FAIRPLAY_LICENSE_URL: ${{ secrets.DRM_FAIRPLAY_LICENSE_URL }}
+          DRM_FAIRPLAY_CERTIFICATE_URL: ${{ secrets.DRM_FAIRPLAY_CERTIFICATE_URL }}
+          DRM_PROVIDER_AUTHORIZATION: ${{ secrets.DRM_PROVIDER_AUTHORIZATION }}
+          DRM_PACKAGING_KEY_URL: ${{ secrets.DRM_PACKAGING_KEY_URL }}
+          DRM_PACKAGING_KEY_AUTHORIZATION: ${{ secrets.DRM_PACKAGING_KEY_AUTHORIZATION }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
           PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}
           PAYMENT_WEBHOOK_SECRET: ${{ secrets.PAYMENT_WEBHOOK_SECRET }}
@@ -272,6 +270,10 @@ jobs:
           NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=$ENABLE_GOOGLE_AUTH
           NEXT_PUBLIC_ENABLE_APPLE_AUTH=$ENABLE_APPLE_AUTH
           NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH=$ENABLE_FACEBOOK_AUTH
+          NEXT_PUBLIC_ENABLE_LIVE_STREAMING=$ENABLE_LIVE_STREAMING
+          NEXT_PUBLIC_ENABLE_WEB_DRM=$ENABLE_WEB_DRM
+          ENABLE_LIVE_STREAMING=$ENABLE_LIVE_STREAMING
+          ENABLE_WEB_DRM=$ENABLE_WEB_DRM
           R2_ACCOUNT_ID=$CLOUDFLARE_ACCOUNT_ID
           R2_ACCESS_KEY_ID=$R2_ACCESS_KEY_ID
           R2_SECRET_ACCESS_KEY=$R2_SECRET_ACCESS_KEY
@@ -282,6 +284,17 @@ jobs:
           NEXT_PUBLIC_MEDIA_GATEWAY_URL=https://media.$DOMAIN
           MEDIA_SIGNING_SECRET=$MEDIA_SIGNING_SECRET
           RATE_LIMIT_SALT=$RATE_LIMIT_SALT
+          RECOMMENDATION_REFRESH_SECRET=$RECOMMENDATION_REFRESH_SECRET
+          CLOUDFLARE_STREAM_API_TOKEN=$CLOUDFLARE_STREAM_API_TOKEN
+          CLOUDFLARE_STREAM_CUSTOMER_CODE=$CLOUDFLARE_STREAM_CUSTOMER_CODE
+          DRM_WIDEVINE_LICENSE_URL=$DRM_WIDEVINE_LICENSE_URL
+          DRM_FAIRPLAY_LICENSE_URL=$DRM_FAIRPLAY_LICENSE_URL
+          DRM_FAIRPLAY_CERTIFICATE_URL=$DRM_FAIRPLAY_CERTIFICATE_URL
+          DRM_PROVIDER_AUTHORIZATION=$DRM_PROVIDER_AUTHORIZATION
+          DRM_PACKAGING_KEY_URL=$DRM_PACKAGING_KEY_URL
+          DRM_PACKAGING_KEY_AUTHORIZATION=$DRM_PACKAGING_KEY_AUTHORIZATION
+          DRM_PROVIDER_TIMEOUT_MS=15000
+          SHAKA_PACKAGER_PATH=/usr/local/bin/packager
           AI_PROVIDER=deepseek
           AI_API_KEY=$DEEPSEEK_API_KEY
           AI_BASE_URL=https://api.deepseek.com
@@ -307,7 +320,6 @@ jobs:
           JALWA_IMAGE_TAG=${{ github.sha }}
           GIT_SHA=${{ github.sha }}
           EOF
-
           cat > /tmp/supabase.env <<EOF
           POSTGRES_PASSWORD=$POSTGRES_PASSWORD
           JWT_SECRET=$JWT_SECRET
@@ -358,7 +370,6 @@ jobs:
           FACEBOOK_CLIENT_ID=$FACEBOOK_CLIENT_ID
           FACEBOOK_SECRET=$FACEBOOK_SECRET
           EOF
-
       - name: Copy production configuration
         run: |
           set -euo pipefail
@@ -371,14 +382,12 @@ jobs:
           scp -i ~/.ssh/jalwa /tmp/jalwa.env "$USER@$HOST:/opt/jalwa/.env.production"
           scp -i ~/.ssh/jalwa /tmp/supabase.env "$USER@$HOST:/opt/jalwa/.env.supabase"
           ssh -i ~/.ssh/jalwa "$USER@$HOST" 'chmod 600 /opt/jalwa/.env.production /opt/jalwa/.env.supabase && chmod 750 /opt/jalwa/scripts/*.sh'
-
       - name: Start self-hosted Supabase and migrate
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/jalwa "$USER@$HOST" "SUPABASE_DOCKER_REF='$SUPABASE_DOCKER_REF' /opt/jalwa/scripts/prepare-supabase.sh"
           ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/apply-migrations.sh"
           ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/install-operations.sh"
-
       - name: Pull, restart and verify Jalwa
         env:
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
