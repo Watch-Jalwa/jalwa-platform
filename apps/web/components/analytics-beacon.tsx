@@ -12,8 +12,9 @@ function sessionId() {
 }
 
 export function trackEvent(eventName: string, input: { path?: string; contentId?: string; properties?: Record<string, unknown> } = {}) {
+  if (typeof window === "undefined") return;
   const privacyNavigator = navigator as Navigator & { globalPrivacyControl?: boolean };
-  if (typeof window === "undefined" || privacyNavigator.globalPrivacyControl) return;
+  if (privacyNavigator.globalPrivacyControl) return;
   const payload = JSON.stringify({ eventName, path: input.path ?? window.location.pathname, contentId: input.contentId, properties: input.properties ?? {}, sessionId: sessionId() });
   const blob = new Blob([payload], { type: "application/json" });
   if (!navigator.sendBeacon("/api/analytics", blob)) {
