@@ -1,0 +1,8 @@
+project_name       = "jalwa-production"
+region             = "REPLACE_WITH_REGION_SLUG"
+droplet_size       = "s-2vcpu-4gb"
+ssh_public_key     = "ssh-ed25519 REPLACE_WITH_PUBLIC_KEY"
+admin_cidrs        = ["REPLACE_WITH_ADMIN_IP/32"]
+enable_backups     = true
+domain             = "watch-jalwa.com"
+# Supply digitalocean_token through TF_VAR_digitalocean_token, not this file.

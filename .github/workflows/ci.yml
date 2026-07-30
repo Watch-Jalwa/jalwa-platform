@@ -16,6 +16,11 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+      - uses: hashicorp/setup-terraform@v3
+      - name: Validate infrastructure files
+        run: |
+          terraform fmt -check -recursive infrastructure/digitalocean
+          bash -n infrastructure/production/scripts/*.sh
       - uses: actions/setup-node@v6
         with:
           node-version: 22
