@@ -29,5 +29,8 @@ CMD ["node", "apps/web/server.js"]
 FROM node:22-alpine AS worker
 WORKDIR /app
 ENV NODE_ENV=production
+RUN apk add --no-cache ffmpeg
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json ./
 COPY apps/worker ./apps/worker
 CMD ["node", "apps/worker/src/index.mjs"]

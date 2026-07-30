@@ -6,9 +6,13 @@
   "scripts": {
     "dev": "node --watch src/index.mjs",
     "start": "node src/index.mjs",
-    "lint": "node --check src/index.mjs",
-    "typecheck": "node --check src/index.mjs",
+    "lint": "node --check src/index.mjs && node --check src/media.mjs",
+    "typecheck": "node --check src/index.mjs && node --check src/media.mjs",
     "test": "node --test tests/*.test.mjs",
-    "build": "node --check src/index.mjs"
+    "build": "node --check src/index.mjs && node --check src/media.mjs"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.850.0",
+    "@supabase/supabase-js": "^2.0.0"
   }
 }
