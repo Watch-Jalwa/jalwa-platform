@@ -4,16 +4,17 @@ import Hls from "hls.js";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-export function LivePlayer({ channelId, poster, title }: { channelId: string; poster?: string | null; title: string }) {
+export function LivePlayer({ channelId, poster, title, nextPath }: { channelId: string; poster?: string | null; title: string; nextPath?: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const sessionRef = useRef(crypto.randomUUID());
-  const startedRef = useRef(Date.now());
+  const startedRef = useRef<number | null>(null);
   const profileRef = useRef<string | null>(null);
   const [state, setState] = useState<"loading" | "ready" | "idle" | "error">("loading");
   const [message, setMessage] = useState("Connecting to the live channel…");
   const [code, setCode] = useState<string | null>(null);
 
   useEffect(() => {
+    startedRef.current = Date.now();
     let hls: Hls | null = null; let cancelled = false; let heartbeat: ReturnType<typeof setInterval> | null = null;
     async function load() {
       const response = await fetch(`/api/live/${channelId}/playback`, { method: "POST" });
@@ -31,13 +32,13 @@ export function LivePlayer({ channelId, poster, title }: { channelId: string; po
         video.src = source;
         video.addEventListener("loadedmetadata", () => { setState("ready"); setMessage(""); }, { once: true });
       }
-      const touch = () => fetch(`/api/live/${channelId}/session`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sessionKey: sessionRef.current, viewerProfileId: profileRef.current, watchSeconds: Math.floor((Date.now()-startedRef.current)/1000), quality: video.videoHeight ? `${video.videoHeight}p` : null }), keepalive: true }).catch(() => undefined);
+      const touch = () => fetch(`/api/live/${channelId}/session`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sessionKey: sessionRef.current, viewerProfileId: profileRef.current, watchSeconds: Math.floor((Date.now()-(startedRef.current ?? Date.now()))/1000), quality: video.videoHeight ? `${video.videoHeight}p` : null }), keepalive: true }).catch(() => undefined);
       void touch(); heartbeat = setInterval(() => void touch(), 30000);
     }
     void load();
     return () => { cancelled = true; if (heartbeat) clearInterval(heartbeat); hls?.destroy(); };
   }, [channelId]);
 
-  if (state === "idle" || state === "error") return <div className="player-placeholder live-placeholder"><span className="live-dot" /> <p>{message}</p>{code === "payment_required" ? <Link className="button button-primary" href="/pricing">View Premium</Link> : code === "sign_in_required" ? <Link className="button button-primary" href={`/login?next=/live/${channelId}`}>Sign in</Link> : <button className="button button-secondary" type="button" onClick={() => window.location.reload()}>Retry</button>}</div>;
+  if (state === "idle" || state === "error") return <div className="player-placeholder live-placeholder"><span className="live-dot" /> <p>{message}</p>{code === "payment_required" ? <Link className="button button-primary" href="/pricing">View Premium</Link> : code === "sign_in_required" ? <Link className="button button-primary" href={`/login?next=${encodeURIComponent(nextPath ?? `/live/${channelId}`)}`}>Sign in</Link> : <button className="button button-secondary" type="button" onClick={() => window.location.reload()}>Retry</button>}</div>;
   return <div className="live-player-stack"><video ref={videoRef} controls playsInline poster={poster ?? undefined} title={title} />{state === "loading" ? <div className="live-loading"><span className="live-dot" />{message}</div> : <span className="live-badge">LIVE</span>}</div>;
 }
