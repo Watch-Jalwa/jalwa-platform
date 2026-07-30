@@ -18,7 +18,7 @@ node scripts/launch-catalogue.mjs content/launch-catalogue.example.jsonl --min=2
 jq -e '.ok == true and .summary.items == 2' /tmp/jalwa-catalogue-validation.json >/dev/null
 
 node scripts/generate-supabase-secrets.mjs > /tmp/jalwa-self-hosted-secrets.env
-for key in SELF_HOSTED_POSTGRES_PASSWORD SELF_HOSTED_SUPABASE_JWT_SECRET SELF_HOSTED_SUPABASE_ANON_KEY SELF_HOSTED_SUPABASE_SERVICE_ROLE_KEY; do grep -q "^${key}=" /tmp/jalwa-self-hosted-secrets.env; done
+for key in SELF_HOSTED_POSTGRES_PASSWORD SELF_HOSTED_SUPABASE_JWT_SECRET SELF_HOSTED_SUPABASE_ANON_KEY SELF_HOSTED_SUPABASE_SERVICE_ROLE_KEY RECOMMENDATION_REFRESH_SECRET; do grep -q "^${key}=" /tmp/jalwa-self-hosted-secrets.env; done
 
 cp infrastructure/production/.env.production.example infrastructure/production/.env.production
 trap 'rm -f infrastructure/production/.env.production /tmp/jalwa-self-hosted-secrets.env /tmp/jalwa-catalogue-validation.json' EXIT
@@ -32,7 +32,7 @@ mapfile -t migrations < <(find supabase/migrations -maxdepth 1 -type f -name '*.
 for migration in "${migrations[@]}"; do
   [[ "$migration" =~ ^[0-9]{12,}_[a-z0-9_]+\.sql$ ]] || { echo "Invalid migration filename: $migration" >&2; exit 1; }
 done
-for migration in 202607310001_social_recommendations.sql 202607310002_social_controls.sql 202607310003_semantic_recommendations.sql 202607310004_live_drm.sql; do
+for migration in 202607310001_social_recommendations.sql 202607310002_social_controls.sql 202607310003_semantic_recommendations.sql 202607310004_live_drm.sql 202607310005_community_reads.sql; do
   test -s "supabase/migrations/$migration" || { echo "Missing browser expansion migration: $migration" >&2; exit 1; }
 done
 
