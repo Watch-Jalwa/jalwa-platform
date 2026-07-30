@@ -1,0 +1,112 @@
+name: Deploy production
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: jalwa-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  WEB_IMAGE: ghcr.io/watch-jalwa/jalwa-platform-web
+  WORKER_IMAGE: ghcr.io/watch-jalwa/jalwa-platform-worker
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/login-action@v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push web
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: web
+          push: true
+          tags: |
+            ${{ env.WEB_IMAGE }}:${{ github.sha }}
+            ${{ env.WEB_IMAGE }}:latest
+          build-args: |
+            NEXT_PUBLIC_APP_URL=https://watch-jalwa.com
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+      - name: Build and push worker
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: worker
+          push: true
+          tags: |
+            ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+            ${{ env.WORKER_IMAGE }}:latest
+          cache-from: type=gha,scope=worker
+          cache-to: type=gha,mode=max,scope=worker
+
+  media-gateway:
+    runs-on: ubuntu-latest
+    environment: production
+    needs: build
+    steps:
+      - uses: actions/checkout@v6
+      - name: Deploy signed media gateway
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: infrastructure/media-gateway
+          command: deploy
+          secrets: |
+            MEDIA_SIGNING_SECRET
+        env:
+          MEDIA_SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
+
+  deploy:
+    runs-on: ubuntu-latest
+    environment: production
+    needs: [build, media-gateway]
+    steps:
+      - uses: actions/checkout@v6
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          HOST: ${{ secrets.PRODUCTION_HOST }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          chmod 600 ~/.ssh/jalwa
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+
+      - name: Copy production configuration
+        env:
+          HOST: ${{ secrets.PRODUCTION_HOST }}
+          USER: ${{ secrets.PRODUCTION_USER }}
+        run: |
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'mkdir -p /opt/jalwa'
+          scp -i ~/.ssh/jalwa infrastructure/production/docker-compose.yml infrastructure/production/Caddyfile "$USER@$HOST:/opt/jalwa/"
+
+      - name: Pull and restart Jalwa
+        env:
+          HOST: ${{ secrets.PRODUCTION_HOST }}
+          USER: ${{ secrets.PRODUCTION_USER }}
+          GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+          GHCR_DEPLOY_TOKEN: ${{ secrets.GHCR_DEPLOY_TOKEN }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          printf '%s' "$GHCR_DEPLOY_TOKEN" | ssh -i ~/.ssh/jalwa "$USER@$HOST" "docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "cd /opt/jalwa && JALWA_IMAGE_TAG='$IMAGE_TAG' docker compose pull && JALWA_IMAGE_TAG='$IMAGE_TAG' docker compose up -d --remove-orphans"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "curl --fail --retry 12 --retry-delay 5 https://watch-jalwa.com/api/health"
