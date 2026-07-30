@@ -4,6 +4,7 @@ import { SiteHeader } from "@/components/site-header";
 import "./globals.css";
 import "./phase2.css";
 import "./phase3.css";
+import "./phase4.css";
 
 export const metadata: Metadata = { metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"), title: { default: "Jalwa", template: "%s · Jalwa" }, description: "Pakistan's mobile-first platform for useful content and positive entertainment.", applicationName: "Jalwa", manifest: "/manifest.webmanifest" };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#09090b" };

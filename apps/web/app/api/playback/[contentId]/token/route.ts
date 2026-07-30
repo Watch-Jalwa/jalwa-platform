@@ -19,7 +19,9 @@ export async function POST(_: Request, { params }: { params: Params }) {
   if (!content || content.status !== "published") return NextResponse.json({ error: "Content unavailable." }, { status: 404 });
   if (content.access_level === "registered" && !user) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   if (content.access_level === "premium") {
-    return NextResponse.json({ error: "Premium entitlement is required.", code: "payment_required" }, { status: 402 });
+    if (!user) return NextResponse.json({ error: "Sign in required.", code: "sign_in_required" }, { status: 401 });
+    const { data: entitled } = await supabase.rpc("has_active_benefit", { p_benefit: "premium_catalogue" });
+    if (!entitled) return NextResponse.json({ error: "Premium entitlement is required.", code: "payment_required" }, { status: 402 });
   }
 
   const { data: playback } = await supabase
