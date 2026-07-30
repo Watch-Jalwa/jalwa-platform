@@ -17,29 +17,116 @@ env:
   WORKER_IMAGE: ghcr.io/watch-jalwa/jalwa-platform-worker
 
 jobs:
-  database:
+  validate:
     runs-on: ubuntu-latest
     environment: production
+    env:
+      SUPABASE_DOCKER_REF: ${{ vars.SUPABASE_DOCKER_REF }}
+      PRODUCTION_HOST: ${{ vars.PRODUCTION_HOST }}
+      PRODUCTION_DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
+      PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}
+      ENABLE_PHONE_AUTH: ${{ vars.ENABLE_PHONE_AUTH || 'false' }}
+      ENABLE_GOOGLE_AUTH: ${{ vars.ENABLE_GOOGLE_AUTH || 'false' }}
+      ENABLE_APPLE_AUTH: ${{ vars.ENABLE_APPLE_AUTH || 'false' }}
+      ENABLE_FACEBOOK_AUTH: ${{ vars.ENABLE_FACEBOOK_AUTH || 'false' }}
+      PRODUCTION_SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+      GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
+      GHCR_DEPLOY_TOKEN: ${{ secrets.GHCR_DEPLOY_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      MEDIA_SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
+      RATE_LIMIT_SALT: ${{ secrets.RATE_LIMIT_SALT }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+      PAYMENT_WEBHOOK_SECRET: ${{ secrets.PAYMENT_WEBHOOK_SECRET }}
+      POSTGRES_PASSWORD: ${{ secrets.SELF_HOSTED_POSTGRES_PASSWORD }}
+      JWT_SECRET: ${{ secrets.SELF_HOSTED_SUPABASE_JWT_SECRET }}
+      ANON_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_ANON_KEY }}
+      SERVICE_ROLE_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_SERVICE_ROLE_KEY }}
+      DASHBOARD_PASSWORD: ${{ secrets.SELF_HOSTED_SUPABASE_DASHBOARD_PASSWORD }}
+      SECRET_KEY_BASE: ${{ secrets.SELF_HOSTED_SUPABASE_SECRET_KEY_BASE }}
+      VAULT_ENC_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_VAULT_ENC_KEY }}
+      PG_META_CRYPTO_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_PG_META_CRYPTO_KEY }}
+      LOGFLARE_PUBLIC_TOKEN: ${{ secrets.SELF_HOSTED_SUPABASE_LOGFLARE_PUBLIC_TOKEN }}
+      LOGFLARE_PRIVATE_TOKEN: ${{ secrets.SELF_HOSTED_SUPABASE_LOGFLARE_PRIVATE_TOKEN }}
+      POOLER_TENANT_ID: ${{ secrets.SELF_HOSTED_SUPABASE_POOLER_TENANT_ID }}
+      SMTP_HOST: ${{ secrets.SMTP_HOST }}
+      SMTP_USER: ${{ secrets.SMTP_USER }}
+      SMTP_PASS: ${{ secrets.SMTP_PASS }}
+      SMTP_ADMIN_EMAIL: ${{ secrets.SMTP_ADMIN_EMAIL }}
+      SMTP_SENDER_NAME: ${{ secrets.SMTP_SENDER_NAME }}
+      SMS_PROVIDER: ${{ secrets.SMS_PROVIDER }}
+      SMS_TWILIO_ACCOUNT_SID: ${{ secrets.SMS_TWILIO_ACCOUNT_SID }}
+      SMS_TWILIO_AUTH_TOKEN: ${{ secrets.SMS_TWILIO_AUTH_TOKEN }}
+      SMS_TWILIO_MESSAGE_SERVICE_SID: ${{ secrets.SMS_TWILIO_MESSAGE_SERVICE_SID }}
+      GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+      GOOGLE_SECRET: ${{ secrets.GOOGLE_SECRET }}
+      APPLE_CLIENT_ID: ${{ secrets.APPLE_CLIENT_ID }}
+      APPLE_SECRET: ${{ secrets.APPLE_SECRET }}
+      FACEBOOK_CLIENT_ID: ${{ secrets.FACEBOOK_CLIENT_ID }}
+      FACEBOOK_SECRET: ${{ secrets.FACEBOOK_SECRET }}
+      PAYFAST_CHECKOUT_URL: ${{ secrets.PAYFAST_CHECKOUT_URL }}
+      PAYFAST_MERCHANT_ID: ${{ secrets.PAYFAST_MERCHANT_ID }}
+      PAYFAST_SECRET: ${{ secrets.PAYFAST_SECRET }}
+      JAZZCASH_CHECKOUT_URL: ${{ secrets.JAZZCASH_CHECKOUT_URL }}
+      JAZZCASH_MERCHANT_ID: ${{ secrets.JAZZCASH_MERCHANT_ID }}
+      JAZZCASH_SECRET: ${{ secrets.JAZZCASH_SECRET }}
+      EASYPAISA_CHECKOUT_URL: ${{ secrets.EASYPAISA_CHECKOUT_URL }}
+      EASYPAISA_STORE_ID: ${{ secrets.EASYPAISA_STORE_ID }}
+      EASYPAISA_SECRET: ${{ secrets.EASYPAISA_SECRET }}
     steps:
       - uses: actions/checkout@v6
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
-      - name: Apply Supabase migrations
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
+      - name: Validate production configuration
         run: |
           set -euo pipefail
-          test -n "$SUPABASE_PROJECT_REF"
-          supabase link --project-ref "$SUPABASE_PROJECT_REF" --password "$SUPABASE_DB_PASSWORD"
-          supabase db push
+          required=(
+            SUPABASE_DOCKER_REF PRODUCTION_HOST PRODUCTION_DOMAIN
+            PRODUCTION_SSH_KEY GHCR_USERNAME GHCR_DEPLOY_TOKEN
+            CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+            R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY MEDIA_SIGNING_SECRET
+            RATE_LIMIT_SALT DEEPSEEK_API_KEY PAYMENT_WEBHOOK_SECRET
+            POSTGRES_PASSWORD JWT_SECRET ANON_KEY SERVICE_ROLE_KEY
+            DASHBOARD_PASSWORD SECRET_KEY_BASE VAULT_ENC_KEY PG_META_CRYPTO_KEY
+            LOGFLARE_PUBLIC_TOKEN LOGFLARE_PRIVATE_TOKEN POOLER_TENANT_ID
+            SMTP_HOST SMTP_USER SMTP_PASS SMTP_ADMIN_EMAIL SMTP_SENDER_NAME
+          )
+          for name in "${required[@]}"; do
+            test -n "${!name:-}" || { echo "Missing $name" >&2; exit 1; }
+          done
+          [[ "$SUPABASE_DOCKER_REF" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "SUPABASE_DOCKER_REF must be a pinned 40-character commit SHA." >&2
+            exit 1
+          }
+          [[ "$PAYMENT_PROVIDER" =~ ^(payfast|jazzcash|easypaisa)$ ]] || {
+            echo "PAYMENT_PROVIDER must be payfast, jazzcash or easypaisa in production." >&2
+            exit 1
+          }
+          case "$PAYMENT_PROVIDER" in
+            payfast)
+              for name in PAYFAST_CHECKOUT_URL PAYFAST_MERCHANT_ID PAYFAST_SECRET; do test -n "${!name:-}" || exit 1; done
+              ;;
+            jazzcash)
+              for name in JAZZCASH_CHECKOUT_URL JAZZCASH_MERCHANT_ID JAZZCASH_SECRET; do test -n "${!name:-}" || exit 1; done
+              ;;
+            easypaisa)
+              for name in EASYPAISA_CHECKOUT_URL EASYPAISA_STORE_ID EASYPAISA_SECRET; do test -n "${!name:-}" || exit 1; done
+              ;;
+          esac
+          if [[ "$ENABLE_PHONE_AUTH" == "true" ]]; then
+            for name in SMS_PROVIDER SMS_TWILIO_ACCOUNT_SID SMS_TWILIO_AUTH_TOKEN SMS_TWILIO_MESSAGE_SERVICE_SID; do
+              test -n "${!name:-}" || { echo "Phone auth enabled but $name is missing." >&2; exit 1; }
+            done
+          fi
+          if [[ "$ENABLE_GOOGLE_AUTH" == "true" ]]; then test -n "$GOOGLE_CLIENT_ID" && test -n "$GOOGLE_SECRET"; fi
+          if [[ "$ENABLE_APPLE_AUTH" == "true" ]]; then test -n "$APPLE_CLIENT_ID" && test -n "$APPLE_SECRET"; fi
+          if [[ "$ENABLE_FACEBOOK_AUTH" == "true" ]]; then test -n "$FACEBOOK_CLIENT_ID" && test -n "$FACEBOOK_SECRET"; fi
+          infrastructure/production/scripts/validate-production.sh
 
   build:
     runs-on: ubuntu-latest
     environment: production
-    needs: database
+    needs: validate
     steps:
       - uses: actions/checkout@v6
       - uses: docker/setup-buildx-action@v4
@@ -48,20 +135,6 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Resolve Supabase client key
-        id: supabase
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
-        run: |
-          set -euo pipefail
-          keys=$(curl -fsS "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/api-keys" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN")
-          publishable=$(jq -r '[.[] | select(.name=="publishable" or .name=="anon")][0].api_key // empty' <<<"$keys")
-          test -n "$publishable"
-          echo "::add-mask::$publishable"
-          echo "publishable=$publishable" >> "$GITHUB_OUTPUT"
-
       - name: Build and push web
         uses: docker/build-push-action@v6
         with:
@@ -72,12 +145,15 @@ jobs:
             ${{ env.WEB_IMAGE }}:${{ github.sha }}
             ${{ env.WEB_IMAGE }}:latest
           build-args: |
-            NEXT_PUBLIC_APP_URL=https://${{ vars.PRODUCTION_DOMAIN || 'watch-jalwa.com' }}
-            NEXT_PUBLIC_SUPABASE_URL=${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
-            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ steps.supabase.outputs.publishable }}
+            NEXT_PUBLIC_APP_URL=https://${{ vars.PRODUCTION_DOMAIN }}
+            NEXT_PUBLIC_SUPABASE_URL=https://api.${{ vars.PRODUCTION_DOMAIN }}
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ secrets.SELF_HOSTED_SUPABASE_ANON_KEY }}
+            NEXT_PUBLIC_ENABLE_PHONE_AUTH=${{ vars.ENABLE_PHONE_AUTH || 'false' }}
+            NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=${{ vars.ENABLE_GOOGLE_AUTH || 'false' }}
+            NEXT_PUBLIC_ENABLE_APPLE_AUTH=${{ vars.ENABLE_APPLE_AUTH || 'false' }}
+            NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH=${{ vars.ENABLE_FACEBOOK_AUTH || 'false' }}
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
-
       - name: Build and push worker
         uses: docker/build-push-action@v6
         with:
@@ -102,7 +178,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           workingDirectory: infrastructure/media-gateway
-          command: deploy
+          command: deploy --domain media.${{ vars.PRODUCTION_DOMAIN }}
           secrets: |
             MEDIA_SIGNING_SECRET
         env:
@@ -112,73 +188,97 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     needs: [build, media-gateway]
+    env:
+      HOST: ${{ vars.PRODUCTION_HOST }}
+      USER: ${{ vars.PRODUCTION_USER || 'jalwa' }}
+      DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
+      SUPABASE_DOCKER_REF: ${{ vars.SUPABASE_DOCKER_REF }}
     steps:
       - uses: actions/checkout@v6
-      - name: Resolve Supabase runtime keys
-        id: supabase
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_REF: ${{ vars.SUPABASE_PROJECT_REF }}
-        run: |
-          set -euo pipefail
-          keys=$(curl -fsS "https://api.supabase.com/v1/projects/$SUPABASE_PROJECT_REF/api-keys" -H "Authorization: Bearer $SUPABASE_ACCESS_TOKEN")
-          publishable=$(jq -r '[.[] | select(.name=="publishable" or .name=="anon")][0].api_key // empty' <<<"$keys")
-          service_role=$(jq -r '.[] | select(.name=="service_role") | .api_key' <<<"$keys" | head -n1)
-          test -n "$publishable" && test -n "$service_role"
-          echo "::add-mask::$publishable"
-          echo "::add-mask::$service_role"
-          echo "publishable=$publishable" >> "$GITHUB_OUTPUT"
-          echo "service_role=$service_role" >> "$GITHUB_OUTPUT"
-
       - name: Configure SSH
         env:
           SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
-          HOST: ${{ vars.PRODUCTION_HOST }}
         run: |
+          set -euo pipefail
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
           chmod 600 ~/.ssh/jalwa
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
 
-      - name: Generate production runtime environment
+      - name: Generate production runtime environments
         env:
-          DOMAIN: ${{ vars.PRODUCTION_DOMAIN || 'watch-jalwa.com' }}
-          SUPABASE_REF: ${{ vars.SUPABASE_PROJECT_REF }}
-          SUPABASE_URL: ${{ vars.NEXT_PUBLIC_SUPABASE_URL }}
-          SUPABASE_PUBLISHABLE_KEY: ${{ steps.supabase.outputs.publishable }}
-          SUPABASE_SERVICE_ROLE_KEY: ${{ steps.supabase.outputs.service_role }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          POSTGRES_PASSWORD: ${{ secrets.SELF_HOSTED_POSTGRES_PASSWORD }}
+          JWT_SECRET: ${{ secrets.SELF_HOSTED_SUPABASE_JWT_SECRET }}
+          ANON_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_ANON_KEY }}
+          SERVICE_ROLE_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_SERVICE_ROLE_KEY }}
+          DASHBOARD_PASSWORD: ${{ secrets.SELF_HOSTED_SUPABASE_DASHBOARD_PASSWORD }}
+          SECRET_KEY_BASE: ${{ secrets.SELF_HOSTED_SUPABASE_SECRET_KEY_BASE }}
+          VAULT_ENC_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_VAULT_ENC_KEY }}
+          PG_META_CRYPTO_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_PG_META_CRYPTO_KEY }}
+          LOGFLARE_PUBLIC_TOKEN: ${{ secrets.SELF_HOSTED_SUPABASE_LOGFLARE_PUBLIC_TOKEN }}
+          LOGFLARE_PRIVATE_TOKEN: ${{ secrets.SELF_HOSTED_SUPABASE_LOGFLARE_PRIVATE_TOKEN }}
+          POOLER_TENANT_ID: ${{ secrets.SELF_HOSTED_SUPABASE_POOLER_TENANT_ID }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          SMTP_ADMIN_EMAIL: ${{ secrets.SMTP_ADMIN_EMAIL }}
+          SMTP_SENDER_NAME: ${{ secrets.SMTP_SENDER_NAME }}
+          ENABLE_PHONE_AUTH: ${{ vars.ENABLE_PHONE_AUTH || 'false' }}
+          SMS_PROVIDER: ${{ secrets.SMS_PROVIDER }}
+          SMS_TWILIO_ACCOUNT_SID: ${{ secrets.SMS_TWILIO_ACCOUNT_SID }}
+          SMS_TWILIO_AUTH_TOKEN: ${{ secrets.SMS_TWILIO_AUTH_TOKEN }}
+          SMS_TWILIO_MESSAGE_SERVICE_SID: ${{ secrets.SMS_TWILIO_MESSAGE_SERVICE_SID }}
+          ENABLE_GOOGLE_AUTH: ${{ vars.ENABLE_GOOGLE_AUTH || 'false' }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_SECRET: ${{ secrets.GOOGLE_SECRET }}
+          ENABLE_APPLE_AUTH: ${{ vars.ENABLE_APPLE_AUTH || 'false' }}
+          APPLE_CLIENT_ID: ${{ secrets.APPLE_CLIENT_ID }}
+          APPLE_SECRET: ${{ secrets.APPLE_SECRET }}
+          ENABLE_FACEBOOK_AUTH: ${{ vars.ENABLE_FACEBOOK_AUTH || 'false' }}
+          FACEBOOK_CLIENT_ID: ${{ secrets.FACEBOOK_CLIENT_ID }}
+          FACEBOOK_SECRET: ${{ secrets.FACEBOOK_SECRET }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           MEDIA_SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
           RATE_LIMIT_SALT: ${{ secrets.RATE_LIMIT_SALT }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER || 'mock' }}
+          PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}
           PAYMENT_WEBHOOK_SECRET: ${{ secrets.PAYMENT_WEBHOOK_SECRET }}
+          PAYFAST_CHECKOUT_URL: ${{ secrets.PAYFAST_CHECKOUT_URL }}
           PAYFAST_MERCHANT_ID: ${{ secrets.PAYFAST_MERCHANT_ID }}
           PAYFAST_SECRET: ${{ secrets.PAYFAST_SECRET }}
+          JAZZCASH_CHECKOUT_URL: ${{ secrets.JAZZCASH_CHECKOUT_URL }}
           JAZZCASH_MERCHANT_ID: ${{ secrets.JAZZCASH_MERCHANT_ID }}
-          JAZZCASH_PASSWORD: ${{ secrets.JAZZCASH_PASSWORD }}
+          JAZZCASH_SECRET: ${{ secrets.JAZZCASH_SECRET }}
+          EASYPAISA_CHECKOUT_URL: ${{ secrets.EASYPAISA_CHECKOUT_URL }}
           EASYPAISA_STORE_ID: ${{ secrets.EASYPAISA_STORE_ID }}
+          EASYPAISA_SECRET: ${{ secrets.EASYPAISA_SECRET }}
         run: |
           set -euo pipefail
           umask 077
           cat > /tmp/jalwa.env <<EOF
           NODE_ENV=production
+          DOMAIN=$DOMAIN
           APP_URL=https://$DOMAIN
           NEXT_PUBLIC_APP_URL=https://$DOMAIN
-          NEXT_PUBLIC_SUPABASE_URL=$SUPABASE_URL
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY
-          SUPABASE_SERVICE_ROLE_KEY=$SUPABASE_SERVICE_ROLE_KEY
-          DATABASE_URL=postgresql://postgres:$SUPABASE_DB_PASSWORD@db.$SUPABASE_REF.supabase.co:5432/postgres
+          NEXT_PUBLIC_SUPABASE_URL=https://api.$DOMAIN
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$ANON_KEY
+          SUPABASE_SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY
+          DATABASE_URL=postgresql://postgres:$POSTGRES_PASSWORD@supabase-db:5432/postgres
           AUTH_REDIRECT_URL=https://$DOMAIN/auth/callback
+          NEXT_PUBLIC_ENABLE_PHONE_AUTH=$ENABLE_PHONE_AUTH
+          NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=$ENABLE_GOOGLE_AUTH
+          NEXT_PUBLIC_ENABLE_APPLE_AUTH=$ENABLE_APPLE_AUTH
+          NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH=$ENABLE_FACEBOOK_AUTH
           R2_ACCOUNT_ID=$CLOUDFLARE_ACCOUNT_ID
           R2_ACCESS_KEY_ID=$R2_ACCESS_KEY_ID
           R2_SECRET_ACCESS_KEY=$R2_SECRET_ACCESS_KEY
           R2_ENDPOINT=https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com
           R2_INCOMING_BUCKET=jalwa-incoming
           R2_PROCESSED_BUCKET=jalwa-media
+          R2_BACKUP_BUCKET=jalwa-backups
           NEXT_PUBLIC_MEDIA_GATEWAY_URL=https://media.$DOMAIN
           MEDIA_SIGNING_SECRET=$MEDIA_SIGNING_SECRET
           RATE_LIMIT_SALT=$RATE_LIMIT_SALT
@@ -193,35 +293,99 @@ jobs:
           AI_PREMIUM_DAILY_LIMIT=50
           PAYMENT_PROVIDER=$PAYMENT_PROVIDER
           PAYMENT_WEBHOOK_SECRET=$PAYMENT_WEBHOOK_SECRET
+          PAYMENT_ADAPTER_TIMEOUT_MS=12000
           ALLOW_MOCK_PAYMENTS=false
+          PAYFAST_CHECKOUT_URL=$PAYFAST_CHECKOUT_URL
           PAYFAST_MERCHANT_ID=$PAYFAST_MERCHANT_ID
           PAYFAST_SECRET=$PAYFAST_SECRET
+          JAZZCASH_CHECKOUT_URL=$JAZZCASH_CHECKOUT_URL
           JAZZCASH_MERCHANT_ID=$JAZZCASH_MERCHANT_ID
-          JAZZCASH_PASSWORD=$JAZZCASH_PASSWORD
+          JAZZCASH_SECRET=$JAZZCASH_SECRET
+          EASYPAISA_CHECKOUT_URL=$EASYPAISA_CHECKOUT_URL
           EASYPAISA_STORE_ID=$EASYPAISA_STORE_ID
+          EASYPAISA_SECRET=$EASYPAISA_SECRET
           JALWA_IMAGE_TAG=${{ github.sha }}
           GIT_SHA=${{ github.sha }}
           EOF
 
-      - name: Copy production configuration and operations scripts
-        env:
-          HOST: ${{ vars.PRODUCTION_HOST }}
-          USER: ${{ vars.PRODUCTION_USER || 'jalwa' }}
+          cat > /tmp/supabase.env <<EOF
+          POSTGRES_PASSWORD=$POSTGRES_PASSWORD
+          JWT_SECRET=$JWT_SECRET
+          ANON_KEY=$ANON_KEY
+          SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY
+          SUPABASE_PUBLISHABLE_KEY=$ANON_KEY
+          SUPABASE_SECRET_KEY=$SERVICE_ROLE_KEY
+          DASHBOARD_USERNAME=jalwa
+          DASHBOARD_PASSWORD=$DASHBOARD_PASSWORD
+          SECRET_KEY_BASE=$SECRET_KEY_BASE
+          VAULT_ENC_KEY=$VAULT_ENC_KEY
+          PG_META_CRYPTO_KEY=$PG_META_CRYPTO_KEY
+          LOGFLARE_PUBLIC_ACCESS_TOKEN=$LOGFLARE_PUBLIC_TOKEN
+          LOGFLARE_PRIVATE_ACCESS_TOKEN=$LOGFLARE_PRIVATE_TOKEN
+          POOLER_TENANT_ID=$POOLER_TENANT_ID
+          SUPABASE_PUBLIC_URL=https://api.$DOMAIN
+          API_EXTERNAL_URL=https://api.$DOMAIN
+          SITE_URL=https://$DOMAIN
+          ADDITIONAL_REDIRECT_URLS=https://$DOMAIN/**,https://www.$DOMAIN/**
+          PROXY_DOMAIN=api.$DOMAIN
+          KONG_HTTP_PORT=127.0.0.1:8000
+          KONG_HTTPS_PORT=127.0.0.1:8443
+          ENABLE_EMAIL_SIGNUP=true
+          ENABLE_EMAIL_AUTOCONFIRM=false
+          SMTP_ADMIN_EMAIL=$SMTP_ADMIN_EMAIL
+          SMTP_HOST=$SMTP_HOST
+          SMTP_PORT=$SMTP_PORT
+          SMTP_USER=$SMTP_USER
+          SMTP_PASS=$SMTP_PASS
+          SMTP_SENDER_NAME=$SMTP_SENDER_NAME
+          ENABLE_PHONE_SIGNUP=$ENABLE_PHONE_AUTH
+          ENABLE_PHONE_AUTOCONFIRM=true
+          SMS_PROVIDER=$SMS_PROVIDER
+          SMS_OTP_EXP=300
+          SMS_OTP_LENGTH=6
+          SMS_MAX_FREQUENCY=60s
+          SMS_TEMPLATE=Your Jalwa code is {{ .Code }}
+          SMS_TWILIO_ACCOUNT_SID=$SMS_TWILIO_ACCOUNT_SID
+          SMS_TWILIO_AUTH_TOKEN=$SMS_TWILIO_AUTH_TOKEN
+          SMS_TWILIO_MESSAGE_SERVICE_SID=$SMS_TWILIO_MESSAGE_SERVICE_SID
+          GOOGLE_ENABLED=$ENABLE_GOOGLE_AUTH
+          GOOGLE_CLIENT_ID=$GOOGLE_CLIENT_ID
+          GOOGLE_SECRET=$GOOGLE_SECRET
+          APPLE_ENABLED=$ENABLE_APPLE_AUTH
+          APPLE_CLIENT_ID=$APPLE_CLIENT_ID
+          APPLE_SECRET=$APPLE_SECRET
+          FACEBOOK_ENABLED=$ENABLE_FACEBOOK_AUTH
+          FACEBOOK_CLIENT_ID=$FACEBOOK_CLIENT_ID
+          FACEBOOK_SECRET=$FACEBOOK_SECRET
+          EOF
+
+      - name: Copy production configuration
         run: |
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'mkdir -p /opt/jalwa/scripts'
+          set -euo pipefail
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'mkdir -p /opt/jalwa/scripts /opt/jalwa/systemd /opt/jalwa/migrations /opt/jalwa/supabase'
           scp -i ~/.ssh/jalwa infrastructure/production/docker-compose.yml infrastructure/production/Caddyfile "$USER@$HOST:/opt/jalwa/"
           scp -i ~/.ssh/jalwa infrastructure/production/scripts/*.sh "$USER@$HOST:/opt/jalwa/scripts/"
+          scp -i ~/.ssh/jalwa infrastructure/production/systemd/* "$USER@$HOST:/opt/jalwa/systemd/"
+          scp -i ~/.ssh/jalwa infrastructure/production/supabase/docker-compose.jalwa.yml "$USER@$HOST:/opt/jalwa/supabase/"
+          scp -i ~/.ssh/jalwa supabase/migrations/*.sql "$USER@$HOST:/opt/jalwa/migrations/"
           scp -i ~/.ssh/jalwa /tmp/jalwa.env "$USER@$HOST:/opt/jalwa/.env.production"
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'chmod 600 /opt/jalwa/.env.production && chmod 750 /opt/jalwa/scripts/*.sh'
+          scp -i ~/.ssh/jalwa /tmp/supabase.env "$USER@$HOST:/opt/jalwa/.env.supabase"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'chmod 600 /opt/jalwa/.env.production /opt/jalwa/.env.supabase && chmod 750 /opt/jalwa/scripts/*.sh'
+
+      - name: Start self-hosted Supabase and migrate
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "SUPABASE_DOCKER_REF='$SUPABASE_DOCKER_REF' /opt/jalwa/scripts/prepare-supabase.sh"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/apply-migrations.sh"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/install-operations.sh"
 
       - name: Pull, restart and verify Jalwa
         env:
-          HOST: ${{ vars.PRODUCTION_HOST }}
-          USER: ${{ vars.PRODUCTION_USER || 'jalwa' }}
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_DEPLOY_TOKEN: ${{ secrets.GHCR_DEPLOY_TOKEN }}
-          DOMAIN: ${{ vars.PRODUCTION_DOMAIN || 'watch-jalwa.com' }}
         run: |
+          set -euo pipefail
           printf '%s' "$GHCR_DEPLOY_TOKEN" | ssh -i ~/.ssh/jalwa "$USER@$HOST" "docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin"
           ssh -i ~/.ssh/jalwa "$USER@$HOST" "cd /opt/jalwa && docker compose --env-file .env.production pull && docker compose --env-file .env.production up -d --remove-orphans"
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/smoke-test.sh https://$DOMAIN"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/smoke-test.sh https://$DOMAIN https://api.$DOMAIN"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/backup-postgres.sh"

@@ -1,14 +1,41 @@
-watch-jalwa.com, www.watch-jalwa.com {
+{$DOMAIN}, www.{$DOMAIN} {
   encode zstd gzip
 
   header {
     Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
     X-Content-Type-Options "nosniff"
     Referrer-Policy "strict-origin-when-cross-origin"
+    Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(self)"
+    X-Frame-Options "SAMEORIGIN"
     -Server
   }
 
   reverse_proxy web:3000
+
+  log {
+    output stdout
+    format json
+  }
+}
+
+api.{$DOMAIN} {
+  encode zstd gzip
+
+  @supabase_api path /auth/v1 /auth/v1/* /rest/v1 /rest/v1/* /realtime/v1 /realtime/v1/* /storage/v1 /storage/v1/* /functions/v1 /functions/v1/* /.well-known/jwks.json
+  handle @supabase_api {
+    reverse_proxy supabase-kong:8000
+  }
+
+  handle {
+    respond "Not found" 404
+  }
+
+  header {
+    Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+    X-Content-Type-Options "nosniff"
+    Referrer-Policy "no-referrer"
+    -Server
+  }
 
   log {
     output stdout

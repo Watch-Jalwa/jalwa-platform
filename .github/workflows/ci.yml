@@ -13,14 +13,14 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v6
       - uses: hashicorp/setup-terraform@v3
       - name: Validate infrastructure files
         run: |
           terraform fmt -check -recursive infrastructure/digitalocean
-          bash -n infrastructure/production/scripts/*.sh
+          infrastructure/production/scripts/validate-production.sh
       - uses: actions/setup-node@v6
         with:
           node-version: 22
@@ -32,5 +32,9 @@ jobs:
       - run: npm run build
         env:
           NEXT_PUBLIC_APP_URL: http://localhost:3000
-          NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_ci_placeholder
+          NEXT_PUBLIC_SUPABASE_URL: https://api.example.com
+          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci_anon_placeholder
+          NEXT_PUBLIC_ENABLE_PHONE_AUTH: "false"
+          NEXT_PUBLIC_ENABLE_GOOGLE_AUTH: "false"
+          NEXT_PUBLIC_ENABLE_APPLE_AUTH: "false"
+          NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH: "false"

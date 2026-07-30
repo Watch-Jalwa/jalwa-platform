@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Jalwa PostgreSQL backup daily
+
+[Timer]
+OnCalendar=*-*-* 02:30:00 UTC
+RandomizedDelaySec=20m
+Persistent=true
+Unit=jalwa-backup.service
+
+[Install]
+WantedBy=timers.target

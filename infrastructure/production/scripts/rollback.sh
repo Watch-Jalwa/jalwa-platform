@@ -25,6 +25,6 @@ fi
 cd "$APP_DIR"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" pull web worker
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d --remove-orphans
-"${APP_DIR}/scripts/smoke-test.sh" "https://${PRODUCTION_DOMAIN:-watch-jalwa.com}"
+"${APP_DIR}/scripts/smoke-test.sh" "https://${PRODUCTION_DOMAIN:-watch-jalwa.com}" "https://api.${PRODUCTION_DOMAIN:-watch-jalwa.com}"
 
 echo "Rolled back Jalwa to image tag ${TAG}."

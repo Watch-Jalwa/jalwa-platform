@@ -12,6 +12,10 @@ function normalizePakistanPhone(value: string) {
   return null;
 }
 
+function enabled(name: string) {
+  return process.env[name] === "true";
+}
+
 export async function requestMagicLink(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const next = safeInternalPath(String(formData.get("next") ?? "/profile"));
@@ -27,8 +31,9 @@ export async function requestMagicLink(formData: FormData) {
 }
 
 export async function requestPhoneOtp(formData: FormData) {
-  const phone = normalizePakistanPhone(String(formData.get("phone") ?? ""));
   const next = safeInternalPath(String(formData.get("next") ?? "/profile"));
+  if (!enabled("NEXT_PUBLIC_ENABLE_PHONE_AUTH")) redirect(`/login?error=method-disabled&next=${encodeURIComponent(next)}`);
+  const phone = normalizePakistanPhone(String(formData.get("phone") ?? ""));
   if (!phone) redirect(`/login?error=invalid-phone&next=${encodeURIComponent(next)}`);
   if (isFrontendPreview()) redirect(`/login?phoneSent=1&preview=1&phone=${encodeURIComponent(phone)}&next=${encodeURIComponent(next)}`);
   const supabase = await createClient();
@@ -38,9 +43,10 @@ export async function requestPhoneOtp(formData: FormData) {
 }
 
 export async function verifyPhoneOtp(formData: FormData) {
+  const next = safeInternalPath(String(formData.get("next") ?? "/profile"));
+  if (!enabled("NEXT_PUBLIC_ENABLE_PHONE_AUTH")) redirect(`/login?error=method-disabled&next=${encodeURIComponent(next)}`);
   const phone = normalizePakistanPhone(String(formData.get("phone") ?? ""));
   const token = String(formData.get("token") ?? "").trim();
-  const next = safeInternalPath(String(formData.get("next") ?? "/profile"));
   if (!phone || !/^\d{6}$/.test(token)) redirect(`/login?error=invalid-code&next=${encodeURIComponent(next)}`);
   if (isFrontendPreview()) redirect(next);
   const supabase = await createClient();
@@ -53,6 +59,8 @@ export async function startOAuth(formData: FormData) {
   const provider = String(formData.get("provider") ?? "") as "google" | "apple" | "facebook";
   const next = safeInternalPath(String(formData.get("next") ?? "/profile"));
   if (!["google", "apple", "facebook"].includes(provider)) redirect(`/login?error=oauth-provider&next=${encodeURIComponent(next)}`);
+  const featureName = `NEXT_PUBLIC_ENABLE_${provider.toUpperCase()}_AUTH`;
+  if (!enabled(featureName)) redirect(`/login?error=method-disabled&next=${encodeURIComponent(next)}`);
   if (isFrontendPreview()) redirect(`/login?error=preview-oauth&next=${encodeURIComponent(next)}`);
   const supabase = await createClient();
   const callback = new URL("/auth/callback", process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000");
