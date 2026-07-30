@@ -1,4 +1,4 @@
-.site-footer { display: grid; gap: 1.25rem; padding: 2rem max(1rem, calc((100% - 1180px) / 2)); border-top: 1px solid var(--border); color: var(--muted); background: #0d0d10; }
+.site-footer { display: grid; gap: 1.25rem; padding: 2rem max(1rem, calc((100% - 1180px) / 2)) calc(6rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--border); color: var(--muted); background: #0d0d10; }
 .site-footer > div { max-width: 36rem; }
 .site-footer p { line-height: 1.6; }
 .site-footer nav { display: flex; flex-wrap: wrap; gap: .75rem 1rem; }
@@ -27,4 +27,16 @@
 .request-list span { text-transform: capitalize; }
 .request-list strong { text-transform: capitalize; color: var(--brand); }
 .request-list time { grid-column: 1 / -1; color: var(--muted); font-size: .8rem; }
-@media (min-width: 720px) { .site-footer { grid-template-columns: 1.4fr 1fr; padding-top: 3rem; padding-bottom: 3rem; } .site-footer small { grid-column: 1 / -1; } }
+.operations-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: .75rem; margin-bottom: 1rem; }
+.operation-card { display: grid; gap: .4rem; padding: 1.25rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.operation-card strong { font-size: 2rem; color: var(--brand); }
+.operation-card span { color: var(--muted); }
+.support-queue { display: grid; gap: 1rem; }
+.support-case { padding: 1.25rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.support-case header { display: flex; align-items: start; justify-content: space-between; gap: 1rem; }
+.support-case h2 { margin: .35rem 0; }
+.support-case p { white-space: pre-wrap; line-height: 1.65; color: #d4d4d8; }
+.support-case small, .support-case time { color: var(--muted); }
+.support-case form { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1rem; }
+.support-case select { min-height: 2.8rem; padding: .65rem; color: var(--text); background: #0f0f12; border: 1px solid var(--border); border-radius: .8rem; }
+@media (min-width: 720px) { .site-footer { grid-template-columns: 1.4fr 1fr; padding-top: 3rem; padding-bottom: 3rem; } .site-footer small { grid-column: 1 / -1; } .operations-grid { grid-template-columns: repeat(3,minmax(0,1fr)); } }
