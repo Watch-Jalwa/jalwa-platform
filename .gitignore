@@ -12,3 +12,9 @@ coverage
 .vercel
 .turbo
 supabase/.temp
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
