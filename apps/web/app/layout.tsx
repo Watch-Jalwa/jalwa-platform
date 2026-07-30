@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { BottomNav } from "@/components/bottom-nav";
 import { SiteHeader } from "@/components/site-header";
 import "./globals.css";
+import "./phase2.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
