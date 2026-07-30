@@ -7,19 +7,13 @@ Vercel is used only for reviewing the Next.js frontend. DigitalOcean remains the
 1. In Vercel, create a new project and import `Watch-Jalwa/jalwa-platform` from GitHub.
 2. Set **Root Directory** to `apps/web`.
 3. Keep **Framework Preset** as Next.js.
-4. Keep the repository connected so pull requests and branch pushes create preview deployments.
+4. Deploy and keep the repository connected so pull requests and branch pushes create preview deployments.
 
-The app-level `vercel.json` supplies the install and build commands.
+The app-level `vercel.json` supplies the install/build commands and automatically enables frontend-preview mode. No Vercel environment variables are required for the demo preview.
 
-## Preview environment
+## Preview behaviour
 
-Add this variable to the Vercel **Preview** environment:
-
-```text
-NEXT_PUBLIC_FRONTEND_PREVIEW=true
-```
-
-No Supabase, DeepSeek, payment, R2 or service-role secrets are required for the frontend-only preview. Public catalogue pages use built-in demo data when Supabase public configuration is absent.
+No Supabase, DeepSeek, payment, R2 or service-role secrets are required. Public catalogue pages use built-in demo data when Supabase public configuration is absent.
 
 The preview mode:
 
@@ -27,7 +21,7 @@ The preview mode:
 - shows a visible frontend-preview banner;
 - disables first-party analytics;
 - marks the deployment as no-index;
-- leaves backend-dependent actions visibly unavailable rather than using production secrets.
+- leaves backend-dependent actions unavailable rather than using production secrets.
 
 ## Optional connected preview backend
 
