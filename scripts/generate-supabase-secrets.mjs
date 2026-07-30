@@ -2,18 +2,11 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
-function base64urlJson(value) {
-  return Buffer.from(JSON.stringify(value)).toString("base64url");
-}
+function base64urlJson(value) { return Buffer.from(JSON.stringify(value)).toString("base64url"); }
 
 export function signRoleToken(role, secret, now = Math.floor(Date.now() / 1000)) {
   const header = base64urlJson({ alg: "HS256", typ: "JWT" });
-  const payload = base64urlJson({
-    role,
-    iss: "supabase",
-    iat: now,
-    exp: now + 10 * 365 * 24 * 60 * 60,
-  });
+  const payload = base64urlJson({ role, iss: "supabase", iat: now, exp: now + 10 * 365 * 24 * 60 * 60 });
   const body = `${header}.${payload}`;
   const signature = createHmac("sha256", secret).update(body).digest("base64url");
   return `${body}.${signature}`;
@@ -33,16 +26,13 @@ export function generateSelfHostedSecrets() {
     SELF_HOSTED_SUPABASE_LOGFLARE_PUBLIC_TOKEN: randomBytes(32).toString("base64url"),
     SELF_HOSTED_SUPABASE_LOGFLARE_PRIVATE_TOKEN: randomBytes(32).toString("base64url"),
     SELF_HOSTED_SUPABASE_POOLER_TENANT_ID: randomBytes(12).toString("hex"),
+    RECOMMENDATION_REFRESH_SECRET: randomBytes(48).toString("base64url"),
   };
 }
 
 function main() {
   const output = generateSelfHostedSecrets();
-  for (const [key, value] of Object.entries(output)) {
-    process.stdout.write(`${key}=${value}\n`);
-  }
+  for (const [key, value] of Object.entries(output)) process.stdout.write(`${key}=${value}\n`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  main();
-}
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) main();
