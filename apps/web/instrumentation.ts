@@ -1,6 +1,18 @@
 import type { Instrumentation } from "next";
 
-export const onRequestError: Instrumentation.onRequestError = async (error, request, context) => {
+function normalizeRequestError(input: unknown) {
+  if (input instanceof Error) {
+    return input as Error & { digest?: string };
+  }
+  const normalized = new Error(typeof input === "string" ? input : "Unknown request error") as Error & { digest?: string };
+  if (input && typeof input === "object" && "digest" in input && typeof input.digest === "string") {
+    normalized.digest = input.digest;
+  }
+  return normalized;
+}
+
+export const onRequestError: Instrumentation.onRequestError = async (input, request, context) => {
+  const error = normalizeRequestError(input);
   if (process.env.NEXT_RUNTIME !== "nodejs") {
     console.error(JSON.stringify({
       event: "edge_request_error",
@@ -23,7 +35,6 @@ export const onRequestError: Instrumentation.onRequestError = async (error, requ
     digest: error.digest,
     tags: {
       render_source: context.renderSource,
-      render_type: context.renderType,
       revalidate_reason: context.revalidateReason,
     },
   });
