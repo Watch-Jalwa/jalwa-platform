@@ -35,15 +35,49 @@ function evidenceFields(reference) {
   return { evidence_url: null, evidence_note: reference };
 }
 
+async function upsertContentDraft(baseUrl, key, item, category) {
+  const existingParams = new URLSearchParams({ select: "id,status", slug: `eq.${item.slug}`, limit: "1" });
+  const existing = await request(baseUrl, key, `/rest/v1/content_items?${existingParams}`);
+  const payload = {
+    slug: item.slug,
+    content_type: item.contentType,
+    hosting_mode: item.hostingMode,
+    access_level: item.accessLevel,
+    title_en: item.titleEn,
+    title_ur: item.titleUr,
+    title_roman_ur: item.titleRomanUr,
+    description_en: item.descriptionEn,
+    description_ur: item.descriptionUr ?? null,
+    description_roman_ur: item.descriptionRomanUr ?? null,
+    primary_category_id: category,
+    language: item.language,
+    duration_seconds: item.durationSeconds ?? null,
+    audience: item.audience,
+    sensitivity: item.sensitivity,
+    thumbnail_url: item.thumbnailUrl ?? null,
+  };
+
+  if (existing?.[0]?.id) {
+    const rows = await request(baseUrl, key, `/rest/v1/content_items?id=eq.${existing[0].id}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(payload),
+    });
+    return { contentId: rows?.[0]?.id ?? existing[0].id, preservedStatus: existing[0].status };
+  }
+
+  const rows = await request(baseUrl, key, "/rest/v1/content_items", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify([{ ...payload, status: "draft" }]),
+  });
+  if (!rows?.[0]?.id) throw new Error(`Content insert returned no id for ${item.slug}`);
+  return { contentId: rows[0].id, preservedStatus: null };
+}
+
 async function importItem(baseUrl, key, item) {
   const category = await categoryId(baseUrl, key, item.categorySlug);
-  const contentRows = await request(baseUrl, key, "/rest/v1/content_items?on_conflict=slug", {
-    method: "POST",
-    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-    body: JSON.stringify([{ slug: item.slug, content_type: item.contentType, hosting_mode: item.hostingMode, access_level: item.accessLevel, status: "draft", title_en: item.titleEn, title_ur: item.titleUr, title_roman_ur: item.titleRomanUr, description_en: item.descriptionEn, description_ur: item.descriptionUr ?? null, description_roman_ur: item.descriptionRomanUr ?? null, primary_category_id: category, language: item.language, duration_seconds: item.durationSeconds ?? null, audience: item.audience, sensitivity: item.sensitivity, thumbnail_url: item.thumbnailUrl ?? null }]),
-  });
-  const contentId = contentRows?.[0]?.id;
-  if (!contentId) throw new Error(`Content upsert returned no id for ${item.slug}`);
+  const { contentId, preservedStatus } = await upsertContentDraft(baseUrl, key, item, category);
 
   const source = item.source;
   await request(baseUrl, key, "/rest/v1/playback_sources?on_conflict=provider,provider_content_id", {
@@ -87,7 +121,12 @@ async function importItem(baseUrl, key, item) {
     });
   }
 
-  return { slug: item.slug, contentId, preservedApprovedRights: existingRights?.[0]?.status === "approved" };
+  return {
+    slug: item.slug,
+    contentId,
+    preservedContentStatus: preservedStatus,
+    preservedApprovedRights: existingRights?.[0]?.status === "approved",
+  };
 }
 
 async function main() {
