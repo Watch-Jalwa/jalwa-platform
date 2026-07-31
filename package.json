@@ -19,6 +19,7 @@
     "test": "npm run test --workspaces --if-present",
     "test:release": "bash scripts/test-production-release.sh",
     "test:container": "bash scripts/test-production-container.sh",
-    "ci": "npm run lint && npm run typecheck && npm run test && npm run test:release && npm run build"
+    "test:backup-encryption": "bash scripts/test-backup-encryption.sh",
+    "ci": "npm run lint && npm run typecheck && npm run test && npm run test:release && npm run test:backup-encryption && npm run build"
   }
 }

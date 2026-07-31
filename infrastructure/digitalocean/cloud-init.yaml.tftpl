@@ -2,6 +2,7 @@
 package_update: true
 package_upgrade: true
 packages:
+  - age
   - awscli
   - ca-certificates
   - curl
@@ -66,8 +67,9 @@ runcmd:
   - systemctl enable --now docker
   - systemctl enable --now fail2ban
   - sysctl --system
-  - mkdir -p /opt/jalwa/backups/postgres /opt/jalwa/migrations /opt/jalwa/scripts /opt/jalwa/supabase
+  - mkdir -p /opt/jalwa/backups/postgres /opt/jalwa/migrations /opt/jalwa/scripts /opt/jalwa/supabase /opt/jalwa/secrets
   - chown -R jalwa:jalwa /opt/jalwa
   - chmod 750 /opt/jalwa
+  - chmod 700 /opt/jalwa/secrets
   - systemctl restart docker
   - systemctl restart ssh
