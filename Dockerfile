@@ -5,6 +5,16 @@ COPY apps/web/package.json apps/web/package.json
 COPY apps/worker/package.json apps/worker/package.json
 RUN npm ci --ignore-scripts --no-audit --no-fund
 
+FROM node:22-alpine AS worker-deps
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/web/package.json apps/web/package.json
+COPY apps/worker/package.json apps/worker/package.json
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
+      --workspace @jalwa/worker --include-workspace-root=false \
+  && npm cache clean --force \
+  && node -e "const fs=require('node:fs');const path=require('node:path');const roots=['/app/node_modules'];const bad=[];while(roots.length){const current=roots.pop();if(!fs.existsSync(current))continue;for(const entry of fs.readdirSync(current,{withFileTypes:true})){const full=path.join(current,entry.name);if(entry.isDirectory()){if(entry.name==='brace-expansion'){const manifest=JSON.parse(fs.readFileSync(path.join(full,'package.json'),'utf8'));const major=Number(manifest.version.split('.')[0]);if(major<5)bad.push(full+'@'+manifest.version);}roots.push(full);}}}if(bad.length){console.error('Vulnerable brace-expansion packages entered worker runtime dependencies:',bad);process.exit(1)}"
+
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
@@ -35,6 +45,10 @@ ENV NODE_ENV=production HOME=/tmp
 COPY --chown=node:node --from=builder /app/apps/web/.next/standalone ./
 COPY --chown=node:node --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 COPY --chown=node:node --from=builder /app/apps/web/public ./apps/web/public
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /root/.npm \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+  && test ! -e /usr/local/bin/npm \
+  && test ! -e /usr/local/bin/npx
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
@@ -56,9 +70,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
   && echo "${checksum}  /usr/local/bin/packager" | sha256sum -c - \
   && chmod 0755 /usr/local/bin/packager \
   && /usr/local/bin/packager --version
-COPY --chown=node:node --from=deps /app/node_modules ./node_modules
+COPY --chown=node:node --from=worker-deps /app/node_modules ./node_modules
 COPY --chown=node:node package.json package-lock.json ./
 COPY --chown=node:node apps/worker ./apps/worker
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /root/.npm \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+  && test ! -e /usr/local/bin/npm \
+  && test ! -e /usr/local/bin/npx
 USER node
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
   CMD ["node", "-e", "const fs=require('node:fs');const p=process.env.WORKER_HEARTBEAT_PATH||'/tmp/jalwa-worker-heartbeat';if(Date.now()-fs.statSync(p).mtimeMs>120000)process.exit(1)"]
