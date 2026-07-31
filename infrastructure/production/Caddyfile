@@ -7,7 +7,12 @@
     Referrer-Policy "strict-origin-when-cross-origin"
     Permissions-Policy "camera=(), microphone=(), geolocation=(), payment=(self)"
     X-Frame-Options "SAMEORIGIN"
-    Content-Security-Policy-Report-Only "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com https://www.youtube-nocookie.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.{$DOMAIN} https://media.{$DOMAIN} https://*.cloudflarestream.com https://api.deepseek.com; media-src 'self' blob: https://media.{$DOMAIN} https:; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://*.cloudflarestream.com; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests"
+    X-Permitted-Cross-Domain-Policies "none"
+    Cross-Origin-Opener-Policy "same-origin-allow-popups"
+    Cross-Origin-Resource-Policy "same-site"
+    Reporting-Endpoints "csp-endpoint=\"https://{$DOMAIN}/api/security/csp-report\""
+    Content-Security-Policy "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com https://www.youtube-nocookie.com; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.{$DOMAIN} https://media.{$DOMAIN} https://*.cloudflarestream.com; media-src 'self' blob: https://media.{$DOMAIN} https:; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://*.cloudflarestream.com; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests; report-uri /api/security/csp-report; report-to csp-endpoint"
+    Content-Security-Policy-Report-Only "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; form-action 'self'; script-src 'self' https://www.youtube.com https://www.youtube-nocookie.com; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.{$DOMAIN} https://media.{$DOMAIN} https://*.cloudflarestream.com; media-src 'self' blob: https://media.{$DOMAIN} https:; frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://*.cloudflarestream.com; worker-src 'self' blob:; manifest-src 'self'; upgrade-insecure-requests; report-uri /api/security/csp-report; report-to csp-endpoint"
     -Server
   }
 
@@ -35,6 +40,8 @@ api.{$DOMAIN} {
     Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
     X-Content-Type-Options "nosniff"
     Referrer-Policy "no-referrer"
+    X-Permitted-Cross-Domain-Policies "none"
+    Cross-Origin-Resource-Policy "same-site"
     -Server
   }
 
