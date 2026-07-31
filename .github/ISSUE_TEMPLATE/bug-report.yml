@@ -1,0 +1,63 @@
+name: Bug report
+description: Report a reproducible product or engineering defect
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: Do not include secrets, customer data, payment credentials or private provider payloads.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the observed behaviour and user impact.
+      placeholder: Include the affected page, route, workflow or role.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: Use the smallest reliable sequence and sanitized example data.
+    validations:
+      required: true
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Environment
+      options:
+        - Local development
+        - Vercel preview
+        - Isolated staging
+        - Production
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Technical context
+      description: Browser/device, role, commit SHA, logs, screenshots and related request IDs. Redact sensitive values.
+  - type: checkboxes
+    id: impact
+    attributes:
+      label: Boundary impact
+      options:
+        - label: Authentication or authorization
+        - label: Payment, entitlement or finance
+        - label: Privacy or account data
+        - label: Content rights, attribution or takedown
+        - label: Media playback or storage
+        - label: Deployment, backup or rollback
+        - label: AI safety, quota or citations
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I removed secrets, customer data and private provider payloads.
+          required: true
