@@ -1,11 +1,11 @@
-FROM node:22-alpine AS deps
+FROM node:25-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY apps/worker/package.json apps/worker/package.json
 RUN npm ci --ignore-scripts --no-audit --no-fund
 
-FROM node:22-alpine AS worker-deps
+FROM node:25-alpine AS worker-deps
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
@@ -15,7 +15,7 @@ RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
   && npm cache clean --force \
   && node -e "const fs=require('node:fs');const path=require('node:path');const roots=['/app/node_modules'];const bad=[];while(roots.length){const current=roots.pop();if(!fs.existsSync(current))continue;for(const entry of fs.readdirSync(current,{withFileTypes:true})){const full=path.join(current,entry.name);if(entry.isDirectory()){if(entry.name==='brace-expansion'){const manifest=JSON.parse(fs.readFileSync(path.join(full,'package.json'),'utf8'));const major=Number(manifest.version.split('.')[0]);if(major<5)bad.push(full+'@'+manifest.version);}roots.push(full);}}}if(bad.length){console.error('Vulnerable brace-expansion packages entered worker runtime dependencies:',bad);process.exit(1)}"
 
-FROM node:22-alpine AS builder
+FROM node:25-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
@@ -41,7 +41,7 @@ ENV NEXT_PUBLIC_ENABLE_WEB_DRM=$NEXT_PUBLIC_ENABLE_WEB_DRM
 ENV NEXT_PUBLIC_STAGING=$NEXT_PUBLIC_STAGING
 RUN npm run build --workspace @jalwa/web
 
-FROM node:22-alpine AS web
+FROM node:25-alpine AS web
 WORKDIR /app
 ENV NODE_ENV=production HOME=/tmp
 COPY --chown=node:node --from=builder /app/apps/web/.next/standalone ./
@@ -57,7 +57,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
   CMD wget --spider -q http://127.0.0.1:3000/api/health || exit 1
 CMD ["node", "apps/web/server.js"]
 
-FROM node:22-bookworm-slim AS worker
+FROM node:25-bookworm-slim AS worker
 WORKDIR /app
 ENV NODE_ENV=production HOME=/tmp
 ARG TARGETARCH
