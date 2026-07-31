@@ -4,6 +4,7 @@ set -Eeuo pipefail
 units=(
   jalwa-backup.service jalwa-backup.timer
   jalwa-source-health.service jalwa-source-health.timer
+  jalwa-account-requests.service jalwa-account-requests.timer
   jalwa-restore-drill.service jalwa-restore-drill.timer
   jalwa-maintenance.service jalwa-maintenance.timer
 )
@@ -12,5 +13,7 @@ for unit in "${units[@]}"; do
 done
 
 sudo systemctl daemon-reload
-sudo systemctl enable --now jalwa-backup.timer jalwa-source-health.timer jalwa-restore-drill.timer jalwa-maintenance.timer
+sudo systemctl enable --now \
+  jalwa-backup.timer jalwa-source-health.timer jalwa-account-requests.timer \
+  jalwa-restore-drill.timer jalwa-maintenance.timer
 sudo systemctl list-timers 'jalwa-*' --no-pager
