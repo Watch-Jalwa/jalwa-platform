@@ -13,6 +13,11 @@ import { requireStaff } from "@/lib/studio/auth";
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ error?: string }>;
 
+function isFutureReview(value: string | null | undefined) {
+  if (!value) return false;
+  return new Date(value).getTime() > new Date().getTime();
+}
+
 export default async function StudioContentDetailPage({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
   const [{ id }, { error }] = await Promise.all([params, searchParams]);
   const { supabase, profile } = await requireStaff();
@@ -30,7 +35,7 @@ export default async function StudioContentDetailPage({ params, searchParams }: 
   const canApprove = profile.role === "rights_reviewer" || profile.role === "admin";
   const selfHosted = ["self_host_open", "self_host_owned"].includes(item.hosting_mode);
   const expiryDate = rights?.expires_at ? rights.expires_at.slice(0, 10) : "";
-  const liveReviewCurrent = !liveConfig || Boolean(liveConfig.rights_verified_at && liveConfig.next_review_at && new Date(liveConfig.next_review_at).getTime() > Date.now());
+  const liveReviewCurrent = !liveConfig || Boolean(liveConfig.rights_verified_at && isFutureReview(liveConfig.next_review_at));
   const canPublish = rights?.status === "approved" && item.status !== "published" && (!liveConfig || (liveConfig.enabled && liveReviewCurrent));
 
   return <div>
