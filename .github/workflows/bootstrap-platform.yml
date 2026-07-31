@@ -42,7 +42,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
 
       - name: Validate required account connections
         env:
@@ -71,11 +71,11 @@ jobs:
       - name: Provision DigitalOcean with Terraform
         id: terraform
         env:
-          SSH_PUBLIC_KEY: ${{ secrets.DIGITALOCEAN_SSH_PUBLIC_KEY }}
-          REGION: ${{ inputs.digitalocean_region }}
-          ADMIN_CIDR: ${{ inputs.admin_cidr }}
-          DOMAIN: ${{ inputs.domain }}
-          DROPLET_SIZE: ${{ inputs.droplet_size }}
+          SSH_PUBLIC_KEY: $${{ secrets.DIGITALOCEAN_SSH_PUBLIC_KEY }}
+          REGION: $${{ inputs.digitalocean_region }}
+          ADMIN_CIDR: $${{ inputs.admin_cidr }}
+          DOMAIN: $${{ inputs.domain }}
+          DROPLET_SIZE: $${{ inputs.droplet_size }}
         run: |
           set -euo pipefail
           cd infrastructure/digitalocean
@@ -103,7 +103,7 @@ jobs:
       - name: Capture provisioned SSH host identity
         id: hostkey
         env:
-          HOST: ${{ steps.terraform.outputs.host }}
+          HOST: $${{ steps.terraform.outputs.host }}
         run: |
           set -euo pipefail
           for attempt in $(seq 1 30); do
@@ -117,8 +117,8 @@ jobs:
 
       - name: Configure Cloudflare DNS
         env:
-          HOST: ${{ steps.terraform.outputs.host }}
-          DOMAIN: ${{ inputs.domain }}
+          HOST: $${{ steps.terraform.outputs.host }}
+          DOMAIN: $${{ inputs.domain }}
         run: |
           set -euo pipefail
           upsert_record() {
@@ -146,9 +146,9 @@ jobs:
 
       - name: Persist deployment outputs
         env:
-          HOST: ${{ steps.terraform.outputs.host }}
-          DOMAIN: ${{ inputs.domain }}
-          HOST_FINGERPRINT: ${{ steps.hostkey.outputs.fingerprint }}
+          HOST: $${{ steps.terraform.outputs.host }}
+          DOMAIN: $${{ inputs.domain }}
+          HOST_FINGERPRINT: $${{ steps.hostkey.outputs.fingerprint }}
         run: |
           set -euo pipefail
           gh variable set PRODUCTION_HOST --env production --body "$HOST"
