@@ -41,7 +41,7 @@ jobs:
       VIEWER_EMAIL: acceptance+premium-viewer@watch-jalwa.com
       MANUAL_EMAIL: acceptance+premium-manual@watch-jalwa.com
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
       - name: Validate staging fixture boundary
@@ -130,7 +130,7 @@ jobs:
       FINANCE_EMAIL: acceptance+premium-finance@watch-jalwa.com
       VIEWER_EMAIL: acceptance+premium-viewer@watch-jalwa.com
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
       - name: Validate staging release identity
