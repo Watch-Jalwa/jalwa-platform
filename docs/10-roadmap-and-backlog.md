@@ -129,9 +129,11 @@ A controlled group of 50–100 Pakistan-based users on representative browsers a
 - named launch-day on-call and stop-launch authority;
 - first-week KPI and operating cadence active.
 
-## Later decision — Native/store distribution
+## Product boundary — Mobile-first web/PWA only
 
-Native packaging is not an MVP completion criterion. Evaluate it after web/PWA staging and live evidence establish that device distribution adds measurable value. A separate roadmap must cover store accounts, payment-policy compatibility, privacy disclosures, age ratings, signing, review and staged rollout.
+Jalwa will be delivered as a mobile-first responsive web application and installable PWA. Native Android/iOS applications, Google Play distribution and Apple App Store distribution are out of current scope and are not roadmap, launch or deployment requirements.
+
+Browser and device acceptance must still cover representative Android and iOS browsers, constrained Pakistan networks, installability, responsive behaviour, playback and payments.
 
 ## Definition of done for repository features
 
