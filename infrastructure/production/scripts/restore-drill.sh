@@ -42,7 +42,7 @@ plaintext="$(mktemp "$BACKUP_DIR/.jalwa-restore-plaintext.XXXXXX")"
 cleanup_plaintext() { rm -f "$plaintext"; }
 trap cleanup_plaintext EXIT
 
-"$SCRIPT_DIR/backup-crypto.sh" decrypt "$latest" "$metadata" "$plaintext"
+bash "$SCRIPT_DIR/backup-crypto.sh" decrypt "$latest" "$metadata" "$plaintext"
 docker exec -i "$DB_CONTAINER" pg_restore --list < "$plaintext" >/dev/null
 
 drill_db="jalwa_restore_drill_$(date -u +%Y%m%d%H%M%S)"
