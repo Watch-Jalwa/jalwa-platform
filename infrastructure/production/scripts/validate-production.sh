@@ -17,7 +17,7 @@ require_count() {
 }
 
 echo "Checking shell scripts"
-for script in infrastructure/production/scripts/*.sh; do bash -n "$script"; done
+for script in infrastructure/production/scripts/*.sh scripts/test-production-*.sh; do bash -n "$script"; done
 
 if grep -R -n -E 'SUPABASE_ACCESS_TOKEN|api\.supabase\.com/v1/projects|supabase projects create' .github/workflows infrastructure/production --exclude='validate-production.sh'; then
   echo "Managed Supabase provisioning references remain in production paths." >&2
@@ -78,6 +78,9 @@ require_match 'SHAKA_PACKAGER_VERSION=3.7.2' Dockerfile 'Pinned Shaka Packager v
 require_match '88b022b8cb12602ddb539972efd07a3496ea64f8662a484798c96e95afa41fd8' Dockerfile 'AMD64 Shaka checksum is missing.'
 require_match 'e4a43aaa8fdb87d0306876bc41581b371d7082e9d1b8469aef06a4e74004fd69' Dockerfile 'ARM64 Shaka checksum is missing.'
 require_count 2 'USER node' Dockerfile 'Web and worker runtime images must run as node.'
+require_count 2 'HEALTHCHECK' Dockerfile 'Web and worker runtime images must declare health checks.'
+require_match 'test-production-container.sh' .github/workflows/ci.yml 'CI does not boot and test the production web image.'
+require_match 'readiness must fail closed' scripts/test-production-container.sh 'Production container fail-closed readiness coverage is missing.'
 require_match 'persistentState: "not-allowed"' apps/web/components/drm-player.tsx 'Persistent browser DRM sessions must remain disabled.'
 require_match 'rewritePlaylist' infrastructure/media-gateway/src/index.ts 'Signed HLS playlist rewriting is missing.'
 require_match 'MEDIA_GATEWAY_ALLOWED_ORIGINS' infrastructure/media-gateway/src/index.ts 'Media origin allow-list is missing.'
