@@ -1,0 +1,107 @@
+name: Staging release acceptance
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Deployed 40-character main commit SHA
+        required: true
+        type: string
+      minimum_content_items:
+        description: Minimum rights-approved published catalogue size
+        required: true
+        default: "1"
+        type: string
+  workflow_run:
+    workflows: ["Deploy staging"]
+    types: [completed]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-staging-acceptance
+  cancel-in-progress: false
+
+jobs:
+  live-browser-and-api:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: staging
+      url: https://${{ vars.STAGING_DOMAIN }}
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
+      BASE_URL: https://${{ vars.STAGING_DOMAIN }}
+      SUPABASE_ANON_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_ANON_KEY }}
+      OPERATIONS_DIAGNOSTICS_SECRET: ${{ secrets.OPERATIONS_DIAGNOSTICS_SECRET }}
+      MIN_CONTENT_ITEMS: ${{ inputs.minimum_content_items || vars.MINIMUM_STAGING_CONTENT_ITEMS || '0' }}
+      REPORT_FILE: ${{ github.workspace }}/staging-acceptance.json
+      EXPECTED_ENVIRONMENT: staging
+      EXPECT_NOINDEX: "true"
+      ALLOW_MOCK_PAYMENTS: "true"
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
+      - name: Validate staging release identity
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'A deployed commit SHA is required.' >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+      - name: Run protected API and catalogue acceptance
+        run: infrastructure/production/scripts/production-acceptance.sh "$BASE_URL"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install pinned browser acceptance harness
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          npx playwright install --with-deps chromium
+      - name: Run live desktop and Pakistan-mobile journeys
+        env:
+          JALWA_BROWSER_BASE_URL: ${{ env.BASE_URL }}
+          JALWA_EXPECTED_VERSION: ${{ env.RELEASE_SHA }}
+          JALWA_EXPECT_READINESS_STATUS: "200"
+          JALWA_EXPECT_NOINDEX: "true"
+        run: node scripts/browser-acceptance.mjs
+      - name: Record staging evidence summary
+        run: |
+          {
+            echo '### Staging release acceptance passed'
+            echo "- URL: $BASE_URL"
+            echo "- Release: $RELEASE_SHA"
+            echo "- Minimum published catalogue: $MIN_CONTENT_ITEMS"
+            echo '- Protected readiness, Supabase health, security headers, mobile browser journeys and noindex isolation passed'
+            echo '```json'
+            cat "$REPORT_FILE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  host-acceptance:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST }}
+      USER: ${{ vars.STAGING_USER || 'jalwa' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+      - name: Re-run host and recovery acceptance
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/host-acceptance.sh 'https://$DOMAIN' 'https://api.$DOMAIN'"

@@ -7,6 +7,10 @@ on:
         description: Production URL
         required: true
         default: https://watch-jalwa.com
+      release_sha:
+        description: Deployed 40-character main commit SHA; leave blank to use the current main SHA
+        required: false
+        type: string
       minimum_content_items:
         description: Minimum published catalogue size
         required: true
@@ -26,43 +30,69 @@ jobs:
   public-acceptance:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     environment: production
     env:
+      RELEASE_SHA: ${{ inputs.release_sha || github.event.workflow_run.head_sha || github.sha }}
       BASE_URL: ${{ inputs.base_url || format('https://{0}', vars.PRODUCTION_DOMAIN) }}
       MIN_CONTENT_ITEMS: ${{ inputs.minimum_content_items || vars.MINIMUM_LAUNCH_CONTENT_ITEMS || '100' }}
       SUPABASE_ANON_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_ANON_KEY }}
+      OPERATIONS_DIAGNOSTICS_SECRET: ${{ secrets.OPERATIONS_DIAGNOSTICS_SECRET }}
+      EXPECTED_ENVIRONMENT: production
+      EXPECT_NOINDEX: "false"
+      ALLOW_MOCK_PAYMENTS: "false"
       REPORT_FILE: ${{ github.workspace }}/production-acceptance.json
     steps:
-      - uses: actions/checkout@v6
-      - name: Run public production acceptance
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.release_sha || github.event.workflow_run.head_sha || github.sha }}
+      - name: Validate production release identity
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'A deployed commit SHA is required.' >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+      - name: Run public and protected production acceptance
         run: infrastructure/production/scripts/production-acceptance.sh "$BASE_URL"
-      - uses: actions/upload-artifact@v4
+      - name: Record acceptance summary
+        run: |
+          {
+            echo '### Production release acceptance passed'
+            echo "- URL: $BASE_URL"
+            echo "- Release: $RELEASE_SHA"
+            echo '```json'
+            cat "$REPORT_FILE"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: production-acceptance-${{ github.run_id }}
           path: production-acceptance.json
           if-no-files-found: error
           retention-days: 90
+          archive: false
 
   host-acceptance:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: production
     env:
       HOST: ${{ vars.PRODUCTION_HOST }}
       USER: ${{ vars.PRODUCTION_USER || 'jalwa' }}
+      DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
       SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.PRODUCTION_SSH_KNOWN_HOSTS }}
     steps:
-      - uses: actions/checkout@v6
-      - name: Configure SSH
+      - name: Configure pinned production SSH identity
         run: |
           set -euo pipefail
-          test -n "$HOST" && test -n "$SSH_KEY"
+          test -n "$HOST" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
-          chmod 600 ~/.ssh/jalwa
-          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
-      - name: Run host acceptance
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+      - name: Re-run host and recovery acceptance
         run: |
           set -euo pipefail
-          scp -i ~/.ssh/jalwa infrastructure/production/scripts/host-acceptance.sh "$USER@$HOST:/tmp/jalwa-host-acceptance.sh"
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'chmod 700 /tmp/jalwa-host-acceptance.sh && sudo /tmp/jalwa-host-acceptance.sh'
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/host-acceptance.sh 'https://$DOMAIN' 'https://api.$DOMAIN'"

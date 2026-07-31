@@ -2,6 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { createClient } from "@supabase/supabase-js";
 import { processDrmPackagingJob } from "./drm.mjs";
 import { processMediaJob } from "./media.mjs";
+import { reportWorkerError } from "./observability.mjs";
 
 const pollIntervalMs = Number(process.env.WORKER_POLL_INTERVAL_MS ?? 5000);
 const workerId = process.env.WORKER_ID ?? `worker-${process.pid}`;
@@ -24,13 +25,13 @@ async function handleMedia(supabase) {
   if (!job) return false;
   try {
     await processMediaJob({ supabase, job });
-    console.log(JSON.stringify({ event: "media_job_completed", jobId: job.id, workerId }));
+    console.log(JSON.stringify({ event: "media_job_completed", jobId: job.id, workerId, release: process.env.GIT_SHA ?? "local" }));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const retry = job.attempts < job.max_attempts;
     await supabase.from("media_jobs").update({ status: retry ? "queued" : "failed", available_at: new Date(Date.now() + Math.min(job.attempts * 60000, 300000)).toISOString(), error_message: message.slice(0, 4000), locked_at: null, locked_by: null }).eq("id", job.id);
     await supabase.from("media_assets").update({ status: retry ? "queued" : "failed" }).eq("id", job.media_asset_id);
-    console.error(JSON.stringify({ event: "media_job_failed", jobId: job.id, retry, message }));
+    await reportWorkerError(error, { workerId, mechanism: "media_job", jobId: job.id, jobType: "media", retry, handled: true });
   }
   return true;
 }
@@ -43,13 +44,13 @@ async function handleDrm(supabase) {
   if (!job) return false;
   try {
     await processDrmPackagingJob({ supabase, job });
-    console.log(JSON.stringify({ event: "drm_packaging_completed", jobId: job.id, workerId }));
+    console.log(JSON.stringify({ event: "drm_packaging_completed", jobId: job.id, workerId, release: process.env.GIT_SHA ?? "local" }));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const retry = job.attempts < job.max_attempts;
     await supabase.from("drm_packaging_jobs").update({ status: retry ? "queued" : "failed", available_at: new Date(Date.now() + Math.min(job.attempts * 60000, 300000)).toISOString(), error_message: message.slice(0, 4000), locked_at: null, locked_by: null }).eq("id", job.id);
     await supabase.from("drm_assets").update({ status: retry ? "pending" : "failed" }).eq("id", job.drm_asset_id);
-    console.error(JSON.stringify({ event: "drm_packaging_failed", jobId: job.id, retry, message }));
+    await reportWorkerError(error, { workerId, mechanism: "drm_packaging_job", jobId: job.id, jobType: "drm", retry, handled: true });
   }
   return true;
 }
@@ -72,8 +73,20 @@ async function tick() {
   }
 }
 
+async function reportTickFailure(error) {
+  await reportWorkerError(error, { workerId, mechanism: "worker_tick", jobType: "poll", handled: true });
+}
+
+function fatal(error, mechanism) {
+  const timer = setTimeout(() => process.exit(1), 3500);
+  timer.unref();
+  void reportWorkerError(error, { workerId, mechanism, handled: false }).finally(() => process.exit(1));
+}
+
 if (process.env.NODE_ENV !== "test") {
+  process.once("uncaughtException", (error) => fatal(error, "uncaughtException"));
+  process.once("unhandledRejection", (reason) => fatal(reason, "unhandledRejection"));
   console.log(JSON.stringify(buildHealth()));
-  await tick().catch((error) => console.error(JSON.stringify({ event: "worker_tick_failed", message: error instanceof Error ? error.message : String(error) })));
-  setInterval(() => void tick().catch((error) => console.error(JSON.stringify({ event: "worker_tick_failed", message: error instanceof Error ? error.message : String(error) }))), pollIntervalMs).unref();
+  await tick().catch(reportTickFailure);
+  setInterval(() => void tick().catch(reportTickFailure), pollIntervalMs).unref();
 }

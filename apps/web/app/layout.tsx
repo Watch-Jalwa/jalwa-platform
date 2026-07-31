@@ -19,6 +19,7 @@ import "./phase7.css";
 import "./phase8.css";
 
 const isFrontendPreview = process.env.NEXT_PUBLIC_FRONTEND_PREVIEW === "true" || process.env.VERCEL_ENV === "preview";
+const isStaging = process.env.DEPLOYMENT_ENVIRONMENT === "staging";
 const deploymentUrl = process.env.NEXT_PUBLIC_APP_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
 export const metadata: Metadata = {
@@ -27,12 +28,12 @@ export const metadata: Metadata = {
   description: "Pakistan's mobile-first platform for useful content and positive entertainment.",
   applicationName: "Jalwa",
   manifest: "/manifest.webmanifest",
-  robots: isFrontendPreview ? { index: false, follow: false } : undefined,
+  robots: isFrontendPreview || isStaging ? { index: false, follow: false } : undefined,
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#09090b" };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const cookieStore = await cookies();
   const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE)?.value);
-  return <html lang={documentLanguage(locale)} dir={documentDirection(locale)} data-release={process.env.GIT_SHA ?? "local"} suppressHydrationWarning><body><PreviewBanner /><SiteHeader /><main className="site-main">{children}</main><SiteFooter /><BottomNav /><ServiceWorkerRegister /><ErrorMonitor />{isFrontendPreview ? null : <><DeviceHeartbeat /><AnalyticsBeacon /></>}</body></html>;
+  return <html lang={documentLanguage(locale)} dir={documentDirection(locale)} data-release={process.env.GIT_SHA ?? "local"} suppressHydrationWarning><body><PreviewBanner /><SiteHeader /><main className="site-main">{children}</main><SiteFooter /><BottomNav /><ServiceWorkerRegister /><ErrorMonitor />{isFrontendPreview ? null : <DeviceHeartbeat />}{isFrontendPreview || isStaging ? null : <AnalyticsBeacon />}</body></html>;
 }
