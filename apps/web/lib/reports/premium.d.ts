@@ -1,0 +1,15 @@
+export const REPORT_TIMEZONE: "Asia/Karachi";
+export const REPORT_SCHEMA_VERSION: "premium-reports-v1";
+export const MAX_REPORT_DAYS: number;
+export const DEFAULT_PAGE_SIZE: number;
+export const MAX_PAGE_SIZE: number;
+export const METRIC_DEFINITIONS: Record<string, string>;
+export type ReportRange = { preset: string; timezone: string; startDate: string; endDate: string; startUtc: string; endUtcExclusive: string; days: number };
+export type ReportFilters = { plan: string | null; purpose: string | null; paymentStatus: string | null; providerStatus: string | null; subscriptionStatus: string | null; reconciliationState: string | null; user: string | null; reference: string | null; groupBy: "daily" | "monthly"; page: number; pageSize: number };
+export function resolveReportRange(input?: Record<string, unknown>, now?: Date): ReportRange;
+export function normalizeFilters(input?: Record<string, unknown>): ReportFilters;
+export function maskUserId(userId: unknown): string;
+export function calculatePremiumSummary(input: { orders?: any[]; attempts?: any[]; refunds?: any[]; subscriptions?: any[]; range: ReportRange; groupBy?: "daily" | "monthly" }): any;
+export function protectSpreadsheetCell(value: unknown): string;
+export function buildCsv(rows: any[], columns: { label: string; value: string | ((row: any) => unknown) }[]): string;
+export function formatMinor(amountMinor: number, currency?: string): string;
