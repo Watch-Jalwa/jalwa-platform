@@ -1,6 +1,6 @@
 services:
   web:
-    image: ghcr.io/watch-jalwa/jalwa-platform-web:${JALWA_IMAGE_TAG:-latest}
+    image: ghcr.io/watch-jalwa/jalwa-platform-web:${JALWA_IMAGE_TAG:?JALWA_IMAGE_TAG must be an immutable Git SHA}
     restart: unless-stopped
     init: true
     env_file: .env.production
@@ -31,7 +31,7 @@ services:
     networks: [jalwa, supabase]
 
   worker:
-    image: ghcr.io/watch-jalwa/jalwa-platform-worker:${JALWA_IMAGE_TAG:-latest}
+    image: ghcr.io/watch-jalwa/jalwa-platform-worker:${JALWA_IMAGE_TAG:?JALWA_IMAGE_TAG must be an immutable Git SHA}
     restart: unless-stopped
     init: true
     env_file: .env.production
@@ -59,7 +59,7 @@ services:
     networks: [jalwa, supabase]
 
   caddy:
-    image: caddy:2-alpine
+    image: ${CADDY_IMAGE:?CADDY_IMAGE must be pinned by sha256 digest}
     restart: unless-stopped
     init: true
     env_file: .env.production
