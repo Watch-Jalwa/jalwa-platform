@@ -1,0 +1,11 @@
+[Unit]
+Description=Run the Jalwa restore drill weekly
+
+[Timer]
+OnCalendar=Sun *-*-* 03:40:00
+RandomizedDelaySec=30m
+Persistent=true
+Unit=jalwa-restore-drill.service
+
+[Install]
+WantedBy=timers.target

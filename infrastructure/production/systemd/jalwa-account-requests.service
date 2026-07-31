@@ -1,0 +1,16 @@
+[Unit]
+Description=Process Jalwa account export and deletion requests
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jalwa
+Group=jalwa
+EnvironmentFile=/opt/jalwa/.env.production
+ExecStart=/opt/jalwa/scripts/run-account-requests.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/jalwa

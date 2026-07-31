@@ -1,9 +1,9 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
-COPY package.json ./
+COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY apps/worker/package.json apps/worker/package.json
-RUN npm install
+RUN npm ci --ignore-scripts --no-audit --no-fund
 
 FROM node:22-alpine AS builder
 WORKDIR /app
@@ -31,16 +31,17 @@ RUN npm run build --workspace @jalwa/web
 
 FROM node:22-alpine AS web
 WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=builder /app/apps/web/.next/standalone ./
-COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
-COPY --from=builder /app/apps/web/public ./apps/web/public
+ENV NODE_ENV=production HOME=/tmp
+COPY --chown=node:node --from=builder /app/apps/web/.next/standalone ./
+COPY --chown=node:node --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+COPY --chown=node:node --from=builder /app/apps/web/public ./apps/web/public
+USER node
 EXPOSE 3000
 CMD ["node", "apps/web/server.js"]
 
 FROM node:22-bookworm-slim AS worker
 WORKDIR /app
-ENV NODE_ENV=production
+ENV NODE_ENV=production HOME=/tmp
 ARG TARGETARCH
 ARG SHAKA_PACKAGER_VERSION=3.7.2
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg && rm -rf /var/lib/apt/lists/* \
@@ -53,7 +54,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
   && echo "${checksum}  /usr/local/bin/packager" | sha256sum -c - \
   && chmod 0755 /usr/local/bin/packager \
   && /usr/local/bin/packager --version
-COPY --from=deps /app/node_modules ./node_modules
-COPY package.json ./
-COPY apps/worker ./apps/worker
+COPY --chown=node:node --from=deps /app/node_modules ./node_modules
+COPY --chown=node:node package.json package-lock.json ./
+COPY --chown=node:node apps/worker ./apps/worker
+USER node
 CMD ["node", "apps/worker/src/index.mjs"]

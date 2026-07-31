@@ -1,7 +1,7 @@
 import { getActiveViewerProfile } from "@/lib/customer/active-profile";
 import { featuredContent } from "@/lib/catalogue/demo-data";
 import type { CatalogueItem } from "@/lib/catalogue/types";
-import { hasSupabaseConfig } from "@/lib/runtime";
+import { canUseDemoData, hasSupabaseConfig } from "@/lib/runtime";
 import { createClient } from "@/lib/supabase/server";
 
 export type RecommendedItem = CatalogueItem & { recommendationReason?: string; recommendationScore?: number };
@@ -26,24 +26,40 @@ function mapRow(row: Record<string, unknown>): RecommendedItem {
 }
 
 function demoRecommendations(limit: number, contextSlug?: string | null): RecommendedItem[] {
-  return featuredContent.filter((item) => item.slug !== contextSlug).slice(0, limit).map((item, index) => ({ ...item, recommendationReason: index < 2 ? "Popular with Jalwa viewers" : "Fresh on Jalwa", recommendationScore: 10-index }));
+  return featuredContent.filter((item) => item.slug !== contextSlug).slice(0, limit).map((item, index) => ({
+    ...item,
+    recommendationReason: index < 2 ? "Popular with Jalwa viewers" : "Fresh on Jalwa",
+    recommendationScore: 10 - index,
+  }));
+}
+
+function recommendationFailure(error: unknown): never {
+  console.error("recommendations_load_failed", error);
+  throw new Error("Jalwa recommendations are temporarily unavailable.");
 }
 
 export async function getRecommendations({ limit = 24, contextContentId = null, contextSlug = null }: { limit?: number; contextContentId?: string | null; contextSlug?: string | null } = {}): Promise<RecommendedItem[]> {
-  if (!hasSupabaseConfig()) return demoRecommendations(limit, contextSlug);
+  if (canUseDemoData()) return demoRecommendations(limit, contextSlug);
+  if (!hasSupabaseConfig()) return recommendationFailure(new Error("Supabase is not configured."));
   try {
     const supabase = await createClient();
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) {
-      const { data } = await supabase.rpc("search_catalogue", { p_query: null, p_category: null, p_limit: limit });
+      const { data, error } = await supabase.rpc("search_catalogue", { p_query: null, p_category: null, p_limit: limit });
+      if (error) throw error;
       return ((data ?? []) as Record<string, unknown>[]).map((row) => ({ ...mapRow(row), recommendationReason: "Trending on Jalwa" }));
     }
     const profile = await getActiveViewerProfile(user.id);
-    if (!profile) return demoRecommendations(limit, contextSlug);
+    if (!profile) {
+      const { data, error } = await supabase.rpc("search_catalogue", { p_query: null, p_category: null, p_limit: limit });
+      if (error) throw error;
+      return ((data ?? []) as Record<string, unknown>[]).map((row) => ({ ...mapRow(row), recommendationReason: "Popular on Jalwa" }));
+    }
     const { data, error } = await supabase.rpc("get_recommendations", { p_viewer_profile_id: profile.id, p_limit: limit, p_context_content_id: contextContentId });
     if (error) throw error;
     return ((data ?? []) as Record<string, unknown>[]).map(mapRow);
-  } catch {
-    return demoRecommendations(limit, contextSlug);
+  } catch (error) {
+    if (canUseDemoData()) return demoRecommendations(limit, contextSlug);
+    return recommendationFailure(error);
   }
 }

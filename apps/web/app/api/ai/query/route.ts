@@ -25,6 +25,7 @@ export async function POST(request: Request) {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Sign in to use Ask Jalwa.", code: "sign_in_required" }, { status: 401 });
 
+    const selectedLanguage = language(body.language);
     const { data: hasAiPlus } = await supabase.rpc("has_active_benefit", { p_benefit: "ai_plus" });
     const dailyLimit = hasAiPlus
       ? Number(process.env.AI_PREMIUM_DAILY_LIMIT ?? 50)
@@ -92,30 +93,20 @@ export async function POST(request: Request) {
       attribution: rightsByContent.get(String(row.id)) ?? null,
     }));
 
-    const answer = await createGroundedAnswer({ question, language: language(body.language), sources });
-    const { data: conversation } = await supabase.from("ai_conversations").insert({
-      user_id: user.id,
-      language: language(body.language),
-      context_content_id: contextContentId,
-    }).select("id").single();
-
-    if (conversation) {
-      const usage = answer.usage as { input_tokens?: unknown; output_tokens?: unknown } | null;
-      await supabase.from("ai_messages").insert([
-        { conversation_id: conversation.id, role: "user", body: question, safety_status: "allowed" },
-        {
-          conversation_id: conversation.id,
-          role: "assistant",
-          body: answer.answer,
-          cited_content_ids: sources.map((source) => source.id),
-          model_key: answer.model,
-          prompt_version: "ask-jalwa-v1",
-          input_tokens: tokenValue(usage?.input_tokens),
-          output_tokens: tokenValue(usage?.output_tokens),
-          safety_status: "allowed",
-        },
-      ]);
-    }
+    const answer = await createGroundedAnswer({ question, language: selectedLanguage, sources });
+    const usage = answer.usage as { input_tokens?: unknown; output_tokens?: unknown } | null;
+    const { error: storeError } = await supabase.rpc("store_ai_exchange", {
+      p_language: selectedLanguage,
+      p_context_content_id: contextContentId,
+      p_question: question,
+      p_answer: answer.answer,
+      p_cited_content_ids: sources.map((source) => source.id),
+      p_model_key: answer.model,
+      p_prompt_version: "ask-jalwa-v1",
+      p_input_tokens: tokenValue(usage?.input_tokens),
+      p_output_tokens: tokenValue(usage?.output_tokens),
+    });
+    if (storeError) console.error("ask_jalwa_history_store_failed", storeError.message);
 
     return NextResponse.json({
       answer: answer.answer,

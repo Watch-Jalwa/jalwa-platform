@@ -1,0 +1,16 @@
+[Unit]
+Description=Check Jalwa playback source health
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jalwa
+Group=jalwa
+EnvironmentFile=/opt/jalwa/.env.production
+ExecStart=/opt/jalwa/scripts/run-source-health.sh
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/jalwa

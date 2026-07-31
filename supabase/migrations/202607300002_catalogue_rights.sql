@@ -1,5 +1,6 @@
 begin;
-create extension if not exists pg_trgm;
+create schema if not exists extensions;
+create extension if not exists pg_trgm with schema extensions;
 
 create type public.content_type as enum ('video','short','live','audio','article','image_story','quran','quiz');
 create type public.hosting_mode as enum ('embed_only','self_host_open','self_host_owned','partner_hosted','external_link','text_database');
@@ -61,7 +62,7 @@ create table public.collection_items (
 
 create index content_items_category_idx on public.content_items(primary_category_id);
 create index content_items_status_idx on public.content_items(status,publish_at desc);
-create index content_items_title_trgm_idx on public.content_items using gin(title_en gin_trgm_ops);
+create index content_items_title_trgm_idx on public.content_items using gin(title_en extensions.gin_trgm_ops);
 create index content_items_search_idx on public.content_items using gin(to_tsvector('simple',
   coalesce(title_en,'')||' '||coalesce(title_ur,'')||' '||coalesce(title_roman_ur,'')||' '||
   coalesce(description_en,'')||' '||coalesce(description_ur,'')||' '||coalesce(description_roman_ur,'')));
@@ -108,7 +109,7 @@ language sql stable security invoker set search_path='' as $$
  from public.content_items c left join public.categories cat on cat.id=c.primary_category_id
  where c.status='published' and (c.publish_at is null or c.publish_at<=now()) and (c.unpublish_at is null or c.unpublish_at>now())
  and (p_category is null or p_category='' or cat.slug=p_category)
- and (p_query is null or p_query='' or to_tsvector('simple',coalesce(c.title_en,'')||' '||coalesce(c.title_ur,'')||' '||coalesce(c.title_roman_ur,'')||' '||coalesce(c.description_en,'')) @@ websearch_to_tsquery('simple',p_query) or similarity(c.title_en,p_query)>.2)
+ and (p_query is null or p_query='' or to_tsvector('simple',coalesce(c.title_en,'')||' '||coalesce(c.title_ur,'')||' '||coalesce(c.title_roman_ur,'')||' '||coalesce(c.description_en,'')) @@ websearch_to_tsquery('simple',p_query) or extensions.similarity(c.title_en,p_query)>.2)
  order by c.is_featured desc,c.publish_at desc nulls last,c.created_at desc limit least(greatest(p_limit,1),100)
 $$;
 

@@ -11,6 +11,7 @@ export async function revokeDevice(formData: FormData) {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login?next=/devices");
-  await supabase.from("user_devices").update({ revoked_at: new Date().toISOString() }).eq("id", deviceId).eq("user_id", user.id);
+  const { error } = await supabase.rpc("revoke_device", { p_device_id: deviceId });
+  if (error) redirect("/devices?error=revoke");
   revalidatePath("/devices");
 }

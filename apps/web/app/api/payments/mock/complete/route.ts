@@ -28,6 +28,7 @@ export async function POST(request: Request) {
     transactionId: `txn_${crypto.randomUUID()}`,
     amountMinor: order.amount_minor,
     currency: order.currency,
+    status: "succeeded",
     provider: "mock",
   };
   const rawBody = JSON.stringify(event);

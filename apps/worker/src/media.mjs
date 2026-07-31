@@ -5,52 +5,117 @@ import { pipeline } from "node:stream/promises";
 import { spawn } from "node:child_process";
 import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
+const LOCAL_PROTOCOLS = "file,pipe,crypto,data";
+const DEFAULT_PROCESS_TIMEOUT_MS = 2 * 60 * 60 * 1000;
+
+function inputArgs(input) {
+  return ["-nostdin", "-protocol_whitelist", LOCAL_PROTOCOLS, "-i", input];
+}
+
 export function buildShortArgs(input, output) {
-  return ["-y","-i",input,"-vf","scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2","-c:v","libx264","-preset","veryfast","-crf","23","-c:a","aac","-b:a","128k","-movflags","+faststart",output];
+  return ["-y", ...inputArgs(input), "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output];
 }
 
 export function buildHlsArgs(input, outputDir) {
-  return ["-y","-i",input,
-    "-filter_complex","[0:v]split=3[v1][v2][v3];[v1]scale=-2:360[v1out];[v2]scale=-2:480[v2out];[v3]scale=-2:720[v3out]",
-    "-map","[v1out]","-map","0:a?","-map","[v2out]","-map","0:a?","-map","[v3out]","-map","0:a?",
-    "-c:v","libx264","-preset","veryfast","-crf","23","-c:a","aac","-b:a","128k",
-    "-f","hls","-hls_time","6","-hls_playlist_type","vod","-hls_flags","independent_segments",
-    "-master_pl_name","master.m3u8",
-    "-var_stream_map","v:0,a:0,name:360p v:1,a:1,name:480p v:2,a:2,name:720p",
-    "-hls_segment_filename",join(outputDir,"%v","segment-%05d.ts"),
-    join(outputDir,"%v","index.m3u8")
+  return ["-y", ...inputArgs(input),
+    "-filter_complex", "[0:v]split=3[v1][v2][v3];[v1]scale=-2:360[v1out];[v2]scale=-2:480[v2out];[v3]scale=-2:720[v3out]",
+    "-map", "[v1out]", "-map", "0:a?", "-map", "[v2out]", "-map", "0:a?", "-map", "[v3out]", "-map", "0:a?",
+    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k",
+    "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
+    "-master_pl_name", "master.m3u8",
+    "-var_stream_map", "v:0,a:0,name:360p v:1,a:1,name:480p v:2,a:2,name:720p",
+    "-hls_segment_filename", join(outputDir, "%v", "segment-%05d.ts"),
+    join(outputDir, "%v", "index.m3u8")
   ];
 }
 
-export function run(command, args) {
+function processTimeout() {
+  const configured = Number(process.env.MEDIA_PROCESS_TIMEOUT_MS ?? DEFAULT_PROCESS_TIMEOUT_MS);
+  return Number.isFinite(configured) && configured >= 60_000 ? configured : DEFAULT_PROCESS_TIMEOUT_MS;
+}
+
+export function run(command, args, timeoutMs = processTimeout()) {
   return new Promise((resolve, reject) => {
-    const process = spawn(command, args, { stdio: ["ignore","pipe","pipe"] });
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, HOME: "/tmp" } });
     let stderr = "";
-    process.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-    process.once("error", reject);
-    process.once("exit", (code) => code === 0 ? resolve() : reject(new Error(`${basename(command)} exited ${code}: ${stderr.slice(-2000)}`)));
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGKILL");
+      reject(new Error(`${basename(command)} exceeded ${Math.round(timeoutMs / 1000)} seconds`));
+    }, timeoutMs);
+    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("exit", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      code === 0 ? resolve() : reject(new Error(`${basename(command)} exited ${code}: ${stderr.slice(-2000)}`));
+    });
   });
 }
 
-export function capture(command, args) {
+export function capture(command, args, timeoutMs = 60_000) {
   return new Promise((resolve, reject) => {
-    const process = spawn(command, args, { stdio: ["ignore","pipe","pipe"] });
-    let stdout = ""; let stderr = "";
-    process.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-    process.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
-    process.once("error", reject);
-    process.once("exit", (code) => code === 0 ? resolve(stdout.trim()) : reject(new Error(`${basename(command)} exited ${code}: ${stderr.slice(-2000)}`)));
+    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, HOME: "/tmp" } });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGKILL");
+      reject(new Error(`${basename(command)} probe timed out`));
+    }, timeoutMs);
+    child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+    child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+    child.once("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.once("exit", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      code === 0 ? resolve(stdout.trim()) : reject(new Error(`${basename(command)} exited ${code}: ${stderr.slice(-2000)}`));
+    });
   });
+}
+
+function ffprobeArgs(input, entries, format = "json") {
+  return ["-v", "error", "-protocol_whitelist", LOCAL_PROTOCOLS, "-show_entries", entries, "-of", format, input];
+}
+
+export async function probeMedia(input) {
+  const raw = await capture(process.env.FFPROBE_PATH ?? "ffprobe", ffprobeArgs(input, "format=duration,format_name:stream=codec_type,codec_name,width,height"));
+  const parsed = JSON.parse(raw || "{}");
+  const result = parsed && typeof parsed === "object" ? parsed : {};
+  const duration = Number(result.format?.duration ?? 0);
+  const streams = Array.isArray(result.streams) ? result.streams : [];
+  if (!streams.some((stream) => stream?.codec_type === "video")) throw new Error("Uploaded media contains no video stream.");
+  if (streams.length > 32) throw new Error("Uploaded media contains too many streams.");
+  if (Number.isFinite(duration) && duration > Number(process.env.MEDIA_MAX_DURATION_SECONDS ?? 43_200)) throw new Error("Uploaded media exceeds the maximum duration.");
+  return { durationSeconds: Number.isFinite(duration) ? duration : null, streamCount: streams.length };
 }
 
 export async function hasAudioStream(input) {
-  const result = await capture(process.env.FFPROBE_PATH ?? "ffprobe", ["-v","error","-select_streams","a:0","-show_entries","stream=index","-of","csv=p=0",input]);
+  const result = await capture(process.env.FFPROBE_PATH ?? "ffprobe", ["-v", "error", "-protocol_whitelist", LOCAL_PROTOCOLS, "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", input]);
   return Boolean(result);
 }
 
-function bucket() {
-  const value = process.env.R2_BUCKET ?? process.env.R2_PROCESSED_BUCKET;
-  if (!value) throw new Error("R2 processed media bucket is not configured.");
+function bucket(kind) {
+  const value = kind === "incoming"
+    ? process.env.R2_INCOMING_BUCKET ?? process.env.R2_BUCKET
+    : process.env.R2_PROCESSED_BUCKET ?? process.env.R2_BUCKET;
+  if (!value) throw new Error(`R2 ${kind} media bucket is not configured.`);
   return value;
 }
 
@@ -59,8 +124,8 @@ function r2Client() {
   return new S3Client({ region: "auto", endpoint: process.env.R2_ENDPOINT ?? `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`, credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY } });
 }
 
-export async function downloadObject(key, target) {
-  const response = await r2Client().send(new GetObjectCommand({ Bucket: bucket(), Key: key }));
+export async function downloadObject(key, target, kind = "incoming") {
+  const response = await r2Client().send(new GetObjectCommand({ Bucket: bucket(kind), Key: key }));
   if (!response.Body) throw new Error("R2 object has no body");
   await mkdir(dirname(target), { recursive: true });
   await pipeline(response.Body, createWriteStream(target));
@@ -69,7 +134,10 @@ export async function downloadObject(key, target) {
 async function walk(directory) {
   const entries = await readdir(directory, { withFileTypes: true });
   const paths = [];
-  for (const entry of entries) { const path = join(directory, entry.name); if (entry.isDirectory()) paths.push(...await walk(path)); else paths.push(path); }
+  for (const entry of entries) {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) paths.push(...await walk(path)); else paths.push(path);
+  }
   return paths;
 }
 
@@ -88,7 +156,7 @@ export async function uploadDirectory(directory, prefix) {
   for (const path of await walk(directory)) {
     const key = `${prefix}${relative(directory, path).replaceAll("\\", "/")}`;
     const info = await stat(path);
-    await r2Client().send(new PutObjectCommand({ Bucket: bucket(), Key: key, Body: createReadStream(path), ContentLength: info.size, ContentType: contentType(path) }));
+    await r2Client().send(new PutObjectCommand({ Bucket: bucket("processed"), Key: key, Body: createReadStream(path), ContentLength: info.size, ContentType: contentType(path) }));
     uploaded.push(key);
   }
   return uploaded;
@@ -98,22 +166,36 @@ export async function processMediaJob({ supabase, job }) {
   const { data: asset, error } = await supabase.from("media_assets").select("id,content_id,storage_key,metadata").eq("id", job.media_asset_id).single();
   if (error || !asset) throw error ?? new Error("Source asset missing");
   const root = join(process.env.MEDIA_TEMP_DIR ?? "/tmp/jalwa-media", job.id);
-  const source = join(root, "source"); const output = join(root, "output"); await mkdir(output, { recursive: true });
+  const source = join(root, "source");
+  const output = join(root, "output");
+  await mkdir(output, { recursive: true });
   try {
-    await downloadObject(asset.storage_key, source);
+    await downloadObject(asset.storage_key, source, "incoming");
+    const probe = await probeMedia(source);
     const ffmpeg = process.env.FFMPEG_PATH ?? "ffmpeg";
-    let format; let mediaPath; let uploaded;
+    let format;
+    let mediaPath;
+    let uploaded;
     if (job.job_type === "short_mp4") {
-      const target = join(output, "short-720.mp4"); await run(ffmpeg, buildShortArgs(source, target));
-      const prefix = `processed/${asset.content_id}/${asset.id}/`; uploaded = await uploadDirectory(output, prefix); mediaPath = `${prefix}short-720.mp4`; format = "mp4";
+      const target = join(output, "short-720.mp4");
+      await run(ffmpeg, buildShortArgs(source, target));
+      const prefix = `processed/${asset.content_id}/${asset.id}/`;
+      uploaded = await uploadDirectory(output, prefix);
+      mediaPath = `${prefix}short-720.mp4`;
+      format = "mp4";
     } else {
-      for (const name of ["360p","480p","720p"]) await mkdir(join(output, name), { recursive: true });
+      for (const name of ["360p", "480p", "720p"]) await mkdir(join(output, name), { recursive: true });
       await run(ffmpeg, buildHlsArgs(source, output));
-      const prefix = `processed/${asset.content_id}/${asset.id}/`; uploaded = await uploadDirectory(output, prefix); mediaPath = `${prefix}master.m3u8`; format = "hls";
+      const prefix = `processed/${asset.content_id}/${asset.id}/`;
+      uploaded = await uploadDirectory(output, prefix);
+      mediaPath = `${prefix}master.m3u8`;
+      format = "hls";
     }
-    await supabase.from("media_assets").update({ status: "ready", metadata: { ...asset.metadata, outputs: uploaded } }).eq("id", asset.id);
+    await supabase.from("media_assets").update({ status: "ready", duration_seconds: probe.durationSeconds ? Math.round(probe.durationSeconds) : null, metadata: { ...asset.metadata, probe, outputs: uploaded } }).eq("id", asset.id);
     await supabase.from("playback_sources").update({ is_primary: false }).eq("content_id", asset.content_id);
     await supabase.from("playback_sources").insert({ content_id: asset.content_id, provider: "original", media_asset_id: asset.id, media_url: mediaPath, format, is_primary: true, status: "active" });
-    await supabase.from("media_jobs").update({ status: "completed", completed_at: new Date().toISOString(), output: { mediaPath, format, uploaded } }).eq("id", job.id);
-  } finally { await rm(root, { recursive: true, force: true }); }
+    await supabase.from("media_jobs").update({ status: "completed", completed_at: new Date().toISOString(), locked_at: null, locked_by: null, error_message: null, output: { mediaPath, format, uploaded, probe } }).eq("id", job.id);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 }
