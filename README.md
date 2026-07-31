@@ -99,6 +99,7 @@ docs/                          product, architecture, operations and handoff doc
 16. [Foundation implementation history](docs/15-phase-1-foundation.md)
 17. [Current status and next-stage gates](docs/16-current-status-and-next-stage-gates.md)
 18. [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md)
+19. [Repository readiness audit — 31 July 2026](docs/18-repository-audit-2026-07-31.md)
 
 ## Non-negotiable release rules
 
