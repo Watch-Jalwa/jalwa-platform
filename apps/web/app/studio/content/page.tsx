@@ -9,6 +9,8 @@ type RightsSummary = {
   status: string;
   expires_at: string | null;
   creator: string | null;
+  is_expired: boolean;
+  expires_within_30_days: boolean;
 };
 
 export default async function StudioContentPage({ searchParams }: { searchParams: SearchParams }) {
@@ -27,7 +29,7 @@ export default async function StudioContentPage({ searchParams }: { searchParams
 
   const contentIds = (items ?? []).map((item) => item.id);
   const { data: rightsRows } = contentIds.length
-    ? await supabase.from("rights_records").select("content_id,status,expires_at,creator").in("content_id", contentIds)
+    ? await supabase.from("rights_operations").select("content_id,status,expires_at,creator,is_expired,expires_within_30_days").in("content_id", contentIds)
     : { data: [] as RightsSummary[] };
 
   const rightsByContent = new Map<string, RightsSummary>();
@@ -36,18 +38,12 @@ export default async function StudioContentPage({ searchParams }: { searchParams
     if (!current || row.status === "approved") rightsByContent.set(row.content_id, row);
   }
 
-  const now = Date.now();
-  const thirtyDays = 30 * 24 * 60 * 60 * 1000;
   const filtered = (items ?? []).filter((item) => {
     const rights = rightsByContent.get(item.id);
     if (q && !`${item.title_en} ${item.slug}`.toLowerCase().includes(q)) return false;
     if (status && item.status !== status) return false;
     if (rightsStatus && rights?.status !== rightsStatus) return false;
-    if (view === "expiring") {
-      if (!rights?.expires_at) return false;
-      const expiry = new Date(rights.expires_at).getTime();
-      if (!Number.isFinite(expiry) || expiry > now + thirtyDays) return false;
-    }
+    if (view === "expiring" && !rights?.expires_within_30_days) return false;
     return true;
   });
 
@@ -73,13 +69,12 @@ export default async function StudioContentPage({ searchParams }: { searchParams
           <thead><tr><th>Title</th><th>Content</th><th>Rights</th><th>Expiry</th><th>Access</th></tr></thead>
           <tbody>{filtered.map((item) => {
             const rights = rightsByContent.get(item.id);
-            const expired = rights?.expires_at ? new Date(rights.expires_at).getTime() <= now : false;
             return (
               <tr key={item.id}>
                 <td><Link href={`/studio/content/${item.id}`}>{item.title_en}</Link><small>{item.slug}</small></td>
                 <td><span className="status-badge">{item.status}</span><small>{item.content_type} · {item.hosting_mode}</small></td>
                 <td><span className="status-badge">{rights?.status ?? "missing"}</span><small>{rights?.creator ?? "No source owner"}</small></td>
-                <td>{rights?.expires_at ? <><span>{new Date(rights.expires_at).toLocaleDateString("en-PK")}</span>{expired ? <small>Expired — public access is blocked</small> : null}</> : "No expiry"}</td>
+                <td>{rights?.expires_at ? <><span>{new Date(rights.expires_at).toLocaleDateString("en-PK")}</span>{rights.is_expired ? <small>Expired — public access is blocked</small> : null}</> : "No expiry"}</td>
                 <td>{item.access_level}</td>
               </tr>
             );
