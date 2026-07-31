@@ -172,6 +172,18 @@ as $$
   limit least(greatest(p_limit, 1), 100)
 $$;
 
+create or replace view public.rights_operations
+with (security_invoker = true)
+as
+select
+  content_id,
+  status,
+  expires_at,
+  creator,
+  expires_at is not null and expires_at <= now() as is_expired,
+  expires_at is not null and expires_at <= now() + interval '30 days' as expires_within_30_days
+from public.rights_records;
+
 drop policy if exists "catalogue public" on public.content_items;
 create policy "catalogue public" on public.content_items
 for select using (
@@ -201,5 +213,6 @@ for select using (
 
 grant execute on function public.has_publishable_rights(uuid, public.hosting_mode, public.access_level)
   to anon, authenticated;
+grant select on public.rights_operations to authenticated;
 
 commit;
