@@ -14,6 +14,7 @@ The repository-side application and release system are mature enough to begin co
 - The full transactional stack is designed to run on isolated DigitalOcean infrastructure with self-hosted Supabase services, Cloudflare R2 and the media gateway.
 - Staging and production workflows are intentionally manual and fail closed when required values are absent.
 - Production billing, live streaming and web DRM remain disabled until their provider and acceptance gates are complete.
+- The approved delivery model is mobile-first responsive web/PWA only; native Android/iOS apps and app-store distribution are out of current scope.
 - The only enduring launch tracker should be the live activation issue; completed implementation issues should remain closed.
 
 ## Implemented repository capabilities
@@ -105,7 +106,7 @@ The repository-side application and release system are mature enough to begin co
 | Real merchant payment provider | Blocked externally | commercial onboarding and credentials required |
 | Production deployment | Not started | requires live staging and production approval |
 | Launch catalogue | Not started | rights-cleared source and editorial work required |
-| Native app-store submission | Not planned for MVP | product is currently a browser PWA |
+| Native app-store submission | Out of scope | approved product is mobile-first responsive web/PWA only |
 
 ## External staging activation requirements
 
@@ -154,9 +155,11 @@ Production remains blocked until all of the following are true:
 - the production workflow produces immutable manifests, SBOM/provenance and host-acceptance evidence;
 - production readiness reports the exact deployed SHA and backups/restore evidence is retained.
 
-## App-store position
+## Product delivery boundary
 
-The current deliverable is a responsive browser PWA. A Google Play or Apple App Store submission should not be treated as a deployment checkbox. It requires a separate product decision covering packaging technology, store accounts, privacy disclosures, age rating, screenshots, review guidelines, payment-policy compatibility, update ownership and device acceptance. Create a dedicated issue only after the web product and content operations are proven in staging.
+The approved product is a mobile-first responsive browser application and installable PWA. Native Android and iOS applications, Google Play distribution and Apple App Store distribution are not current deliverables, deployment gates or launch blockers.
+
+Acceptance must still cover representative Android and iOS browsers, responsive layouts, PWA installability, constrained-network behaviour, playback and hosted checkout. Do not create native/store issues or packaging work unless the owner explicitly changes the product direction in a future decision.
 
 ## Issue policy from this point
 
