@@ -45,7 +45,7 @@ docker exec "$DB_CONTAINER" pg_dump -U postgres -d postgres --format=custom --co
 test -s "$plaintext"
 docker exec -i "$DB_CONTAINER" pg_restore --list < "$plaintext" >/dev/null
 
-"$SCRIPT_DIR/backup-crypto.sh" encrypt "$plaintext" "$encrypted" "$crypto_metadata"
+bash "$SCRIPT_DIR/backup-crypto.sh" encrypt "$plaintext" "$encrypted" "$crypto_metadata"
 rm -f "$plaintext"
 
 jq -s \
