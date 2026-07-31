@@ -1,6 +1,8 @@
+import type { Instrumentation } from "next";
 import { emitObservabilityEvent } from "@/lib/observability/event";
 
 export function register() {
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
   process.on("uncaughtException", (error) => {
     emitObservabilityEvent({ level: "fatal", event: "web.uncaught_exception", error });
   });
@@ -9,11 +11,7 @@ export function register() {
   });
 }
 
-export const onRequestError = async (
-  error: unknown,
-  request: { path: string; method: string; headers: Record<string, string | string[] | undefined> },
-  context: { routerKind: string; routePath: string; routeType: string; renderSource: string },
-) => {
+export const onRequestError: Instrumentation.onRequestError = async (error, request, context) => {
   const requestIdHeader = request.headers["x-request-id"];
   const requestId = Array.isArray(requestIdHeader) ? requestIdHeader[0] : requestIdHeader;
   emitObservabilityEvent({
@@ -28,6 +26,8 @@ export const onRequestError = async (
       routePath: context.routePath,
       routeType: context.routeType,
       renderSource: context.renderSource,
+      revalidateReason: context.revalidateReason,
+      renderType: context.renderType,
     },
   });
 };
