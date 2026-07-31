@@ -41,7 +41,11 @@ export function OfflineButton({ contentId, title }: { contentId: string; title: 
       }
       setStatus(`${title} is ready offline for up to ${Math.ceil(ttl / 86400)} days.`);
     } catch (error) {
-      if (cacheKey) await caches.open(OFFLINE_CACHE).then((cache) => cache.delete(cacheKey)).catch(() => false);
+      const failedCacheKey = cacheKey;
+      if (failedCacheKey) {
+        const cache = await caches.open(OFFLINE_CACHE).catch(() => null);
+        if (cache) await cache.delete(failedCacheKey).catch(() => false);
+      }
       setStatus(error instanceof Error ? error.message : "Download failed.");
     } finally {
       setBusy(false);
