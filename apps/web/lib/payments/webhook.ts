@@ -11,7 +11,7 @@ export type PaymentEvent = {
   currency: string;
   status: PaymentEventStatus;
   reason?: string | null;
-  provider: "payfast" | "jazzcash" | "easypaisa";
+  provider: "mock" | "payfast" | "jazzcash" | "easypaisa";
 };
 
 type PaymentLifecycleResult = {
