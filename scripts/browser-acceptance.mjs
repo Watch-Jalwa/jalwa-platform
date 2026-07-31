@@ -3,10 +3,13 @@ import { chromium } from "@playwright/test";
 
 const baseUrl = process.env.JALWA_BROWSER_BASE_URL;
 const expectedVersion = process.env.JALWA_EXPECTED_VERSION;
+const expectedReadinessStatus = Number(process.env.JALWA_EXPECT_READINESS_STATUS ?? 503);
+const expectedNoindex = process.env.JALWA_EXPECT_NOINDEX === "true";
 if (!baseUrl) throw new Error("JALWA_BROWSER_BASE_URL is required");
 if (!expectedVersion || !/^[0-9a-f]{40}$/.test(expectedVersion)) {
   throw new Error("JALWA_EXPECTED_VERSION must be a lowercase 40-character Git SHA");
 }
+if (![200, 503].includes(expectedReadinessStatus)) throw new Error("JALWA_EXPECT_READINESS_STATUS must be 200 or 503");
 
 const applicationOrigin = new URL(baseUrl).origin;
 const browser = await chromium.launch({ headless: true });
@@ -18,7 +21,7 @@ function trackRuntimeFailures(page, label) {
     if (message.type() === "error") failures.push(`${label} console error: ${message.text()}`);
   });
   page.on("response", (response) => {
-    if (response.status() >= 500 && new URL(response.url()).origin === applicationOrigin) {
+    if (response.status() >= 500 && new URL(response.url()).origin === applicationOrigin && response.url() !== `${applicationOrigin}/api/readiness`) {
       failures.push(`${label} ${response.status()} response: ${response.url()}`);
     }
   });
@@ -51,6 +54,8 @@ try {
   assert.match(await page.title(), /Jalwa/i);
   await page.getByRole("link", { name: /Explore content/i }).waitFor();
   await assertNoHorizontalOverflow(page, "desktop home");
+  const robots = await page.locator('meta[name="robots"]').getAttribute("content");
+  if (expectedNoindex) assert.match(robots ?? "", /noindex/i);
 
   await page.getByRole("link", { name: /Explore content/i }).click();
   await page.getByRole("heading", { level: 1, name: /Explore Jalwa/i }).waitFor();
@@ -94,9 +99,9 @@ try {
   assert.equal(healthJson.version, expectedVersion);
 
   const readiness = await page.request.get("/api/readiness");
-  assert.equal(readiness.status(), 503);
+  assert.equal(readiness.status(), expectedReadinessStatus);
   const readinessJson = await readiness.json();
-  assert.equal(readinessJson.status, "not_ready");
+  assert.equal(readinessJson.status, expectedReadinessStatus === 200 ? "ready" : "not_ready");
   assert.equal(Object.hasOwn(readinessJson, "missingConfiguration"), false);
   assert.equal(Object.hasOwn(readinessJson, "migrationIssues"), false);
   assert.equal(Object.hasOwn(readinessJson, "dependencies"), false);
