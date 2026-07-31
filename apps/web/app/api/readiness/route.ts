@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 
@@ -22,7 +23,16 @@ const paymentRequirements: Record<string, readonly string[]> = {
   easypaisa: ["EASYPAISA_CHECKOUT_URL", "EASYPAISA_STORE_ID", "EASYPAISA_SECRET"],
 };
 
-export async function GET() {
+function authorized(request: Request) {
+  const expected = process.env.OPERATIONS_DIAGNOSTICS_SECRET;
+  const supplied = request.headers.get("x-jalwa-operations-token");
+  if (!expected || !supplied) return false;
+  const left = Buffer.from(expected);
+  const right = Buffer.from(supplied);
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
+export async function GET(request: Request) {
   const liveEnabled = process.env.ENABLE_LIVE_STREAMING === "true";
   const drmEnabled = process.env.ENABLE_WEB_DRM === "true";
   const paymentProvider = process.env.PAYMENT_PROVIDER ?? "unconfigured";
@@ -56,10 +66,14 @@ export async function GET() {
   const liveReady = !liveEnabled || liveRequired.every((name) => Boolean(process.env[name]));
   const drmReady = !drmEnabled || drmRequired.every((name) => Boolean(process.env[name]));
   const ready = missing.length === 0 && database === "ready" && migrations === "ready" && paymentReady && liveReady && drmReady;
+  const base = { service: "jalwa-web", status: ready ? "ready" : "not_ready", version: process.env.GIT_SHA ?? "local", time: new Date().toISOString() };
+
+  if (!authorized(request)) {
+    return NextResponse.json(base, { status: ready ? 200 : 503, headers: { "Cache-Control": "no-store" } });
+  }
 
   return NextResponse.json({
-    service: "jalwa-web",
-    status: ready ? "ready" : "not_ready",
+    ...base,
     database,
     migrations,
     migrationIssues,
@@ -72,7 +86,5 @@ export async function GET() {
     features: { social: true, recommendations: true, live: { enabled: liveEnabled, ready: liveReady }, drm: { enabled: drmEnabled, ready: drmReady, offline: false }, publicOfflineMp4: true },
     authProviders: { email: true, phone: process.env.NEXT_PUBLIC_ENABLE_PHONE_AUTH === "true", google: process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true", apple: process.env.NEXT_PUBLIC_ENABLE_APPLE_AUTH === "true", facebook: process.env.NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH === "true" },
     missingConfiguration: missing,
-    version: process.env.GIT_SHA ?? "local",
-    time: new Date().toISOString(),
   }, { status: ready ? 200 : 503, headers: { "Cache-Control": "no-store" } });
 }
