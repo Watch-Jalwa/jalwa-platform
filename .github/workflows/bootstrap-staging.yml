@@ -1,0 +1,169 @@
+name: Bootstrap staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      digitalocean_region:
+        description: DigitalOcean region slug
+        required: true
+        default: blr1
+      admin_cidr:
+        description: Trusted SSH CIDR, such as 203.0.113.10/32
+        required: true
+      domain:
+        description: Staging domain
+        required: true
+        default: staging.watch-jalwa.com
+      droplet_size:
+        description: DigitalOcean size for the combined staging stack
+        required: true
+        default: s-4vcpu-8gb
+
+permissions:
+  contents: read
+  actions: write
+
+concurrency:
+  group: jalwa-staging-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: staging
+    env:
+      GH_TOKEN: ${{ github.token }}
+      DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
+
+      - name: Restrict bootstrap to main
+        run: test "$GITHUB_REF" = refs/heads/main
+
+      - name: Validate required staging connections
+        env:
+          SSH_PUBLIC_KEY: ${{ secrets.DIGITALOCEAN_SSH_PUBLIC_KEY }}
+        run: |
+          set -euo pipefail
+          for value in DIGITALOCEAN_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_ZONE_ID AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SSH_PUBLIC_KEY; do
+            test -n "${!value:-}" || { echo "Missing staging value $value" >&2; exit 1; }
+          done
+
+      - name: Create isolated staging R2 buckets
+        run: |
+          set -euo pipefail
+          for bucket in jalwa-terraform-state jalwa-staging-incoming jalwa-staging-media jalwa-staging-rights-evidence jalwa-staging-backups; do
+            status=$(curl -sS -o /tmp/r2.json -w '%{http_code}' \
+              -X POST "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/r2/buckets" \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+              -H 'Content-Type: application/json' \
+              --data "{\"name\":\"$bucket\"}")
+            if [[ "$status" != "200" && "$status" != "201" && "$status" != "409" ]]; then
+              cat /tmp/r2.json >&2
+              exit 1
+            fi
+          done
+
+      - name: Provision isolated staging host
+        id: terraform
+        env:
+          SSH_PUBLIC_KEY: ${{ secrets.DIGITALOCEAN_SSH_PUBLIC_KEY }}
+          REGION: ${{ inputs.digitalocean_region }}
+          ADMIN_CIDR: ${{ inputs.admin_cidr }}
+          DOMAIN: ${{ inputs.domain }}
+          DROPLET_SIZE: ${{ inputs.droplet_size }}
+        run: |
+          set -euo pipefail
+          cd infrastructure/digitalocean
+          terraform init -reconfigure \
+            -backend-config="bucket=jalwa-terraform-state" \
+            -backend-config="key=staging/digitalocean.tfstate" \
+            -backend-config="region=auto" \
+            -backend-config="skip_credentials_validation=true" \
+            -backend-config="skip_metadata_api_check=true" \
+            -backend-config="skip_region_validation=true" \
+            -backend-config="skip_requesting_account_id=true" \
+            -backend-config="skip_s3_checksum=true" \
+            -backend-config="use_path_style=true" \
+            -backend-config="endpoints={s3=\"https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com\"}"
+          terraform apply -auto-approve \
+            -var="digitalocean_token=$DIGITALOCEAN_TOKEN" \
+            -var="region=$REGION" \
+            -var="droplet_size=$DROPLET_SIZE" \
+            -var="ssh_public_key=$SSH_PUBLIC_KEY" \
+            -var="admin_cidrs=[\"$ADMIN_CIDR\"]" \
+            -var="domain=$DOMAIN"
+          host=$(terraform output -raw ipv4_address)
+          echo "host=$host" >> "$GITHUB_OUTPUT"
+
+      - name: Pin staging SSH host identity
+        id: hostkey
+        env:
+          HOST: ${{ steps.terraform.outputs.host }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if key=$(ssh-keyscan -T 5 -t ed25519 "$HOST" 2>/dev/null) && [[ -n "$key" ]]; then break; fi
+            sleep 10
+          done
+          [[ -n "${key:-}" ]] || { echo 'Could not read the staging host Ed25519 key.' >&2; exit 1; }
+          printf '%s\n' "$key" > /tmp/staging-known-hosts
+          fingerprint=$(ssh-keygen -lf /tmp/staging-known-hosts | awk '{print $2}')
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+
+      - name: Configure staging DNS
+        env:
+          HOST: ${{ steps.terraform.outputs.host }}
+          DOMAIN: ${{ inputs.domain }}
+        run: |
+          set -euo pipefail
+          upsert_record() {
+            local name="$1" existing body
+            existing=$(curl -fsS "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records?type=A&name=$name" \
+              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | jq -r '.result[0].id // empty')
+            body=$(jq -nc --arg type A --arg name "$name" --arg content "$HOST" '{type:$type,name:$name,content:$content,ttl:1,proxied:true}')
+            if [[ -n "$existing" ]]; then
+              curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records/$existing" \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'Content-Type: application/json' --data "$body" >/dev/null
+            else
+              curl -fsS -X POST "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records" \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'Content-Type: application/json' --data "$body" >/dev/null
+            fi
+          }
+          upsert_record "$DOMAIN"
+          upsert_record "api.$DOMAIN"
+          curl -fsS "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records?name=media.$DOMAIN" \
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | jq -r '.result[].id' | while read -r record_id; do
+              curl -fsS -X DELETE "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records/$record_id" \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" >/dev/null
+            done
+
+      - name: Persist staging deployment outputs
+        env:
+          HOST: ${{ steps.terraform.outputs.host }}
+          DOMAIN: ${{ inputs.domain }}
+          HOST_FINGERPRINT: ${{ steps.hostkey.outputs.fingerprint }}
+        run: |
+          set -euo pipefail
+          gh variable set STAGING_HOST --env staging --body "$HOST"
+          gh variable set STAGING_USER --env staging --body "jalwa"
+          gh variable set STAGING_DOMAIN --env staging --body "$DOMAIN"
+          gh variable set STAGING_SSH_KNOWN_HOSTS --env staging --body "$(cat /tmp/staging-known-hosts)"
+          gh variable set R2_INCOMING_BUCKET --env staging --body "jalwa-staging-incoming"
+          gh variable set R2_PROCESSED_BUCKET --env staging --body "jalwa-staging-media"
+          gh variable set R2_BACKUP_BUCKET --env staging --body "jalwa-staging-backups"
+          {
+            echo '### Staging bootstrap complete'
+            echo "- Host: $HOST"
+            echo "- Domain: https://$DOMAIN"
+            echo "- SSH Ed25519 fingerprint: $HOST_FINGERPRINT"
+            echo '- Terraform state and media/backup buckets are isolated from production'
+            echo '- Configure the remaining staging environment secrets, then run Deploy staging'
+          } >> "$GITHUB_STEP_SUMMARY"
