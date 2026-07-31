@@ -3,6 +3,12 @@ import { anonymousFingerprint, emitObservabilityEvent, requestId } from "@/lib/o
 
 export const runtime = "nodejs";
 
+function withoutQuery(value: unknown) {
+  if (typeof value !== "string") return undefined;
+  const queryIndex = value.indexOf("?");
+  return (queryIndex === -1 ? value : value.slice(0, queryIndex)).slice(0, 500);
+}
+
 export async function POST(request: Request) {
   const id = requestId(request.headers);
   if (Number(request.headers.get("content-length") ?? 0) > 16384) return new NextResponse(null, { status: 413, headers: { "x-request-id": id } });
@@ -16,11 +22,11 @@ export async function POST(request: Request) {
     event: "security.csp_violation",
     requestId: id,
     context: {
-      documentUri: typeof report["document-uri"] === "string" ? report["document-uri"].split("?")[0].slice(0, 500) : undefined,
-      blockedUri: typeof report["blocked-uri"] === "string" ? report["blocked-uri"].split("?")[0].slice(0, 500) : undefined,
+      documentUri: withoutQuery(report["document-uri"]),
+      blockedUri: withoutQuery(report["blocked-uri"]),
       effectiveDirective: String(report["effective-directive"] ?? report.effectiveDirective ?? "unknown").slice(0, 120),
       disposition: String(report.disposition ?? "unknown").slice(0, 40),
-      sourceFile: typeof report["source-file"] === "string" ? report["source-file"].split("?")[0].slice(0, 500) : undefined,
+      sourceFile: withoutQuery(report["source-file"]),
       userAgentHash: anonymousFingerprint(request.headers.get("user-agent") ?? "unknown"),
     },
   });
