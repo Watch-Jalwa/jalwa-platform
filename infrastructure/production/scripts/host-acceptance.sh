@@ -79,7 +79,13 @@ disk_percent="$(df -P "$APP_DIR" | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
 pass "Disk utilization (${disk_percent}%)"
 
 for setting in R2_BACKUP_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do [[ -n "${!setting:-}" ]] || fail "$setting is missing"; done
-[[ "${PAYMENT_PROVIDER:-mock}" != "mock" ]] || fail "PAYMENT_PROVIDER cannot be mock in production"
+if [[ "${PAYMENT_PROVIDER:-mock}" == "mock" ]]; then
+  [[ "${DEPLOYMENT_ENVIRONMENT:-production}" == "staging" && "${ALLOW_MOCK_PAYMENTS:-false}" == "true" ]] \
+    || fail "Mock payments are allowed only in an explicit staging deployment"
+  pass "Staging mock payment isolation"
+else
+  [[ "${PAYMENT_PROVIDER}" =~ ^(payfast|jazzcash|easypaisa)$ ]] || fail "Unsupported payment provider"
+fi
 if [[ "${NEXT_PUBLIC_ENABLE_PHONE_AUTH:-false}" == "true" ]]; then grep -q '^SMS_PROVIDER=.' "${APP_DIR}/.env.supabase" || fail "SMS provider is missing"; fi
 
 headers="$(mktemp)"
@@ -93,5 +99,5 @@ pass "Security response headers"
 version="$(curl --fail --silent --show-error --max-time 20 "$BASE_URL/api/readiness" | jq -r '.version // empty')"
 [[ "$version" == "$JALWA_IMAGE_TAG" ]] || fail "Readiness version ${version:-missing} does not match image tag $JALWA_IMAGE_TAG"
 
-printf '{"status":"passed","host":"%s","imageTag":"%s","version":"%s","backupAgeSeconds":%s,"restoreAgeSeconds":%s,"diskPercent":%s,"checkedAt":"%s"}\n' \
-  "$(hostname -f)" "$JALWA_IMAGE_TAG" "$version" "$backup_age" "$restore_age" "$disk_percent" "$(date -u +%FT%TZ)"
+printf '{"status":"passed","environment":"%s","host":"%s","imageTag":"%s","version":"%s","backupAgeSeconds":%s,"restoreAgeSeconds":%s,"diskPercent":%s,"checkedAt":"%s"}\n' \
+  "${DEPLOYMENT_ENVIRONMENT:-production}" "$(hostname -f)" "$JALWA_IMAGE_TAG" "$version" "$backup_age" "$restore_age" "$disk_percent" "$(date -u +%FT%TZ)"
