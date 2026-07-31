@@ -118,7 +118,11 @@ jobs:
             -t jalwa-web:ci .
       - name: Build production worker image
         run: docker build --target worker -t jalwa-worker:ci .
-      - name: Verify runtime images are non-root
+      - name: Verify runtime image contracts
         run: |
           test "$(docker image inspect --format '{{.Config.User}}' jalwa-web:ci)" = node
           test "$(docker image inspect --format '{{.Config.User}}' jalwa-worker:ci)" = node
+          test "$(docker image inspect --format '{{json .Config.Healthcheck.Test}}' jalwa-web:ci)" != null
+          test "$(docker image inspect --format '{{json .Config.Healthcheck.Test}}' jalwa-worker:ci)" != null
+      - name: Boot and test production web image
+        run: bash scripts/test-production-container.sh jalwa-web:ci "$GITHUB_SHA"
