@@ -1,31 +1,52 @@
-## Problem
+## Problem and user impact
 
-## Solution
+## Solution and trade-offs
 
-## User impact
+## Screenshots or recordings
 
-## Screenshots
+<!-- Required for user-interface changes. Include mobile evidence and redact sensitive data. -->
 
-## Data/API changes
+## Data, API and migrations
 
-## Security and privacy
+<!-- Include compatibility, backfill and forward-recovery notes. Never rewrite applied migrations. -->
 
-## Content rights impact
+## Security, privacy and authorization
 
-## AI prompt/model impact
+<!-- Describe server-side capability checks, sensitive data handling, request bounds, audit and secret exposure. -->
 
-## Analytics
+## Content rights and editorial impact
 
-## Test plan
+<!-- Source, licence, attribution, evidence, territory, expiry, takedown and specialist review. -->
 
-## Rollback
+## Payments, entitlements and finance
+
+<!-- Provider/webhook/idempotency/reconciliation/reporting impact. Never activate from browser return state. -->
+
+## AI prompt, model and evaluation impact
+
+## Analytics, observability and support impact
+
+## Test evidence
+
+<!-- List local commands and relevant targeted scenarios. GitHub CI remains authoritative for the full release gate. -->
+
+## Rollout, rollback or roll-forward
+
+## Linked issue or maintenance rationale
 
 ## Checklist
 
-- [ ] Mobile checked
-- [ ] Urdu/RTL checked
-- [ ] Tests added
-- [ ] Documentation updated
-- [ ] Permissions checked
-- [ ] Error states handled
-- [ ] No secrets included
+- [ ] Branch started from a current green `main` commit
+- [ ] Change is scoped; dependency and formatting churn is intentional
+- [ ] Mobile and low-data behaviour checked
+- [ ] Urdu/RTL and accessibility checked
+- [ ] Server-side permissions and audit behaviour checked
+- [ ] Error, empty, loading and partial-failure states handled
+- [ ] Tests added or updated for business/security rules
+- [ ] Data/API compatibility and migration recovery documented
+- [ ] Source, licence, attribution and takedown metadata preserved where relevant
+- [ ] Payment/entitlement changes rely on verified server-side state
+- [ ] No secrets, customer data or private provider payloads included
+- [ ] Documentation and operations notes updated
+- [ ] `npm run lint`, `npm run typecheck`, `npm test`, release/backup tests and build pass, or exceptions are explained above
+- [ ] Vercel preview success is not presented as full-stack staging or production evidence

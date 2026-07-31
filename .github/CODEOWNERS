@@ -1,0 +1,19 @@
+# Default owner
+* @waseem99
+
+# Release, infrastructure and security boundaries
+/.github/ @waseem99
+/infrastructure/ @waseem99
+/scripts/ @waseem99
+/supabase/migrations/ @waseem99
+/SECURITY.md @waseem99
+
+# Product surfaces
+/apps/web/ @waseem99
+/apps/worker/ @waseem99
+
+# Product and operating documentation
+/docs/ @waseem99
+/README.md @waseem99
+/CONTRIBUTING.md @waseem99
+/AGENTS.md @waseem99

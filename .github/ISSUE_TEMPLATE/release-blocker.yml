@@ -1,0 +1,74 @@
+name: Release blocker
+description: Track an unresolved staging or production release gate
+title: "[Release blocker]: "
+body:
+  - type: dropdown
+    id: target
+    attributes:
+      label: Target environment
+      options:
+        - Isolated staging
+        - Production
+    validations:
+      required: true
+  - type: input
+    id: sha
+    attributes:
+      label: Affected commit SHA
+      placeholder: Use the exact immutable release candidate.
+    validations:
+      required: true
+  - type: dropdown
+    id: gate
+    attributes:
+      label: Blocked gate
+      options:
+        - Infrastructure and DNS
+        - Environment variables or secrets
+        - Provider or merchant onboarding
+        - Database migration
+        - Backup or restore evidence
+        - Health or readiness
+        - Authentication and email
+        - Content rights and catalogue
+        - Playback, media or PWA
+        - Payment, entitlement or reconciliation
+        - Security or vulnerability policy
+        - Human acceptance or operations ownership
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Failure evidence
+      description: Include the workflow/run, sanitized logs, request IDs and exact failing assertion.
+    validations:
+      required: true
+  - type: textarea
+    id: containment
+    attributes:
+      label: Current containment
+      description: State whether deployment, billing, publication or a feature remains disabled.
+    validations:
+      required: true
+  - type: textarea
+    id: resolution
+    attributes:
+      label: Required resolution and owner
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification and rollback plan
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: No secret, customer data or private provider payload is included.
+          required: true
+        - label: The environment remains blocked until retained evidence proves the gate is complete.
+          required: true

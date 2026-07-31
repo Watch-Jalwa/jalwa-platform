@@ -3,6 +3,7 @@ import { ShortsFeed } from "@/components/shorts-feed";
 import { searchCatalogue } from "@/lib/catalogue/repository";
 
 export const metadata: Metadata = { title: "Shorts" };
+export const dynamic = "force-dynamic";
 
 export default async function ShortsPage() {
   const items = (await searchCatalogue({ category: "shorts", limit: 30 })).filter((item) => item.contentType === "short");

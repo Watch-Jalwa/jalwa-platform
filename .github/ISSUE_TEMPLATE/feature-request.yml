@@ -1,0 +1,57 @@
+name: Feature request
+description: Propose a scoped product or platform improvement
+title: "[Feature]: "
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: User outcome
+      description: Who needs this and what should become possible?
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: Current limitation
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      placeholder: Use observable, testable outcomes.
+    validations:
+      required: true
+  - type: textarea
+    id: non_goals
+    attributes:
+      label: Non-goals
+  - type: textarea
+    id: data_api
+    attributes:
+      label: Data, API and migration impact
+  - type: textarea
+    id: security
+    attributes:
+      label: Security, privacy and permissions
+  - type: textarea
+    id: rights
+    attributes:
+      label: Content-rights and editorial impact
+  - type: textarea
+    id: operations
+    attributes:
+      label: Analytics, observability and operations
+  - type: textarea
+    id: tests
+    attributes:
+      label: Test and rollout plan
+  - type: checkboxes
+    id: readiness
+    attributes:
+      label: Product requirements
+      options:
+        - label: Mobile and low-data behaviour considered
+        - label: Urdu and RTL behaviour considered
+        - label: Accessibility considered
+        - label: Failure and rollback behaviour considered

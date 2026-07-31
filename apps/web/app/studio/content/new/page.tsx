@@ -2,6 +2,7 @@ import { createContentDraftAction, importYouTubeAction } from "@/app/studio/acti
 import { getCategories } from "@/lib/catalogue/repository";
 
 export const metadata = { title: "Add content" };
+export const dynamic = "force-dynamic";
 type SearchParams = Promise<{ error?: string }>;
 
 export default async function NewContentPage({ searchParams }: { searchParams: SearchParams }) {
