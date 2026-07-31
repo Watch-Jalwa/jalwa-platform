@@ -3,7 +3,8 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY apps/worker/package.json apps/worker/package.json
-RUN npm ci --ignore-scripts --no-audit --no-fund
+RUN npm ci --ignore-scripts --no-audit --no-fund \
+  && mkdir -p apps/web/node_modules apps/worker/node_modules
 
 FROM node:22-alpine AS worker-deps
 WORKDIR /app
@@ -12,12 +13,15 @@ COPY apps/web/package.json apps/web/package.json
 COPY apps/worker/package.json apps/worker/package.json
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
       --workspace @jalwa/worker --include-workspace-root=false \
+  && mkdir -p apps/worker/node_modules \
   && npm cache clean --force \
-  && node -e "const fs=require('node:fs');const path=require('node:path');const roots=['/app/node_modules'];const bad=[];while(roots.length){const current=roots.pop();if(!fs.existsSync(current))continue;for(const entry of fs.readdirSync(current,{withFileTypes:true})){const full=path.join(current,entry.name);if(entry.isDirectory()){if(entry.name==='brace-expansion'){const manifest=JSON.parse(fs.readFileSync(path.join(full,'package.json'),'utf8'));const major=Number(manifest.version.split('.')[0]);if(major<5)bad.push(full+'@'+manifest.version);}roots.push(full);}}}if(bad.length){console.error('Vulnerable brace-expansion packages entered worker runtime dependencies:',bad);process.exit(1)}"
+  && node -e "const fs=require('node:fs');const path=require('node:path');const roots=['/app/node_modules','/app/apps/worker/node_modules'];const bad=[];while(roots.length){const current=roots.pop();if(!fs.existsSync(current))continue;for(const entry of fs.readdirSync(current,{withFileTypes:true})){const full=path.join(current,entry.name);if(entry.isDirectory()){if(entry.name==='brace-expansion'){const manifest=JSON.parse(fs.readFileSync(path.join(full,'package.json'),'utf8'));const major=Number(manifest.version.split('.')[0]);if(major<5)bad.push(full+'@'+manifest.version);}roots.push(full);}}}if(bad.length){console.error('Vulnerable brace-expansion packages entered worker runtime dependencies:',bad);process.exit(1)}"
 
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY . .
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
 ARG NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co
@@ -73,6 +77,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
   && chmod 0755 /usr/local/bin/packager \
   && /usr/local/bin/packager --version
 COPY --chown=node:node --from=worker-deps /app/node_modules ./node_modules
+COPY --chown=node:node --from=worker-deps /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY --chown=node:node package.json package-lock.json ./
 COPY --chown=node:node apps/worker ./apps/worker
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /root/.npm \
