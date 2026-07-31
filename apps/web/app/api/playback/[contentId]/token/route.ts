@@ -34,7 +34,14 @@ export async function POST(request: Request, { params }: { params: Params }) {
   const secret = process.env.MEDIA_SIGNING_SECRET;
   const gateway = process.env.NEXT_PUBLIC_MEDIA_GATEWAY_URL;
   if (!secret || !gateway) return NextResponse.json({ error: "Playback gateway is not configured." }, { status: 503 });
-  const token = signPlaybackToken({ assetId: playback.media_asset_id, pathPrefix: `processed/${contentId}/${playback.media_asset_id}/`, userId: user?.id ?? null, deviceId: deviceId ? createHash("sha256").update(deviceId).digest("hex").slice(0,24) : null }, secret, 300);
+  const token = signPlaybackToken({ assetId: playback.media_asset_id, pathPrefix: `processed/${contentId}/${playback.media_asset_id}/`, userId: user?.id ?? null, deviceId: deviceId ? createHash("sha256").update(deviceId).digest("hex").slice(0, 24) : null }, secret, 300);
   const mediaPath = playback.media_url.replace(/^\/+/, "");
-  return NextResponse.json({ url: `${gateway.replace(/\/$/, "")}/${mediaPath}?token=${encodeURIComponent(token)}`, format: playback.format, expiresIn: 300 });
+  const offlineAllowed = content.access_level === "public" && playback.format === "mp4";
+  return NextResponse.json({
+    url: `${gateway.replace(/\/$/, "")}/${mediaPath}?token=${encodeURIComponent(token)}`,
+    format: playback.format,
+    expiresIn: 300,
+    offlineAllowed,
+    offlineExpiresIn: offlineAllowed ? Number(process.env.OFFLINE_PUBLIC_TTL_SECONDS ?? 604800) : 0,
+  }, { headers: { "Cache-Control": "no-store" } });
 }
