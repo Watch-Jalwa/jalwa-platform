@@ -17,6 +17,7 @@ import "./phase5.css";
 import "./phase6.css";
 import "./phase7.css";
 import "./phase8.css";
+import "./phase9.css";
 
 const isFrontendPreview = process.env.NEXT_PUBLIC_FRONTEND_PREVIEW === "true" || process.env.VERCEL_ENV === "preview";
 const isStaging = process.env.DEPLOYMENT_ENVIRONMENT === "staging";
