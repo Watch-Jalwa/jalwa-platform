@@ -11,7 +11,7 @@ const required = [
   "R2_INCOMING_BUCKET", "R2_PROCESSED_BUCKET", "R2_BACKUP_BUCKET",
   "MEDIA_SIGNING_SECRET", "NEXT_PUBLIC_MEDIA_GATEWAY_URL", "MEDIA_GATEWAY_ALLOWED_ORIGINS",
   "PAYMENT_WEBHOOK_SECRET", "RATE_LIMIT_SALT", "RECOMMENDATION_REFRESH_SECRET", "CRON_SECRET",
-  "ACCOUNT_REQUEST_PROCESSOR_SECRET", "ACCOUNT_DELETION_HASH_SECRET",
+  "ACCOUNT_REQUEST_PROCESSOR_SECRET", "ACCOUNT_DELETION_HASH_SECRET", "SENTRY_DSN",
 ] as const;
 
 const liveRequired = ["CLOUDFLARE_STREAM_API_TOKEN", "CLOUDFLARE_STREAM_CUSTOMER_CODE"] as const;
@@ -65,6 +65,7 @@ export async function GET() {
     migrationIssues,
     storage: { incoming: Boolean(process.env.R2_INCOMING_BUCKET), processed: Boolean(process.env.R2_PROCESSED_BUCKET), backups: Boolean(process.env.R2_BACKUP_BUCKET) },
     lifecycle: { sourceHealth: Boolean(process.env.CRON_SECRET), privacyProcessor: Boolean(process.env.ACCOUNT_REQUEST_PROCESSOR_SECRET), recommendationRefresh: Boolean(process.env.RECOMMENDATION_REFRESH_SECRET) },
+    observabilityReady: Boolean(process.env.SENTRY_DSN),
     aiProvider: process.env.AI_PROVIDER ?? "unconfigured",
     paymentProvider,
     paymentReady,
