@@ -2,6 +2,8 @@ import Link from "next/link";
 import { ContentCard } from "@/components/content-card";
 import { getCategories, searchCatalogue } from "@/lib/catalogue/repository";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const [categories, featuredContent] = await Promise.all([getCategories(), searchCatalogue({ limit: 8 })]);
   return (
