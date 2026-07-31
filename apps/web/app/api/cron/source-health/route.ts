@@ -2,12 +2,15 @@ import { timingSafeEqual } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
 import { NextResponse } from "next/server";
+import { getLiveSourceDefinition } from "@/lib/live-sources/registry";
+import { checkLiveSource } from "@/lib/live-sources/security";
 import { verifyProcessedObject } from "@/lib/media/storage";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export const runtime = "nodejs";
 
 type Source = { id: string; provider: string; provider_content_id: string | null; embed_url: string | null; media_url: string | null; external_url: string | null };
+type LiveConfig = { playback_source_id: string; source_key: string; next_review_at: string | null; enabled: boolean };
 
 function validSecret(request: Request) {
   const expected = process.env.CRON_SECRET;
@@ -55,7 +58,7 @@ async function safeHttpCheck(initialUrl: string, method: "GET" | "HEAD" = "HEAD"
       redirect: "manual",
       signal: AbortSignal.timeout(8000),
       cache: "no-store",
-      headers: { "user-agent": "Jalwa-Source-Monitor/2.0", ...(method === "GET" ? { range: "bytes=0-0" } : {}) },
+      headers: { "user-agent": "Jalwa-Source-Monitor/3.0", ...(method === "GET" ? { range: "bytes=0-0" } : {}) },
     });
     if (response.status >= 300 && response.status < 400) {
       const location = response.headers.get("location");
@@ -69,7 +72,7 @@ async function safeHttpCheck(initialUrl: string, method: "GET" | "HEAD" = "HEAD"
   return { ok: false, message: "Source check failed." };
 }
 
-async function checkSource(source: Source) {
+async function checkStandardSource(source: Source) {
   try {
     if (source.provider === "youtube" && source.provider_content_id) {
       return safeHttpCheck(`https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${source.provider_content_id}`)}&format=json`, "GET");
@@ -93,24 +96,108 @@ export async function POST(request: Request) {
   if (error) return NextResponse.json({ error: "Source inventory unavailable." }, { status: 500 });
   const sourceRows = (sources ?? []) as Source[];
   const ids = sourceRows.map((source) => source.id);
-  const { data: previousRows } = ids.length
-    ? await admin.from("playback_source_health").select("playback_source_id,consecutive_failures").in("playback_source_id", ids)
-    : { data: [] };
-  const previous = new Map((previousRows ?? []).map((row) => [row.playback_source_id, row.consecutive_failures]));
-  const results: Array<{ playback_source_id: string; status: string; consecutive_failures: number; checked_at: string; message: string | null }> = [];
+  const [{ data: previousRows }, { data: configRows, error: configError }] = await Promise.all([
+    ids.length
+      ? admin.from("playback_source_health").select("playback_source_id,consecutive_failures,last_success_at").in("playback_source_id", ids)
+      : Promise.resolve({ data: [] }),
+    ids.length
+      ? admin.from("live_source_configs").select("playback_source_id,source_key,next_review_at,enabled").in("playback_source_id", ids)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (configError) return NextResponse.json({ error: "Live source configuration unavailable." }, { status: 500 });
+  const previous = new Map((previousRows ?? []).map((row) => [row.playback_source_id, row]));
+  const configs = new Map(((configRows ?? []) as LiveConfig[]).map((row) => [row.playback_source_id, row]));
+  const checkedAt = new Date().toISOString();
+  const results: Array<Record<string, unknown>> = [];
   let cursor = 0;
   let healthy = 0;
   let unavailable = 0;
+  let offAir = 0;
 
   async function worker() {
     while (cursor < sourceRows.length) {
       const source = sourceRows[cursor];
       cursor += 1;
       if (!source) continue;
-      const result = await checkSource(source);
-      const failures = result.ok ? 0 : (previous.get(source.id) ?? 0) + 1;
-      results.push({ playback_source_id: source.id, status: result.ok ? "healthy" : failures >= 3 ? "unavailable" : "degraded", consecutive_failures: failures, checked_at: new Date().toISOString(), message: result.message });
-      if (result.ok) healthy += 1; else unavailable += 1;
+      const config = configs.get(source.id);
+      const prior = previous.get(source.id) as { consecutive_failures?: number; last_success_at?: string | null } | undefined;
+      if (!config) {
+        const result = await checkStandardSource(source);
+        const failures = result.ok ? 0 : (prior?.consecutive_failures ?? 0) + 1;
+        results.push({
+          playback_source_id: source.id,
+          status: result.ok ? "healthy" : failures >= 3 ? "unavailable" : "degraded",
+          availability: result.ok ? "healthy" : failures >= 3 ? "unavailable" : "degraded",
+          consecutive_failures: failures,
+          checked_at: checkedAt,
+          last_success_at: result.ok ? checkedAt : prior?.last_success_at ?? null,
+          message: result.message,
+          availability_reason: result.message,
+          terms_review_due: false,
+        });
+        if (result.ok) healthy += 1; else unavailable += 1;
+        continue;
+      }
+
+      const definition = getLiveSourceDefinition(config.source_key);
+      const reviewDue = !config.next_review_at || new Date(config.next_review_at).getTime() <= Date.now();
+      if (!config.enabled || !definition || reviewDue) {
+        const reason = !config.enabled ? "Live source is disabled." : !definition ? "Live source is not in the committed allowlist." : "Live-source terms review is overdue.";
+        results.push({
+          playback_source_id: source.id,
+          status: "unavailable",
+          availability: "unavailable",
+          consecutive_failures: (prior?.consecutive_failures ?? 0) + 1,
+          checked_at: checkedAt,
+          last_success_at: prior?.last_success_at ?? null,
+          message: reason,
+          availability_reason: reason,
+          terms_review_due: reviewDue,
+        });
+        unavailable += 1;
+        continue;
+      }
+
+      try {
+        const result = await checkLiveSource(config.source_key);
+        const completeSuccess = result.availability === "healthy" || result.availability === "off_air";
+        const failures = completeSuccess ? 0 : (prior?.consecutive_failures ?? 0) + 1;
+        const availability = result.availability === "unavailable" || failures >= 3 ? "unavailable" : result.availability;
+        const status = completeSuccess ? "healthy" : availability === "unavailable" ? "unavailable" : "degraded";
+        results.push({
+          playback_source_id: source.id,
+          status,
+          availability,
+          consecutive_failures: failures,
+          checked_at: checkedAt,
+          last_success_at: completeSuccess ? checkedAt : prior?.last_success_at ?? null,
+          source_timestamp: result.sourceTimestamp,
+          etag: result.etag,
+          last_modified: result.lastModified,
+          content_hash: result.contentHash,
+          message: result.message,
+          availability_reason: result.message,
+          terms_review_due: false,
+        });
+        if (availability === "off_air") offAir += 1;
+        else if (status === "healthy") healthy += 1;
+        else unavailable += 1;
+      } catch (liveError) {
+        const failures = (prior?.consecutive_failures ?? 0) + 1;
+        const message = liveError instanceof Error ? liveError.message.slice(0, 200) : "Provider-aware source check failed.";
+        results.push({
+          playback_source_id: source.id,
+          status: failures >= 3 ? "unavailable" : "degraded",
+          availability: failures >= 3 ? "unavailable" : "degraded",
+          consecutive_failures: failures,
+          checked_at: checkedAt,
+          last_success_at: prior?.last_success_at ?? null,
+          message,
+          availability_reason: message,
+          terms_review_due: false,
+        });
+        unavailable += 1;
+      }
     }
   }
 
@@ -119,5 +206,5 @@ export async function POST(request: Request) {
     const { error: writeError } = await admin.from("playback_source_health").upsert(results, { onConflict: "playback_source_id" });
     if (writeError) return NextResponse.json({ error: "Source health results could not be stored." }, { status: 500 });
   }
-  return NextResponse.json({ checked: sourceRows.length, healthy, unavailable, checkedAt: new Date().toISOString() });
+  return NextResponse.json({ checked: sourceRows.length, healthy, offAir, unavailable, checkedAt });
 }
