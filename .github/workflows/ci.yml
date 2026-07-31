@@ -13,7 +13,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
@@ -25,7 +25,16 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
-      - run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Install exact locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify dependency tree
+        run: npm ls --all
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+      - name: Generate and validate CycloneDX SBOM
+        run: |
+          npm sbom --sbom-format cyclonedx > /tmp/jalwa-sbom.json
+          jq -e '.bomFormat == "CycloneDX" and (.components | length) > 0' /tmp/jalwa-sbom.json >/dev/null
       - run: npm run lint
       - run: npm run typecheck
       - run: npm test
@@ -38,10 +47,12 @@ jobs:
           NEXT_PUBLIC_ENABLE_GOOGLE_AUTH: "false"
           NEXT_PUBLIC_ENABLE_APPLE_AUTH: "false"
           NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH: "false"
+          NEXT_PUBLIC_ENABLE_LIVE_STREAMING: "false"
+          NEXT_PUBLIC_ENABLE_WEB_DRM: "false"
 
   database-migrations:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     services:
       postgres:
         image: pgvector/pgvector:0.8.1-pg16
@@ -74,9 +85,35 @@ jobs:
       - name: Apply migrations in order
         run: |
           set -euo pipefail
-          for migration in $(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+          while IFS= read -r migration; do
             echo "Applying ${migration}"
             psql --set ON_ERROR_STOP=1 --file "$migration"
-          done
+          done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)
       - name: Verify production privileges
         run: psql --set ON_ERROR_STOP=1 --file scripts/ci-verify-production-schema.sql
+
+  container-builds:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: validate
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Build production web image
+        run: |
+          docker build --target web \
+            --build-arg NEXT_PUBLIC_APP_URL=http://localhost:3000 \
+            --build-arg NEXT_PUBLIC_SUPABASE_URL=https://api.example.com \
+            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=ci_anon_placeholder \
+            --build-arg NEXT_PUBLIC_ENABLE_PHONE_AUTH=false \
+            --build-arg NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=false \
+            --build-arg NEXT_PUBLIC_ENABLE_APPLE_AUTH=false \
+            --build-arg NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH=false \
+            --build-arg NEXT_PUBLIC_ENABLE_LIVE_STREAMING=false \
+            --build-arg NEXT_PUBLIC_ENABLE_WEB_DRM=false \
+            -t jalwa-web:ci .
+      - name: Build production worker image
+        run: docker build --target worker -t jalwa-worker:ci .
+      - name: Verify runtime images are non-root
+        run: |
+          test "$(docker image inspect --format '{{.Config.User}}' jalwa-web:ci)" = node
+          test "$(docker image inspect --format '{{.Config.User}}' jalwa-worker:ci)" = node
