@@ -30,6 +30,7 @@ export function generateSelfHostedSecrets() {
     RECOMMENDATION_REFRESH_SECRET: secret(),
     CRON_SECRET: secret(),
     ACCOUNT_REQUEST_PROCESSOR_SECRET: secret(),
+    ACCOUNT_DELETION_HASH_SECRET: secret(),
   };
 }
 
