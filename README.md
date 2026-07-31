@@ -1,89 +1,85 @@
 # Jalwa Platform
 
-**Domain:** `watch-jalwa.com`  
-**Market:** Pakistan  
-**Product:** Mobile-first, browser-based freemium content portal with AI-assisted discovery, learning and content operations.
+Jalwa is a mobile-first Pakistani content platform for curated entertainment, learning, Deen, Kissan, technology, rozgar and family-safe discovery. It combines officially embedded third-party content, rights-cleared self-hosted media, Jalwa originals, paid entitlements and a catalogue-grounded AI assistant.
 
-Jalwa is designed as a curated Pakistani content platform rather than a clone of YouTube or a rights-heavy television service. It combines:
+- **Primary market:** Pakistan
+- **Primary domain:** `watch-jalwa.com`
+- **Application model:** responsive web application and PWA
+- **Architecture:** modular monolith with a Next.js web application, background worker, PostgreSQL/Supabase services and Cloudflare R2 media storage
+- **Repository:** private monorepo
 
-- officially embedded third-party content;
-- self-hosted public-domain and commercially reusable open-license content;
-- Jalwa-owned shorts, explainers and programmes;
-- creator and institutional partnerships;
-- freemium subscriptions;
-- an AI assistant grounded in Jalwa's approved catalogue.
+## Current status
 
-## Launch objective
+The repository-side product foundation is implemented and protected by automated release gates:
 
-Launch a working paid product quickly with:
+- catalogue, categories, search, content pages and official YouTube embeds;
+- rights evidence, source records, attribution, expiry and takedown controls;
+- Jalwa Studio content, moderation, support, operations, finance and Premium reporting areas;
+- Supabase authentication, profiles, watch history, account export and deletion workflows;
+- self-hosted media ingestion, FFmpeg processing, MP4/HLS playback and signed media access;
+- plans, prices, checkout orders, payment lifecycle normalization, entitlements and audited finance reports;
+- Ask Jalwa gateway, quotas, moderation and catalogue citations;
+- isolated staging and production infrastructure workflows using immutable commit-SHA images;
+- encrypted off-site backups, restore drills, transactional rollback and release-correlated diagnostics;
+- lint, strict type checking, unit/contract tests, migration tests, dependency audit, SBOM generation, container vulnerability checks, production image boot checks and Chromium desktop/mobile journeys.
 
-1. responsive PWA;
-2. catalogue, categories, search and playback;
-3. user accounts and watch history;
-4. admin content studio;
-5. rights and attribution records;
-6. self-hosted shorts and selected long-form content;
-7. a Pakistan-compatible hosted checkout;
-8. paid entitlements;
-9. AI search and “Ask Jalwa”;
-10. analytics, moderation, takedown and launch operations.
+The latest frontend is built on Vercel. That is not evidence of a full transactional staging or production launch. Live staging and production still require the external environment values, provider accounts, DNS, infrastructure and acceptance evidence listed in [Current status and next-stage gates](docs/16-current-status-and-next-stage-gates.md).
 
-## Recommended launch categories
+## Next operating phase
 
-- Jalwa Originals
-- Shorts
-- Entertainment
-- Deen
-- Kissan & Farming
-- Learn
-- Tech & AI
-- Rozgar, Business & Freelancing
-- Pakistan
-- Kids & Family
-- Health & Life
-- Live
+Repository development is ready to move into four controlled workstreams:
 
-The existing product deck already proposes Deen, Learn, Tech, Pakistan, Grow, Explore, Kids and Life. Jalwa retains that logic while elevating **Kissan & Farming**, **Originals**, **Entertainment** and **Shorts** as explicit acquisition surfaces for Pakistan.
+1. configure the isolated staging environment and retain live acceptance evidence;
+2. onboard an initial rights-cleared catalogue through the governed Studio workflow;
+3. complete merchant/provider, pricing, refund and customer-support decisions;
+4. promote a validated staging release to production only after the production checklist is complete.
 
-## Repository strategy
+See [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md).
 
-Create **one repository now**:
+## Local development
 
-`Watch-Jalwa/jalwa-platform`
+Requirements:
 
-Use a monorepo. Do not create separate frontend, backend, admin and AI repositories at MVP stage.
+- Node.js 22
+- npm 10
+- Docker with Compose for production-container validation
+- PostgreSQL client tools for migration and fixture work
 
-```text
-jalwa-platform/
-├── apps/
-│   ├── web/                 # Consumer PWA + server routes
-│   ├── worker/              # ingestion, FFmpeg and scheduled jobs
-│   └── studio/              # optional later split; start inside web
-├── packages/
-│   ├── ai/
-│   ├── auth/
-│   ├── content/
-│   ├── database/
-│   ├── media/
-│   ├── payments/
-│   ├── ui/
-│   ├── observability/
-│   └── config/
-├── prompts/
-├── evals/
-├── docs/
-├── infrastructure/
-├── scripts/
-└── .github/
+```bash
+npm ci
+npm run dev
 ```
 
-Create additional repositories only after an operational need appears:
+Required validation before opening a pull request:
 
-- `jalwa-infrastructure` — only when infrastructure access must be separated.
-- `jalwa-brand` — only if external designers need independent access.
-- `jalwa-mobile` — only when a native application is actually funded.
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run test:release
+npm run test:backup-encryption
+npm run build
+```
 
-## Documentation index
+The GitHub CI workflow additionally validates infrastructure, applies migrations against a clean PostgreSQL service, audits production dependencies, generates a CycloneDX SBOM, builds and scans production images, boots the production web image and runs browser journeys.
+
+## Repository layout
+
+```text
+apps/
+  web/                         consumer PWA, Studio and server routes
+  worker/                      ingestion, media processing and scheduled work
+supabase/migrations/           forward-only database migrations
+infrastructure/
+  digitalocean/                Terraform host provisioning
+  media-gateway/               Cloudflare media gateway
+  production/                  Compose stack, deployment and acceptance scripts
+scripts/                       release, backup, fixture and validation utilities
+docs/                          product, architecture, operations and handoff documents
+.github/                       CI/CD, Dependabot, templates and ownership rules
+```
+
+## Documentation
 
 1. [Executive product plan](docs/00-executive-plan.md)
 2. [Product requirements](docs/01-product-requirements.md)
@@ -92,37 +88,30 @@ Create additional repositories only after an operational need appears:
 5. [Data model](docs/04-data-model.md)
 6. [Media and streaming](docs/05-media-streaming.md)
 7. [Content rights and operations](docs/06-content-rights-and-operations.md)
-8. [AI-native plan](docs/07-ai-native-platform.md)
+8. [AI-native platform](docs/07-ai-native-platform.md)
 9. [Payments and subscriptions](docs/08-payments-and-subscriptions.md)
 10. [Security, privacy and trust](docs/09-security-privacy-and-trust.md)
-11. [Delivery roadmap and backlog](docs/10-roadmap-and-backlog.md)
+11. [Roadmap and backlog](docs/10-roadmap-and-backlog.md)
 12. [Launch runbook](docs/11-launch-runbook.md)
 13. [Content source catalogue](docs/12-content-source-catalogue.md)
 14. [Repository and engineering workflow](docs/13-repository-and-engineering-workflow.md)
 15. [External references](docs/14-references.md)
+16. [Foundation implementation history](docs/15-phase-1-foundation.md)
+17. [Current status and next-stage gates](docs/16-current-status-and-next-stage-gates.md)
+18. [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md)
 
-## Immediate decisions
+## Non-negotiable release rules
 
-- Use a modular monolith, not microservices.
-- Use hosted checkout; never store card details.
-- Treat subscriptions as entitlements independent of the payment provider.
-- Use YouTube only through official embeds.
-- Keep YouTube content outside premium paywalls.
-- Self-host only content Jalwa owns or has verified distribution rights for.
-- Do not originate live television or sports at MVP.
-- Start with Urdu, English and Roman Urdu metadata.
-- Make every content item carry a source, licence and attribution record.
-- Put all AI calls behind a server-side AI gateway with quotas and audit logs.
+- Never self-host media without approved distribution rights and retained evidence.
+- Never download YouTube content; use official embeds only.
+- Never grant paid access from a browser return URL or screenshot alone.
+- Never store card details; use a hosted provider flow and signed server-side webhooks.
+- Never expose service-role, provider, deployment or media-signing secrets to the browser.
+- Never deploy mutable image tags.
+- Keep live streaming and web DRM disabled until contracted providers and browser acceptance are complete.
+- Treat Vercel previews as frontend evidence only, not full-stack release evidence.
+- Production promotion requires a green `main` commit, staging acceptance, immutable artifacts, backup evidence and explicit approval.
 
-## Implementation status
+## Contributing and security
 
-Phase 1 foundation is implemented on `agent/phase-1-foundation`:
-
-- npm workspaces for the web and worker;
-- Next.js mobile-first PWA shell;
-- Supabase SSR authentication scaffold;
-- Urdu/RTL-ready design foundation;
-- PostgreSQL profiles, roles and audit migration;
-- Docker and GitHub Actions CI.
-
-See [Phase 1 Foundation](docs/15-phase-1-foundation.md).
+Read [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) before changing the repository. Report vulnerabilities through the private process in [SECURITY.md](SECURITY.md); do not open public security issues.
