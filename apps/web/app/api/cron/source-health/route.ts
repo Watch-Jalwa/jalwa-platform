@@ -21,7 +21,8 @@ function validSecret(request: Request) {
 function privateIpv4(address: string) {
   const parts = address.split(".").map(Number);
   if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return true;
-  const [a, b] = parts;
+  const a = parts[0] ?? -1;
+  const b = parts[1] ?? -1;
   return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 198 && (b === 18 || b === 19));
 }
 
@@ -31,7 +32,7 @@ function privateIp(address: string) {
   if (isIP(normalized) === 6) {
     if (normalized === "::" || normalized === "::1" || normalized.startsWith("fc") || normalized.startsWith("fd") || normalized.startsWith("fe8") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb")) return true;
     const mapped = normalized.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-    return mapped ? privateIpv4(mapped[1]) : false;
+    return mapped?.[1] ? privateIpv4(mapped[1]) : false;
   }
   return true;
 }
@@ -90,7 +91,8 @@ export async function POST(request: Request) {
   const admin = createAdminClient();
   const { data: sources, error } = await admin.from("playback_sources").select("id,provider,provider_content_id,embed_url,media_url,external_url").eq("status", "active").limit(500);
   if (error) return NextResponse.json({ error: "Source inventory unavailable." }, { status: 500 });
-  const ids = (sources ?? []).map((source) => source.id);
+  const sourceRows = (sources ?? []) as Source[];
+  const ids = sourceRows.map((source) => source.id);
   const { data: previousRows } = ids.length
     ? await admin.from("playback_source_health").select("playback_source_id,consecutive_failures").in("playback_source_id", ids)
     : { data: [] };
@@ -101,10 +103,10 @@ export async function POST(request: Request) {
   let unavailable = 0;
 
   async function worker() {
-    while (cursor < (sources?.length ?? 0)) {
-      const index = cursor;
+    while (cursor < sourceRows.length) {
+      const source = sourceRows[cursor];
       cursor += 1;
-      const source = (sources ?? [])[index] as Source;
+      if (!source) continue;
       const result = await checkSource(source);
       const failures = result.ok ? 0 : (previous.get(source.id) ?? 0) + 1;
       results.push({ playback_source_id: source.id, status: result.ok ? "healthy" : failures >= 3 ? "unavailable" : "degraded", consecutive_failures: failures, checked_at: new Date().toISOString(), message: result.message });
@@ -112,10 +114,10 @@ export async function POST(request: Request) {
     }
   }
 
-  await Promise.all(Array.from({ length: Math.min(8, Math.max(1, sources?.length ?? 0)) }, () => worker()));
+  await Promise.all(Array.from({ length: Math.min(8, Math.max(1, sourceRows.length)) }, () => worker()));
   if (results.length) {
     const { error: writeError } = await admin.from("playback_source_health").upsert(results, { onConflict: "playback_source_id" });
     if (writeError) return NextResponse.json({ error: "Source health results could not be stored." }, { status: 500 });
   }
-  return NextResponse.json({ checked: sources?.length ?? 0, healthy, unavailable, checkedAt: new Date().toISOString() });
+  return NextResponse.json({ checked: sourceRows.length, healthy, unavailable, checkedAt: new Date().toISOString() });
 }
