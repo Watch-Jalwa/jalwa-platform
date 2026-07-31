@@ -10,9 +10,40 @@ function value(formData: FormData, key: string) {
   return typeof item === "string" ? item.trim() : "";
 }
 
+function checked(formData: FormData, key: string) {
+  return formData.get(key) === "on";
+}
+
+function optionalExpiry(formData: FormData) {
+  const raw = value(formData, "expiresAt");
+  if (!raw) return null;
+  const parsed = new Date(`${raw}T23:59:59.999Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.toISOString();
+}
+
 function safeSlug(title: string) {
   const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60);
   return `${slug || "content"}-${crypto.randomUUID().slice(0, 6)}`;
+}
+
+function contentPath(id: string, error?: string) {
+  return error ? `/studio/content/${id}?error=${encodeURIComponent(error)}` : `/studio/content/${id}`;
+}
+
+async function recordAudit(
+  supabase: Awaited<ReturnType<typeof requireStaff>>["supabase"],
+  actorId: string,
+  action: string,
+  entityId: string,
+  metadata: Record<string, unknown> = {},
+) {
+  await supabase.from("audit_logs").insert({
+    actor_id: actorId,
+    action,
+    entity_type: "content_item",
+    entity_id: entityId,
+    metadata,
+  });
 }
 
 export async function importYouTubeAction(formData: FormData) {
@@ -78,11 +109,43 @@ export async function createContentDraftAction(formData: FormData) {
   redirect(`/studio/content/${data.id}`);
 }
 
+export async function updateRightsAction(formData: FormData) {
+  const { supabase, user } = await requireStaff();
+  const id = value(formData, "id");
+  const rightsId = value(formData, "rightsId");
+  const { error } = await supabase.from("rights_records").update({
+    source_url: value(formData, "sourceUrl"),
+    creator: value(formData, "creator") || null,
+    licence_code: value(formData, "licenceCode") || null,
+    attribution_text: value(formData, "attributionText") || null,
+    evidence_url: value(formData, "evidenceUrl") || null,
+    evidence_note: value(formData, "evidenceNote") || null,
+    takedown_contact: value(formData, "takedownContact") || null,
+    expires_at: optionalExpiry(formData),
+    review_notes: value(formData, "reviewNotes") || null,
+    commercial_use_confirmed: checked(formData, "commercialUseConfirmed"),
+    modification_confirmed: checked(formData, "modificationConfirmed"),
+    self_hosting_confirmed: checked(formData, "selfHostingConfirmed"),
+    embedding_confirmed: checked(formData, "embeddingConfirmed"),
+    status: "pending",
+    verified_by: null,
+    verified_at: null,
+  }).eq("id", rightsId).eq("content_id", id);
+  if (error) redirect(contentPath(id, error.message));
+  await recordAudit(supabase, user.id, "rights_record_updated", id, { rights_id: rightsId });
+  revalidatePath(contentPath(id));
+  revalidatePath("/studio/content");
+  redirect(contentPath(id));
+}
+
 export async function submitRightsReviewAction(formData: FormData) {
   const { supabase, user } = await requireStaff();
   const id = value(formData, "id");
-  await supabase.from("content_items").update({ status: "rights_review", updated_by: user.id }).eq("id", id).eq("status", "draft");
-  revalidatePath(`/studio/content/${id}`);
+  const { error } = await supabase.from("content_items").update({ status: "rights_review", updated_by: user.id }).eq("id", id).in("status", ["draft", "unavailable"]);
+  if (error) redirect(contentPath(id, error.message));
+  await recordAudit(supabase, user.id, "rights_review_requested", id);
+  revalidatePath(contentPath(id));
+  revalidatePath("/studio/content");
 }
 
 export async function approveRightsAction(formData: FormData) {
@@ -90,16 +153,49 @@ export async function approveRightsAction(formData: FormData) {
   if (profile.role !== "rights_reviewer" && profile.role !== "admin") redirect("/studio");
   const id = value(formData, "id");
   const rightsId = value(formData, "rightsId");
-  const { error } = await supabase.from("rights_records").update({ status: "approved", embedding_confirmed: true, verified_by: user.id, verified_at: new Date().toISOString() }).eq("id", rightsId).eq("content_id", id);
-  if (!error) await supabase.from("content_items").update({ status: "editorial_review", updated_by: user.id }).eq("id", id);
-  revalidatePath(`/studio/content/${id}`);
+  const { error } = await supabase.from("rights_records").update({
+    status: "approved",
+    verified_by: user.id,
+    verified_at: new Date().toISOString(),
+  }).eq("id", rightsId).eq("content_id", id);
+  if (error) redirect(contentPath(id, error.message));
+  const { error: contentError } = await supabase.from("content_items").update({ status: "editorial_review", updated_by: user.id }).eq("id", id);
+  if (contentError) redirect(contentPath(id, contentError.message));
+  await recordAudit(supabase, user.id, "rights_approved", id, { rights_id: rightsId });
+  revalidatePath(contentPath(id));
+  revalidatePath("/studio/content");
 }
 
 export async function publishContentAction(formData: FormData) {
   const { supabase, user } = await requireStaff();
   const id = value(formData, "id");
-  await supabase.from("content_items").update({ status: "published", publish_at: new Date().toISOString(), updated_by: user.id }).eq("id", id);
-  revalidatePath(`/studio/content/${id}`);
+  const { error } = await supabase.from("content_items").update({
+    status: "published",
+    publish_at: new Date().toISOString(),
+    unpublish_at: null,
+    updated_by: user.id,
+  }).eq("id", id);
+  if (error) redirect(contentPath(id, error.message));
+  await recordAudit(supabase, user.id, "content_published", id);
+  revalidatePath(contentPath(id));
+  revalidatePath("/studio/content");
+  revalidatePath("/");
+  revalidatePath("/explore");
+}
+
+export async function unpublishContentAction(formData: FormData) {
+  const { supabase, user } = await requireStaff();
+  const id = value(formData, "id");
+  const reason = value(formData, "reason") || "Manual operational takedown";
+  const { error } = await supabase.from("content_items").update({
+    status: "unavailable",
+    unpublish_at: new Date().toISOString(),
+    updated_by: user.id,
+  }).eq("id", id);
+  if (error) redirect(contentPath(id, error.message));
+  await recordAudit(supabase, user.id, "content_unpublished", id, { reason });
+  revalidatePath(contentPath(id));
+  revalidatePath("/studio/content");
   revalidatePath("/");
   revalidatePath("/explore");
 }
