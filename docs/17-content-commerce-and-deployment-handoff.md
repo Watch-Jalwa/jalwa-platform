@@ -181,23 +181,11 @@ Production mock payments must remain disabled.
 - unresolved fixed critical/high shipped vulnerability;
 - AI disclosure of private or unpublished data.
 
-## Store distribution decision
+## Product delivery boundary
 
-The current product is a PWA deployed on the web. After staging proves retention, playback, content operations and commerce, decide whether store packaging is justified.
+The approved product is a mobile-first responsive web application and installable PWA. Native Android/iOS applications, Google Play distribution and Apple App Store distribution are out of scope for this operating plan.
 
-A native/store workstream must separately define:
-
-- Android/iOS packaging approach;
-- Google Play and Apple developer accounts;
-- store payment-policy impact on Premium;
-- privacy nutrition/disclosure forms;
-- age ratings and content declarations;
-- screenshots, listing copy and support URLs;
-- deep links, notifications, downloads and background behaviour;
-- release signing, review, staged rollout and update ownership;
-- representative device acceptance.
-
-Do not wrap the website solely to claim store availability before the web product and support operation are stable.
+The web/PWA workstream must still provide strong mobile-browser support, installability, responsive navigation, low-data behaviour, playback, hosted checkout and acceptance on representative Android and iOS browsers. Native packaging, store accounts, store payment policies, signing and store review are not launch tasks.
 
 ## Recommended immediate order
 
@@ -208,5 +196,4 @@ Do not wrap the website solely to claim store availability before the web produc
 5. complete merchant/provider selection and sandbox integration;
 6. run full staging customer, content and finance acceptance;
 7. prepare production accounts, policies and owners;
-8. promote a proven release;
-9. evaluate native/store distribution after live web evidence exists.
+8. promote a proven release.
