@@ -35,6 +35,7 @@ function authorized(request: Request) {
 export async function GET(request: Request) {
   const liveEnabled = process.env.ENABLE_LIVE_STREAMING === "true";
   const drmEnabled = process.env.ENABLE_WEB_DRM === "true";
+  const deploymentEnvironment = process.env.DEPLOYMENT_ENVIRONMENT ?? "production";
   const paymentProvider = process.env.PAYMENT_PROVIDER ?? "unconfigured";
   const paymentNames = paymentRequirements[paymentProvider] ?? [];
   const names = [...required, ...paymentNames, ...(liveEnabled ? liveRequired : []), ...(drmEnabled ? drmRequired : [])];
@@ -62,7 +63,9 @@ export async function GET(request: Request) {
   }
 
   const frontendPreview = process.env.NEXT_PUBLIC_FRONTEND_PREVIEW === "true" || process.env.VERCEL_ENV === "preview";
-  const paymentReady = process.env.NODE_ENV !== "production" || frontendPreview || (Boolean(paymentRequirements[paymentProvider]) && paymentNames.every((name) => Boolean(process.env[name])));
+  const stagingMock = deploymentEnvironment === "staging" && paymentProvider === "mock" && process.env.ALLOW_MOCK_PAYMENTS === "true";
+  const realPaymentReady = Boolean(paymentRequirements[paymentProvider]) && paymentNames.every((name) => Boolean(process.env[name]));
+  const paymentReady = process.env.NODE_ENV !== "production" || frontendPreview || stagingMock || realPaymentReady;
   const liveReady = !liveEnabled || liveRequired.every((name) => Boolean(process.env[name]));
   const drmReady = !drmEnabled || drmRequired.every((name) => Boolean(process.env[name]));
   const ready = missing.length === 0 && database === "ready" && migrations === "ready" && paymentReady && liveReady && drmReady;
@@ -74,6 +77,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     ...base,
+    deploymentEnvironment,
     database,
     migrations,
     migrationIssues,
