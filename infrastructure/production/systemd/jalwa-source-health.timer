@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Jalwa source health checks every six hours
+
+[Timer]
+OnCalendar=*-*-* 00/6:20:00
+RandomizedDelaySec=15m
+Persistent=true
+Unit=jalwa-source-health.service
+
+[Install]
+WantedBy=timers.target
