@@ -19,11 +19,13 @@ env:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: production
     env:
       SUPABASE_DOCKER_REF: ${{ vars.SUPABASE_DOCKER_REF }}
       PRODUCTION_HOST: ${{ vars.PRODUCTION_HOST }}
       PRODUCTION_DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
+      PRODUCTION_SSH_KNOWN_HOSTS: ${{ vars.PRODUCTION_SSH_KNOWN_HOSTS }}
       PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}
       ENABLE_PHONE_AUTH: ${{ vars.ENABLE_PHONE_AUTH || 'false' }}
       ENABLE_GOOGLE_AUTH: ${{ vars.ENABLE_GOOGLE_AUTH || 'false' }}
@@ -41,6 +43,9 @@ jobs:
       MEDIA_SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
       RATE_LIMIT_SALT: ${{ secrets.RATE_LIMIT_SALT }}
       RECOMMENDATION_REFRESH_SECRET: ${{ secrets.RECOMMENDATION_REFRESH_SECRET }}
+      CRON_SECRET: ${{ secrets.CRON_SECRET }}
+      ACCOUNT_REQUEST_PROCESSOR_SECRET: ${{ secrets.ACCOUNT_REQUEST_PROCESSOR_SECRET }}
+      ACCOUNT_DELETION_HASH_SECRET: ${{ secrets.ACCOUNT_DELETION_HASH_SECRET }}
       DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
       PAYMENT_WEBHOOK_SECRET: ${{ secrets.PAYMENT_WEBHOOK_SECRET }}
       POSTGRES_PASSWORD: ${{ secrets.SELF_HOSTED_POSTGRES_PASSWORD }}
@@ -87,13 +92,22 @@ jobs:
       DRM_PACKAGING_KEY_URL: ${{ secrets.DRM_PACKAGING_KEY_URL }}
       DRM_PACKAGING_KEY_AUTHORIZATION: ${{ secrets.DRM_PACKAGING_KEY_AUTHORIZATION }}
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - name: Validate production configuration
         run: |
           set -euo pipefail
-          required=(SUPABASE_DOCKER_REF PRODUCTION_HOST PRODUCTION_DOMAIN PRODUCTION_SSH_KEY GHCR_USERNAME GHCR_DEPLOY_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY MEDIA_SIGNING_SECRET RATE_LIMIT_SALT RECOMMENDATION_REFRESH_SECRET DEEPSEEK_API_KEY PAYMENT_WEBHOOK_SECRET POSTGRES_PASSWORD JWT_SECRET ANON_KEY SERVICE_ROLE_KEY DASHBOARD_PASSWORD SECRET_KEY_BASE VAULT_ENC_KEY PG_META_CRYPTO_KEY LOGFLARE_PUBLIC_TOKEN LOGFLARE_PRIVATE_TOKEN POOLER_TENANT_ID SMTP_HOST SMTP_USER SMTP_PASS SMTP_ADMIN_EMAIL SMTP_SENDER_NAME)
+          required=(
+            SUPABASE_DOCKER_REF PRODUCTION_HOST PRODUCTION_DOMAIN PRODUCTION_SSH_KNOWN_HOSTS
+            PRODUCTION_SSH_KEY GHCR_USERNAME GHCR_DEPLOY_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID
+            R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY MEDIA_SIGNING_SECRET RATE_LIMIT_SALT
+            RECOMMENDATION_REFRESH_SECRET CRON_SECRET ACCOUNT_REQUEST_PROCESSOR_SECRET ACCOUNT_DELETION_HASH_SECRET
+            DEEPSEEK_API_KEY PAYMENT_WEBHOOK_SECRET POSTGRES_PASSWORD JWT_SECRET ANON_KEY SERVICE_ROLE_KEY
+            DASHBOARD_PASSWORD SECRET_KEY_BASE VAULT_ENC_KEY PG_META_CRYPTO_KEY LOGFLARE_PUBLIC_TOKEN
+            LOGFLARE_PRIVATE_TOKEN POOLER_TENANT_ID SMTP_HOST SMTP_USER SMTP_PASS SMTP_ADMIN_EMAIL SMTP_SENDER_NAME
+          )
           for name in "${required[@]}"; do test -n "${!name:-}" || { echo "Missing $name" >&2; exit 1; }; done
           [[ "$SUPABASE_DOCKER_REF" =~ ^[0-9a-f]{40}$ ]] || { echo 'SUPABASE_DOCKER_REF must be a pinned commit SHA.' >&2; exit 1; }
+          grep -q "$PRODUCTION_HOST" <<<"$PRODUCTION_SSH_KNOWN_HOSTS" || { echo 'Pinned SSH host key does not contain PRODUCTION_HOST.' >&2; exit 1; }
           [[ "$PAYMENT_PROVIDER" =~ ^(payfast|jazzcash|easypaisa)$ ]] || { echo 'A real payment provider is required.' >&2; exit 1; }
           case "$PAYMENT_PROVIDER" in
             payfast) names=(PAYFAST_CHECKOUT_URL PAYFAST_MERCHANT_ID PAYFAST_SECRET) ;;
@@ -111,10 +125,11 @@ jobs:
 
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     environment: production
     needs: validate
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - uses: docker/setup-buildx-action@v4
       - uses: docker/login-action@v4
         with:
@@ -156,10 +171,11 @@ jobs:
 
   media-gateway:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     environment: production
     needs: build
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - name: Deploy signed media gateway
         uses: cloudflare/wrangler-action@v3
         with:
@@ -169,11 +185,14 @@ jobs:
           command: deploy --domain media.${{ vars.PRODUCTION_DOMAIN }}
           secrets: |
             MEDIA_SIGNING_SECRET
+            MEDIA_GATEWAY_ALLOWED_ORIGINS
         env:
           MEDIA_SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
+          MEDIA_GATEWAY_ALLOWED_ORIGINS: https://${{ vars.PRODUCTION_DOMAIN }},https://www.${{ vars.PRODUCTION_DOMAIN }}
 
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     environment: production
     needs: [build, media-gateway]
     env:
@@ -182,16 +201,20 @@ jobs:
       DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
       SUPABASE_DOCKER_REF: ${{ vars.SUPABASE_DOCKER_REF }}
     steps:
-      - uses: actions/checkout@v6
-      - name: Configure SSH
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Configure pinned SSH host identity
         env:
           SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+          KNOWN_HOSTS: ${{ vars.PRODUCTION_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
-          chmod 600 ~/.ssh/jalwa
-          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
+
       - name: Generate production runtime environments
         env:
           POSTGRES_PASSWORD: ${{ secrets.SELF_HOSTED_POSTGRES_PASSWORD }}
@@ -235,6 +258,9 @@ jobs:
           MEDIA_SIGNING_SECRET: ${{ secrets.MEDIA_SIGNING_SECRET }}
           RATE_LIMIT_SALT: ${{ secrets.RATE_LIMIT_SALT }}
           RECOMMENDATION_REFRESH_SECRET: ${{ secrets.RECOMMENDATION_REFRESH_SECRET }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          ACCOUNT_REQUEST_PROCESSOR_SECRET: ${{ secrets.ACCOUNT_REQUEST_PROCESSOR_SECRET }}
+          ACCOUNT_DELETION_HASH_SECRET: ${{ secrets.ACCOUNT_DELETION_HASH_SECRET }}
           DRM_WIDEVINE_LICENSE_URL: ${{ secrets.DRM_WIDEVINE_LICENSE_URL }}
           DRM_FAIRPLAY_LICENSE_URL: ${{ secrets.DRM_FAIRPLAY_LICENSE_URL }}
           DRM_FAIRPLAY_CERTIFICATE_URL: ${{ secrets.DRM_FAIRPLAY_CERTIFICATE_URL }}
@@ -253,6 +279,8 @@ jobs:
           EASYPAISA_CHECKOUT_URL: ${{ secrets.EASYPAISA_CHECKOUT_URL }}
           EASYPAISA_STORE_ID: ${{ secrets.EASYPAISA_STORE_ID }}
           EASYPAISA_SECRET: ${{ secrets.EASYPAISA_SECRET }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          ANALYTICS_KEY: ${{ secrets.ANALYTICS_KEY }}
         run: |
           set -euo pipefail
           umask 077
@@ -283,8 +311,19 @@ jobs:
           R2_BACKUP_BUCKET=jalwa-backups
           NEXT_PUBLIC_MEDIA_GATEWAY_URL=https://media.$DOMAIN
           MEDIA_SIGNING_SECRET=$MEDIA_SIGNING_SECRET
+          MEDIA_GATEWAY_ALLOWED_ORIGINS=https://$DOMAIN,https://www.$DOMAIN
           RATE_LIMIT_SALT=$RATE_LIMIT_SALT
+          CRON_SECRET=$CRON_SECRET
           RECOMMENDATION_REFRESH_SECRET=$RECOMMENDATION_REFRESH_SECRET
+          ACCOUNT_REQUEST_PROCESSOR_SECRET=$ACCOUNT_REQUEST_PROCESSOR_SECRET
+          ACCOUNT_DELETION_HASH_SECRET=$ACCOUNT_DELETION_HASH_SECRET
+          WORKER_POLL_INTERVAL_MS=5000
+          WORKER_HEARTBEAT_PATH=/tmp/jalwa-worker-heartbeat
+          MEDIA_PROCESS_TIMEOUT_MS=7200000
+          MEDIA_MAX_DURATION_SECONDS=43200
+          OFFLINE_PUBLIC_TTL_SECONDS=604800
+          BACKUP_LOCAL_RETENTION_DAYS=14
+          BACKUP_REMOTE_RETENTION_DAYS=35
           CLOUDFLARE_STREAM_API_TOKEN=$CLOUDFLARE_STREAM_API_TOKEN
           CLOUDFLARE_STREAM_CUSTOMER_CODE=$CLOUDFLARE_STREAM_CUSTOMER_CODE
           DRM_WIDEVINE_LICENSE_URL=$DRM_WIDEVINE_LICENSE_URL
@@ -317,6 +356,8 @@ jobs:
           EASYPAISA_CHECKOUT_URL=$EASYPAISA_CHECKOUT_URL
           EASYPAISA_STORE_ID=$EASYPAISA_STORE_ID
           EASYPAISA_SECRET=$EASYPAISA_SECRET
+          SENTRY_DSN=$SENTRY_DSN
+          ANALYTICS_KEY=$ANALYTICS_KEY
           JALWA_IMAGE_TAG=${{ github.sha }}
           GIT_SHA=${{ github.sha }}
           EOF
@@ -370,10 +411,11 @@ jobs:
           FACEBOOK_CLIENT_ID=$FACEBOOK_CLIENT_ID
           FACEBOOK_SECRET=$FACEBOOK_SECRET
           EOF
+
       - name: Copy production configuration
         run: |
           set -euo pipefail
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'mkdir -p /opt/jalwa/scripts /opt/jalwa/systemd /opt/jalwa/migrations /opt/jalwa/supabase'
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'mkdir -p /opt/jalwa/scripts /opt/jalwa/systemd /opt/jalwa/migrations /opt/jalwa/supabase /opt/jalwa/backups/postgres /opt/jalwa/operations'
           scp -i ~/.ssh/jalwa infrastructure/production/docker-compose.yml infrastructure/production/Caddyfile "$USER@$HOST:/opt/jalwa/"
           scp -i ~/.ssh/jalwa infrastructure/production/scripts/*.sh "$USER@$HOST:/opt/jalwa/scripts/"
           scp -i ~/.ssh/jalwa infrastructure/production/systemd/* "$USER@$HOST:/opt/jalwa/systemd/"
@@ -382,19 +424,23 @@ jobs:
           scp -i ~/.ssh/jalwa /tmp/jalwa.env "$USER@$HOST:/opt/jalwa/.env.production"
           scp -i ~/.ssh/jalwa /tmp/supabase.env "$USER@$HOST:/opt/jalwa/.env.supabase"
           ssh -i ~/.ssh/jalwa "$USER@$HOST" 'chmod 600 /opt/jalwa/.env.production /opt/jalwa/.env.supabase && chmod 750 /opt/jalwa/scripts/*.sh'
-      - name: Start self-hosted Supabase and migrate
+
+      - name: Start database, back up, migrate, and install operations
         run: |
           set -euo pipefail
           ssh -i ~/.ssh/jalwa "$USER@$HOST" "SUPABASE_DOCKER_REF='$SUPABASE_DOCKER_REF' /opt/jalwa/scripts/prepare-supabase.sh"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "BACKUP_REASON=pre-migration /opt/jalwa/scripts/backup-postgres.sh"
           ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/apply-migrations.sh"
           ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/install-operations.sh"
-      - name: Pull, restart and verify Jalwa
+
+      - name: Deploy application transactionally
         env:
           GHCR_USERNAME: ${{ secrets.GHCR_USERNAME }}
           GHCR_DEPLOY_TOKEN: ${{ secrets.GHCR_DEPLOY_TOKEN }}
         run: |
           set -euo pipefail
           printf '%s' "$GHCR_DEPLOY_TOKEN" | ssh -i ~/.ssh/jalwa "$USER@$HOST" "docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin"
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" "cd /opt/jalwa && docker compose --env-file .env.production pull && docker compose --env-file .env.production up -d --remove-orphans"
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/smoke-test.sh https://$DOMAIN https://api.$DOMAIN"
-          ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/backup-postgres.sh"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/deploy-release.sh '${{ github.sha }}' '$DOMAIN'"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "BACKUP_REASON=post-deploy /opt/jalwa/scripts/backup-postgres.sh"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/run-source-health.sh"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/run-account-requests.sh"
