@@ -75,8 +75,6 @@ export function EmptyState({ children }: { children: ReactNode }) {
 
 export function ExportLink({ type, params, enabled = true }: { type: string; params: ReportSearch; enabled?: boolean }) {
   if (!enabled) return <span className={styles.disabledExport}>Export permission required</span>;
-  // A normal anchor is required so the browser preserves the backend filename and content type.
-  // eslint-disable-next-line @next/next/no-html-link-for-pages
   return <a className="button button-secondary" href={`/api/studio/premium-reports/export/${type}${queryString(params, { page: null })}`}>Export CSV</a>;
 }
 
