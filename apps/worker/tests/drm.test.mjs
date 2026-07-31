@@ -2,17 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildAudioArgs, buildPackagerArgs, buildVideoArgs } from "../src/drm.mjs";
 
-test("DRM renditions use fixed GOPs and remove audio from video tracks", () => {
-  const args = buildVideoArgs("input.mp4","720.mp4",720);
+test("DRM renditions use fixed GOPs, local protocols and remove audio", () => {
+  const args = buildVideoArgs("input.mp4", "720.mp4", 720);
   assert.ok(args.includes("-an"));
   assert.ok(args.includes("-g"));
   assert.ok(args.includes("144"));
+  assert.ok(args.includes("-nostdin"));
+  assert.ok(args.includes("file,pipe,crypto,data"));
 });
 
 test("audio packaging maps an explicit audio stream", () => {
-  const args = buildAudioArgs("input.mp4","audio.mp4");
+  const args = buildAudioArgs("input.mp4", "audio.mp4");
   assert.ok(args.includes("0:a:0"));
   assert.ok(args.includes("128k"));
+  assert.ok(args.includes("-protocol_whitelist"));
 });
 
 test("Shaka packaging creates encrypted HLS and DASH without offline sessions", () => {
