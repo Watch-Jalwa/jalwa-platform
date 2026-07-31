@@ -1,0 +1,11 @@
+[Unit]
+Description=Process Jalwa privacy requests every fifteen minutes
+
+[Timer]
+OnCalendar=*:0/15
+RandomizedDelaySec=2m
+Persistent=true
+Unit=jalwa-account-requests.service
+
+[Install]
+WantedBy=timers.target
