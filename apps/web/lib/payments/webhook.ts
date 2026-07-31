@@ -43,7 +43,14 @@ export async function processPaymentEvent(rawBody: string, signature: string | n
     payload_hash: payloadHash,
     status: "received",
   }, { onConflict: "provider,provider_event_id", ignoreDuplicates: true });
-  if (eventError) return { ok: false as const, status: 500, error: eventError.message };
+  if (eventError) {
+    console.error("payment_webhook_event_persist_failed", {
+      provider: event.provider,
+      eventId: event.eventId,
+      error: eventError.message,
+    });
+    return { ok: false as const, status: 500, error: "Payment event could not be recorded." };
+  }
 
   const { data, error } = await admin.rpc("process_payment_lifecycle_event", {
     p_order_id: event.orderId,
@@ -58,8 +65,21 @@ export async function processPaymentEvent(rawBody: string, signature: string | n
   });
 
   if (error) {
-    await admin.from("webhook_events").update({ status: "failed", error_message: error.message }).eq("provider", event.provider).eq("provider_event_id", event.eventId);
-    return { ok: false as const, status: 400, error: error.message };
+    const replayMismatch = /payment event replay mismatch/i.test(error.message);
+    if (!replayMismatch) {
+      await admin.from("webhook_events").update({ status: "failed", error_message: error.message.slice(0, 1000) }).eq("provider", event.provider).eq("provider_event_id", event.eventId);
+    }
+    console.warn("payment_webhook_event_rejected", {
+      provider: event.provider,
+      eventId: event.eventId,
+      replayMismatch,
+      error: error.message,
+    });
+    return {
+      ok: false as const,
+      status: replayMismatch ? 409 : 400,
+      error: replayMismatch ? "Conflicting payment event replay." : "Payment event rejected.",
+    };
   }
 
   return { ok: true as const, result: (data ?? {}) as PaymentLifecycleResult };
