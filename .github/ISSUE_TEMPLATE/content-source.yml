@@ -1,0 +1,77 @@
+name: Content source review
+description: Propose a channel, collection, institution or asset source for Jalwa
+title: "[Content source]: "
+body:
+  - type: input
+    id: source
+    attributes:
+      label: Source name
+    validations:
+      required: true
+  - type: input
+    id: url
+    attributes:
+      label: Official source URL
+      placeholder: Use the original publisher or rights-holder URL.
+    validations:
+      required: true
+  - type: dropdown
+    id: delivery
+    attributes:
+      label: Proposed delivery
+      options:
+        - Official third-party embed
+        - External link
+        - Rights-cleared self-hosted media
+        - Text/database integration
+        - Jalwa original using source material
+    validations:
+      required: true
+  - type: textarea
+    id: rights
+    attributes:
+      label: Rights basis
+      description: State the licence, written permission, public-domain basis or platform embed terms. Do not assume public availability means reusable.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence to retain
+      description: Licence URL, contract, permission email, rights statement, screenshots, version/date and attribution requirements.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Territory, duration and commercial scope
+      description: Include Pakistan availability, expiry, monetisation and whether editing/subtitles are allowed.
+    validations:
+      required: true
+  - type: textarea
+    id: value
+    attributes:
+      label: Pakistani audience value
+      description: Category, language, target audience, expected catalogue size and localisation effort.
+    validations:
+      required: true
+  - type: textarea
+    id: safety
+    attributes:
+      label: Editorial and safety review
+      description: Accuracy, age suitability, religious/medical/agricultural review, creator reputation, music/performer clearances and brand risk.
+  - type: textarea
+    id: takedown
+    attributes:
+      label: Review, expiry and takedown owner
+    validations:
+      required: true
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: This proposal creates a draft/review task only and does not authorize publication.
+          required: true
+        - label: I have not downloaded or proposed mirroring YouTube media.
+          required: true
