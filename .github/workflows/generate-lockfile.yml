@@ -1,0 +1,46 @@
+name: Generate dependency lockfile
+
+on:
+  push:
+    branches:
+      - agent/production-lifecycle-hardening
+    paths:
+      - package.json
+      - apps/web/package.json
+      - apps/worker/package.json
+      - .github/workflows/generate-lockfile.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jalwa-lockfile-generation
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/production-lifecycle-hardening
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Generate lockfile without lifecycle scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Commit generated lockfile
+        run: |
+          set -euo pipefail
+          git add package-lock.json
+          if git diff --cached --quiet; then
+            echo 'Lockfile is already current.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Lock production dependencies'
+          git push origin HEAD:agent/production-lifecycle-hardening
