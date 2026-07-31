@@ -19,7 +19,7 @@ import "./phase7.css";
 import "./phase8.css";
 
 const isFrontendPreview = process.env.NEXT_PUBLIC_FRONTEND_PREVIEW === "true" || process.env.VERCEL_ENV === "preview";
-const isStaging = process.env.NEXT_PUBLIC_STAGING === "true";
+const isStaging = process.env.DEPLOYMENT_ENVIRONMENT === "staging";
 const deploymentUrl = process.env.NEXT_PUBLIC_APP_URL ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
 
 export const metadata: Metadata = {
