@@ -35,6 +35,10 @@ ENV NODE_ENV=production HOME=/tmp
 COPY --chown=node:node --from=builder /app/apps/web/.next/standalone ./
 COPY --chown=node:node --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 COPY --chown=node:node --from=builder /app/apps/web/public ./apps/web/public
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /root/.npm \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+  && test ! -e /usr/local/bin/npm \
+  && test ! -e /usr/local/bin/npx
 USER node
 EXPOSE 3000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
@@ -59,6 +63,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 COPY --chown=node:node --from=deps /app/node_modules ./node_modules
 COPY --chown=node:node package.json package-lock.json ./
 COPY --chown=node:node apps/worker ./apps/worker
+RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /root/.npm \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+  && test ! -e /usr/local/bin/npm \
+  && test ! -e /usr/local/bin/npx
 USER node
 HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
   CMD ["node", "-e", "const fs=require('node:fs');const p=process.env.WORKER_HEARTBEAT_PATH||'/tmp/jalwa-worker-heartbeat';if(Date.now()-fs.statSync(p).mtimeMs>120000)process.exit(1)"]
