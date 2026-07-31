@@ -25,7 +25,7 @@ jobs:
         run: |
           terraform fmt -check -recursive infrastructure/digitalocean
           infrastructure/production/scripts/validate-production.sh
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
           package-manager-cache: false
@@ -135,7 +135,7 @@ jobs:
           test "$(docker image inspect --format '{{json .Config.Healthcheck.Test}}' jalwa-worker:ci)" != null
       - name: Boot and test production web image
         run: bash scripts/test-production-container.sh jalwa-web:ci "$GITHUB_SHA"
-      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
           package-manager-cache: false
