@@ -380,7 +380,7 @@ as $$
   ), candidates as (
     select c.*,cat.name_en as category_name,cat.slug as category_slug,
       coalesce(a.score,0)*1.8 + coalesce(t.score,0)*0.15 + coalesce(s.score,0)*8
-      + greatest(0,30-extract(day from now()-coalesce(c.published_at,c.created_at)))*0.04
+      + greatest(0,30-extract(day from now()-coalesce(c.publish_at,c.created_at)))*0.04
       - case when exists(select 1 from public.watch_progress wp join profile p on p.id=wp.viewer_profile_id where wp.content_id=c.id and wp.completed) then 4 else 0 end
       - case when exists(select 1 from public.recommendation_events e join profile p on p.id=e.viewer_profile_id where e.content_id=c.id and e.event_type in ('hide','report') and e.created_at>now()-interval '180 days') then 100 else 0 end
       as score,
@@ -402,7 +402,7 @@ as $$
   )
   select c.id,c.slug,c.title_en,c.title_ur,c.description_en,c.category_name,c.category_slug,c.duration_seconds,c.access_level,c.content_type,c.hosting_mode,c.thumbnail_url,c.score,c.reason
   from candidates c
-  order by c.score desc,c.published_at desc nulls last,c.created_at desc
+  order by c.score desc,c.publish_at desc nulls last,c.created_at desc
   limit greatest(1,least(coalesce(p_limit,24),60));
 $$;
 
