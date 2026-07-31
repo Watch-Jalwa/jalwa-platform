@@ -3,20 +3,23 @@ set -Eeuo pipefail
 umask 077
 
 ENV_FILE="${ENV_FILE:-/opt/jalwa/.env.production}"
+BACKUP_ENV_FILE="${BACKUP_ENV_FILE:-/opt/jalwa/.env.backup}"
 BACKUP_DIR="${BACKUP_DIR:-/opt/jalwa/backups/postgres}"
 DB_CONTAINER="${DB_CONTAINER:-supabase-db}"
 R2_BACKUP_BUCKET="${R2_BACKUP_BUCKET:-jalwa-backups}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-if [[ -r "$ENV_FILE" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$ENV_FILE"
-  set +a
-fi
+for environment_file in "$ENV_FILE" "$BACKUP_ENV_FILE"; do
+  if [[ -r "$environment_file" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$environment_file"
+    set +a
+  fi
+done
 
-: "${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY is required}"
-: "${BACKUP_ENCRYPTION_KEY_VERSION:?BACKUP_ENCRYPTION_KEY_VERSION is required}"
+: "${BACKUP_ENCRYPTION_KEY:?BACKUP_ENCRYPTION_KEY is required in $BACKUP_ENV_FILE}"
+: "${BACKUP_ENCRYPTION_KEY_VERSION:?BACKUP_ENCRYPTION_KEY_VERSION is required in $BACKUP_ENV_FILE}"
 
 mkdir -p "$BACKUP_DIR"
 exec 9>"$BACKUP_DIR/.restore-drill.lock"
