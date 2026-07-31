@@ -69,7 +69,7 @@ for migration in \
   202607310003_semantic_recommendations.sql 202607310004_live_drm.sql \
   202607310005_community_reads.sql 202607310006_social_live_hardening.sql \
   202607310007_production_integrity.sql 202607310008_privacy_operations.sql \
-  202607310009_privacy_export.sql; do
+  202607310009_privacy_export.sql 202607310010_payment_operations.sql; do
   test -s "supabase/migrations/$migration" || { echo "Missing production migration: $migration" >&2; exit 1; }
 done
 
@@ -87,6 +87,11 @@ require_match 'revoke all on function public.claim_media_job' supabase/migration
 require_match 'create or replace function public.store_ai_exchange' supabase/migrations/202607310007_production_integrity.sql 'Controlled AI exchange storage is missing.'
 require_match 'create or replace function public.claim_account_request' supabase/migrations/202607310008_privacy_operations.sql 'Privacy request queue is missing.'
 require_match 'create or replace function public.build_account_export' supabase/migrations/202607310009_privacy_export.sql 'Account export function is missing.'
+require_match 'create or replace function public.process_payment_lifecycle_event' supabase/migrations/202607310010_payment_operations.sql 'Complete payment lifecycle processing is missing.'
+require_match 'create table public.payment_exceptions' supabase/migrations/202607310010_payment_operations.sql 'Finance payment exception queue is missing.'
+require_match 'revoke all on function public.process_payment_lifecycle_event' supabase/migrations/202607310010_payment_operations.sql 'Provider payment processing is not service-role-only.'
+require_match 'partially_refunded' apps/web/app/api/webhooks/payments/[provider]/route.ts 'Partial refund webhooks are not supported.'
+require_match 'disputed' apps/web/app/api/webhooks/payments/[provider]/route.ts 'Dispute webhooks are not supported.'
 if grep -n -E 'stream_key|srt_passphrase|content_key[[:space:]]+text' supabase/migrations/202607310004_live_drm.sql; then
   echo 'Live ingest secrets or plaintext DRM keys must not be stored in PostgreSQL.' >&2
   exit 1
