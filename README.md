@@ -4,7 +4,7 @@ Jalwa is a mobile-first Pakistani content platform for curated entertainment, le
 
 - **Primary market:** Pakistan
 - **Primary domain:** `watch-jalwa.com`
-- **Application model:** responsive web application and PWA
+- **Application model:** mobile-first responsive web application and installable PWA; native mobile apps and app-store distribution are out of current scope
 - **Architecture:** modular monolith with a Next.js web application, background worker, PostgreSQL/Supabase services and Cloudflare R2 media storage
 - **Repository:** private monorepo
 
@@ -33,6 +33,8 @@ Repository development is ready to move into four controlled workstreams:
 2. onboard an initial rights-cleared catalogue through the governed Studio workflow;
 3. complete merchant/provider, pricing, refund and customer-support decisions;
 4. promote a validated staging release to production only after the production checklist is complete.
+
+The approved delivery model is mobile-first web/PWA only. Android and iOS native applications, Google Play distribution and Apple App Store distribution are not part of the current roadmap or release gates.
 
 See [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md).
 

@@ -100,9 +100,11 @@ Treat these as hypotheses and test conversion, payment success, renewal and rete
 - complaint and takedown rate;
 - licensed-content availability rate.
 
-## What not to build in MVP
+## Current product scope exclusions
 
-- native iOS or Android apps;
+Jalwa's approved delivery model is a mobile-first responsive web application and installable PWA. Native iOS/Android applications and Google Play/Apple App Store distribution are not planned in the current product roadmap.
+
+- native iOS or Android applications and app-store distribution;
 - DRM;
 - user uploads;
 - comments;

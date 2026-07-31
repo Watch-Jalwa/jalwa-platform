@@ -84,7 +84,14 @@ Expected steady state:
 - completed repository capability remains separated from external account and live-environment evidence;
 - major runtime/framework/toolchain changes require dedicated compatibility work rather than routine automation;
 - Vercel remains frontend build/preview evidence, not proof of transactional staging or production;
-- live streaming, web DRM and production mock payments remain disabled.
+- live streaming, web DRM and production mock payments remain disabled;
+- mobile-first responsive web/PWA is the approved delivery model; native apps and app-store distribution are out of scope.
+
+## Post-audit product decision
+
+On 31 July 2026, the product owner confirmed that Jalwa will proceed as a mobile-first responsive web application and installable PWA only. Native Android/iOS applications, Google Play distribution and Apple App Store distribution are not current deliverables, future work items or launch blockers.
+
+Representative Android and iOS browser testing remains required because mobile-browser quality, PWA installability, playback, hosted checkout and constrained-network performance are part of the web product.
 
 ## Remaining owner-controlled work
 
@@ -98,8 +105,7 @@ Repository work cannot complete these external gates without account ownership a
 - legal merchant entity, settlement account, pricing and customer policies;
 - Pakistan-compatible hosted payment provider onboarding and signed lifecycle acceptance;
 - live staging customer/content/finance acceptance;
-- dedicated production accounts and production promotion approval;
-- later decision on native/app-store distribution.
+- dedicated production accounts and production promotion approval.
 
 These items are tracked in issue #22 and the content/commerce/deployment handoff. They must not be marked complete from repository intent, preview success or unverified configuration.
 
