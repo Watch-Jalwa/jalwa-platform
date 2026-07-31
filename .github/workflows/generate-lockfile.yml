@@ -29,6 +29,17 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
+      - name: Correct the recommendation publication column
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('supabase/migrations/202607310001_social_recommendations.sql')
+          text = path.read_text()
+          count = text.count('c.published_at')
+          if count != 2:
+              raise SystemExit(f'Expected exactly two c.published_at references, found {count}.')
+          path.write_text(text.replace('c.published_at', 'c.publish_at'))
+          PY
       - name: Re-resolve the full dependency graph
         run: |
           set -euo pipefail
@@ -49,11 +60,11 @@ jobs:
           NODE
       - name: Verify production dependency audit
         run: npm audit --omit=dev --audit-level=high
-      - name: Commit the clean lockfile
+      - name: Commit deterministic corrections
         run: |
           set -euo pipefail
-          git add package-lock.json
+          git add package-lock.json supabase/migrations/202607310001_social_recommendations.sql
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Rebuild the patched dependency lockfile'
+          git commit -m 'Rebuild patched dependencies and fix recommendation publication dates'
           git push origin HEAD:agent/production-lifecycle-hardening
