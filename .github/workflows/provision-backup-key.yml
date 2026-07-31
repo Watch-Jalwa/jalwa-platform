@@ -1,0 +1,70 @@
+name: Provision production backup key
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-production-backup-key
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: production
+    env:
+      HOST: ${{ vars.PRODUCTION_HOST }}
+      USER: ${{ vars.PRODUCTION_USER || 'jalwa' }}
+      KEY_VERSION: ${{ vars.BACKUP_ENCRYPTION_KEY_VERSION || 'v1' }}
+      KEY_MATERIAL: ${{ secrets.BACKUP_ENCRYPTION_KEY }}
+      SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.PRODUCTION_SSH_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Validate isolated recovery key
+        run: |
+          set -euo pipefail
+          test -n "$HOST"
+          test -n "$SSH_KEY"
+          test -n "$KNOWN_HOSTS"
+          test -n "$KEY_MATERIAL"
+          [[ "$KEY_VERSION" =~ ^[A-Za-z0-9._-]{1,64}$ ]] || { echo "Invalid backup key version." >&2; exit 1; }
+          decoded_bytes="$(printf '%s' "$KEY_MATERIAL" | base64 --decode 2>/dev/null | wc -c)"
+          [[ "$decoded_bytes" == 32 ]] || { echo "BACKUP_ENCRYPTION_KEY must decode to exactly 32 bytes." >&2; exit 1; }
+          grep -Fq "$HOST" <<<"$KNOWN_HOSTS" || { echo "Pinned host identity does not contain PRODUCTION_HOST." >&2; exit 1; }
+
+      - name: Configure pinned SSH identity
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Install recovery key with restricted permissions
+        run: |
+          set -euo pipefail
+          umask 077
+          {
+            printf 'BACKUP_ENCRYPTION_KEY=%s\n' "$KEY_MATERIAL"
+            printf 'BACKUP_ENCRYPTION_KEY_VERSION=%s\n' "$KEY_VERSION"
+          } > /tmp/jalwa-backup.env
+          chmod 600 /tmp/jalwa-backup.env
+          scp -i ~/.ssh/jalwa /tmp/jalwa-backup.env "$USER@$HOST:/tmp/jalwa-backup.env"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" '
+            set -euo pipefail
+            sudo install -o jalwa -g jalwa -m 0600 /tmp/jalwa-backup.env /opt/jalwa/.env.backup
+            rm -f /tmp/jalwa-backup.env
+            test "$(stat -c %a /opt/jalwa/.env.backup)" = 600
+            set -a
+            source /opt/jalwa/.env.backup
+            set +a
+            test "$(printf %s "$BACKUP_ENCRYPTION_KEY" | base64 --decode 2>/dev/null | wc -c)" = 32
+            printf "Installed backup recovery key version %s\n" "$BACKUP_ENCRYPTION_KEY_VERSION"
+          '
+          rm -f /tmp/jalwa-backup.env
