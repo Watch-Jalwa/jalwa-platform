@@ -33,8 +33,15 @@ export function OfflineLibrary({ items }: { items: OfflineItem[] }) {
   }
 
   async function play(item: OfflineItem) {
-    if (new Date(item.expiresAt).getTime() <= Date.now()) {
-      setMessage("This download expired and has been removed. Download the title again while it is available.");
+    const validation = await fetch(`/api/offline?id=${encodeURIComponent(item.id)}`, { cache: "no-store" });
+    if (!validation.ok) {
+      setMessage(validation.status === 410 ? "This download expired or is no longer eligible and has been removed." : "Offline playback could not be authorized.");
+      if (validation.status === 410) await remove(item);
+      return;
+    }
+    const authorized = await validation.json() as { cacheKey?: string };
+    if (authorized.cacheKey !== item.cacheKey) {
+      setMessage("This offline record no longer matches the stored file. Download the title again.");
       await remove(item);
       return;
     }
