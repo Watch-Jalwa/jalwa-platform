@@ -6,6 +6,7 @@ ENV_FILE="${ENV_FILE:-/opt/jalwa/.env.production}"
 BACKUP_DIR="${BACKUP_DIR:-/opt/jalwa/backups/postgres}"
 DB_CONTAINER="${DB_CONTAINER:-supabase-db}"
 R2_BACKUP_BUCKET="${R2_BACKUP_BUCKET:-jalwa-backups}"
+BACKUP_AGE_IDENTITY_FILE="${BACKUP_AGE_IDENTITY_FILE:-/opt/jalwa/secrets/backup-age.key}"
 
 if [[ -r "$ENV_FILE" ]]; then
   set -a
@@ -14,7 +15,6 @@ if [[ -r "$ENV_FILE" ]]; then
   set +a
 fi
 
-: "${BACKUP_AGE_IDENTITY_FILE:?BACKUP_AGE_IDENTITY_FILE is required}"
 [[ -r "$BACKUP_AGE_IDENTITY_FILE" ]] || { echo "Backup age identity is not readable." >&2; exit 1; }
 command -v age >/dev/null || { echo "age is required for backup decryption." >&2; exit 1; }
 
