@@ -1,61 +1,31 @@
-name: Refresh deployment dependencies
+name: Verify dependency lockfile
 
 on:
-  push:
-    branches:
-      - agent/production-lifecycle-hardening
-    paths:
-      - package.json
-      - apps/web/package.json
-      - .github/workflows/generate-lockfile.yml
+  workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: jalwa-dependency-refresh
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  refresh:
-    if: github.actor != 'github-actions[bot]'
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: agent/production-lifecycle-hardening
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
           package-manager-cache: false
-      - name: Apply the verified recommendation migration correction
+      - name: Verify the committed lockfile is reproducible
         run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('supabase/migrations/202607310001_social_recommendations.sql')
-          text = path.read_text()
-          original = text
-          text = text.replace('  ), similar as (\n', '  ), similar_items as (\n', 1)
-          text = text.replace('    left join similar s on s.similar_content_id=c.id\n', '    left join similar_items s on s.similar_content_id=c.id\n', 1)
-          if text == original or '), similar as (' in text or 'left join similar s ' in text:
-              raise SystemExit('Expected recommendation CTE replacements were not applied exactly once.')
-          path.write_text(text)
-          PY
-      - name: Generate exact dependency lockfile
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          set -euo pipefail
+          cp package-lock.json /tmp/package-lock.committed.json
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          cmp --silent /tmp/package-lock.committed.json package-lock.json || {
+            echo 'package-lock.json is not reproducible from the committed package manifests.' >&2
+            git diff -- package-lock.json
+            exit 1
+          }
       - name: Verify patched dependency versions
         run: |
           node -e "const lock=require('./package-lock.json'); const values=Object.values(lock.packages); const versions=n=>[...new Set(values.filter(v=>v&&v.name===n).map(v=>v.version))]; console.log({next:versions('next'),postcss:versions('postcss'),sharp:versions('sharp')}); if(versions('next').some(v=>v!=='16.2.12')||versions('postcss').some(v=>v!=='8.5.22')||versions('sharp').some(v=>v!=='0.35.3')) process.exit(1)"
-      - name: Commit deterministic corrections
-        run: |
-          set -euo pipefail
-          git add package-lock.json supabase/migrations/202607310001_social_recommendations.sql
-          if git diff --cached --quiet; then
-            echo 'Dependency and migration files are already current.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Refresh patched dependencies and recommendation migration'
-          git push origin HEAD:agent/production-lifecycle-hardening
