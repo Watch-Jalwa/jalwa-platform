@@ -28,7 +28,9 @@ source "$ENV_FILE"
 set +a
 cd "$APP_DIR"
 
-./scripts/smoke-test.sh "$BASE_URL" "$API_URL"
+[[ "${JALWA_IMAGE_TAG:-}" =~ ^[0-9a-f]{40}$ ]] || fail "JALWA_IMAGE_TAG is not a deployable Git commit SHA"
+[[ "${GIT_SHA:-}" == "$JALWA_IMAGE_TAG" ]] || fail "GIT_SHA and JALWA_IMAGE_TAG differ before acceptance"
+./scripts/smoke-test.sh "$BASE_URL" "$API_URL" "$JALWA_IMAGE_TAG"
 docker compose --env-file "$ENV_FILE" config --quiet
 pass "Compose and public smoke checks"
 
@@ -89,7 +91,7 @@ done
 pass "Security response headers"
 
 version="$(curl --fail --silent --show-error --max-time 20 "$BASE_URL/api/readiness" | jq -r '.version // empty')"
-[[ -n "$version" && "$version" != "local" ]] || fail "Readiness has no deployed commit version"
+[[ "$version" == "$JALWA_IMAGE_TAG" ]] || fail "Readiness version ${version:-missing} does not match image tag $JALWA_IMAGE_TAG"
 
 printf '{"status":"passed","host":"%s","imageTag":"%s","version":"%s","backupAgeSeconds":%s,"restoreAgeSeconds":%s,"diskPercent":%s,"checkedAt":"%s"}\n' \
-  "$(hostname -f)" "${JALWA_IMAGE_TAG:-unknown}" "$version" "$backup_age" "$restore_age" "$disk_percent" "$(date -u +%FT%TZ)"
+  "$(hostname -f)" "$JALWA_IMAGE_TAG" "$version" "$backup_age" "$restore_age" "$disk_percent" "$(date -u +%FT%TZ)"
