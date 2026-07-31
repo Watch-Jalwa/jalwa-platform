@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 export const REPORT_TIMEZONE: "Asia/Karachi";
 export const REPORT_SCHEMA_VERSION: "premium-reports-v1";
 export const MAX_REPORT_DAYS: number;
