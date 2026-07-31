@@ -41,17 +41,28 @@ function filterRows(rows: any[], filters: ReportFilters) {
 export async function getPremiumSummary(input: ReportInput) {
   const { range, filters } = reportContext(input);
   const admin = createAdminClient();
-  const [orders, attempts, refunds, subscriptions, exceptionCount] = await Promise.all([
-    collectRows((a,b) => admin.from("checkout_orders").select("id,user_id,subscription_id,status,amount_minor,currency,payment_purpose,plan_snapshot,price_snapshot,provider_status,created_at,completed_at,failed_at,reconciliation_state").gte("created_at", expandedStart(range)).lt("created_at", range.endUtcExclusive).order("created_at").range(a,b)),
-    collectRows((a,b) => admin.from("payment_attempts").select("id,checkout_order_id,status,created_at").gte("created_at", range.startUtc).lt("created_at", range.endUtcExclusive).order("created_at").range(a,b)),
+  const [orders, refunds, subscriptions, statusEvents, exceptionCount] = await Promise.all([
+    collectRows((a,b) => admin.from("checkout_orders").select("id,user_id,subscription_id,status,amount_minor,currency,payment_purpose,plan_snapshot,price_snapshot,provider_status,created_at,completed_at,failed_at,reconciliation_state").lt("created_at", range.endUtcExclusive).order("created_at").range(a,b)),
     collectRows((a,b) => admin.from("payment_refunds").select("checkout_order_id,amount_minor,refunded_at").gte("refunded_at", range.startUtc).lt("refunded_at", range.endUtcExclusive).order("refunded_at").range(a,b)),
-    collectRows((a,b) => admin.from("subscriptions").select("id,user_id,status,activation_source,current_period_end,grace_ends_at,auto_renew_consented,auto_renew_consented_at,cancel_at_period_end,plan_snapshot,price_snapshot,created_at").lte("created_at", range.endUtcExclusive).order("created_at").range(a,b)),
+    collectRows((a,b) => admin.from("subscriptions").select("id,user_id,status,activation_source,current_period_start,current_period_end,grace_ends_at,auto_renew_consented,auto_renew_consented_at,cancel_at_period_end,plan_snapshot,price_snapshot,created_at").lt("created_at", range.endUtcExclusive).order("created_at").range(a,b)),
+    collectRows((a,b) => admin.from("subscription_status_events").select("subscription_id,status,current_period_start,current_period_end,cancel_at_period_end,grace_ends_at,occurred_at").lt("occurred_at", range.endUtcExclusive).order("occurred_at", { ascending: false }).range(a,b)),
     admin.from("payment_exceptions").select("id", { count: "exact", head: true }).eq("status", "open"),
   ]);
   const selectedOrders = filterRows(orders, filters);
-  const orderIds = new Set(selectedOrders.map((row) => row.id));
-  const selectedSubscriptions = subscriptions.filter((row) => (!filters.plan || planCode(row) === filters.plan) && (!filters.subscriptionStatus || row.status === filters.subscriptionStatus) && (!filters.user || row.user_id === filters.user));
-  const result = calculatePremiumSummary({ orders: selectedOrders, attempts: attempts.filter((row) => orderIds.has(row.checkout_order_id)), refunds: refunds.filter((row) => orderIds.has(row.checkout_order_id)), subscriptions: selectedSubscriptions, range, groupBy: filters.groupBy });
+  const attempts = selectedOrders.filter((row) => row.created_at >= range.startUtc && row.created_at < range.endUtcExclusive).map((row) => ({
+    checkout_order_id: row.id,
+    created_at: row.created_at,
+    status: ["succeeded","refunded","partially_refunded","disputed"].includes(row.status) ? "succeeded" : row.status === "failed" ? "failed" : ["created","pending"].includes(row.status) ? "pending" : "cancelled",
+  }));
+  const latestEvent = new Map<string, any>();
+  for (const event of statusEvents) if (!latestEvent.has(event.subscription_id)) latestEvent.set(event.subscription_id, event);
+  const historicalSubscriptions = subscriptions.map((subscription) => {
+    const event = latestEvent.get(subscription.id);
+    return event ? { ...subscription, status: event.status, current_period_start: event.current_period_start, current_period_end: event.current_period_end, cancel_at_period_end: event.cancel_at_period_end, grace_ends_at: event.grace_ends_at } : subscription;
+  });
+  const selectedSubscriptions = historicalSubscriptions.filter((row) => (!filters.plan || planCode(row) === filters.plan) && (!filters.subscriptionStatus || row.status === filters.subscriptionStatus) && (!filters.user || row.user_id === filters.user));
+  const selectedOrderIds = new Set(selectedOrders.map((order) => order.id));
+  const result = calculatePremiumSummary({ orders: selectedOrders, attempts, refunds: refunds.filter((row) => selectedOrderIds.has(row.checkout_order_id)), subscriptions: selectedSubscriptions, range, groupBy: filters.groupBy });
   result.kpis.reconciliationAttention = exceptionCount.count ?? 0;
   result.kpis.disputes = selectedOrders.filter((row) => row.status === "disputed").length;
   return { ...result, filters, generatedAt: new Date().toISOString(), support: { benefitCosts: { supported: false, reason: "No approved monetary benefit ledger exists." }, autoRenew: { supported: selectedSubscriptions.some((row) => row.auto_renew_consented_at) } } };
@@ -72,7 +83,12 @@ export async function getPaymentLedger(input: ReportInput, exportAll = false) {
   const { data, error, count } = await query.range(from, exportAll ? 9999 : from + filters.pageSize - 1);
   if (error) throw error;
   if (exportAll && (count ?? 0) > 10000) throw new Error("Payment exports are limited to 10,000 rows. Narrow the selected range.");
-  const rows = (data ?? []).map((row) => ({ id: row.id, user: maskUserId(row.user_id), userId: row.user_id, subscriptionId: row.subscription_id, plan: row.plan_snapshot?.name ?? "Legacy plan", planCode: planCode(row) ?? "legacy-unknown", priceCode: row.price_snapshot?.code ?? "legacy-unknown", purpose: row.payment_purpose, amountMinor: row.amount_minor, currency: row.currency, provider: row.provider, internalStatus: row.status, providerStatus: row.provider_status ?? "unknown", providerOrderReference: row.provider_order_reference, createdAt: row.created_at, initiatedAt: row.initiated_at, completedAt: row.completed_at, failedAt: row.failed_at, reconciliationState: row.reconciliation_state, attentionReason: row.attention_reason }));
+  const orderIds = (data ?? []).map((row) => row.id);
+  const { data: attempts, error: attemptError } = orderIds.length ? await admin.from("payment_attempts").select("checkout_order_id,provider_transaction_id,created_at").in("checkout_order_id", orderIds).order("created_at", { ascending: false }) : { data: [], error: null };
+  if (attemptError) throw attemptError;
+  const transactionByOrder = new Map<string,string>();
+  for (const attempt of attempts ?? []) if (attempt.provider_transaction_id && !transactionByOrder.has(attempt.checkout_order_id)) transactionByOrder.set(attempt.checkout_order_id, attempt.provider_transaction_id);
+  const rows = (data ?? []).map((row) => ({ id: row.id, user: maskUserId(row.user_id), userId: row.user_id, subscriptionId: row.subscription_id, plan: row.plan_snapshot?.name ?? "Legacy plan", planCode: planCode(row) ?? "legacy-unknown", priceCode: row.price_snapshot?.code ?? "legacy-unknown", purpose: row.payment_purpose, amountMinor: row.amount_minor, currency: row.currency, provider: row.provider, internalStatus: row.status, providerStatus: row.provider_status ?? "unknown", providerOrderReference: row.provider_order_reference, providerTransactionReference: transactionByOrder.get(row.id) ?? null, createdAt: row.created_at, initiatedAt: row.initiated_at, completedAt: row.completed_at, failedAt: row.failed_at, reconciliationState: row.reconciliation_state, attentionReason: row.attention_reason }));
   return { schemaVersion: REPORT_SCHEMA_VERSION, timezone: REPORT_TIMEZONE, effectiveRange: range, filters, page: exportAll ? 1 : filters.page, pageSize: exportAll ? rows.length : filters.pageSize, total: count ?? rows.length, rows };
 }
 
