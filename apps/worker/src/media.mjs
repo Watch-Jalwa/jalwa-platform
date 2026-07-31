@@ -96,10 +96,11 @@ function ffprobeArgs(input, entries, format = "json") {
 
 export async function probeMedia(input) {
   const raw = await capture(process.env.FFPROBE_PATH ?? "ffprobe", ffprobeArgs(input, "format=duration,format_name:stream=codec_type,codec_name,width,height"));
-  const result = JSON.parse(raw || "{}") as { format?: { duration?: string }; streams?: Array<{ codec_type?: string }> };
+  const parsed = JSON.parse(raw || "{}");
+  const result = parsed && typeof parsed === "object" ? parsed : {};
   const duration = Number(result.format?.duration ?? 0);
   const streams = Array.isArray(result.streams) ? result.streams : [];
-  if (!streams.some((stream) => stream.codec_type === "video")) throw new Error("Uploaded media contains no video stream.");
+  if (!streams.some((stream) => stream?.codec_type === "video")) throw new Error("Uploaded media contains no video stream.");
   if (streams.length > 32) throw new Error("Uploaded media contains too many streams.");
   if (Number.isFinite(duration) && duration > Number(process.env.MEDIA_MAX_DURATION_SECONDS ?? 43_200)) throw new Error("Uploaded media exceeds the maximum duration.");
   return { durationSeconds: Number.isFinite(duration) ? duration : null, streamCount: streams.length };
