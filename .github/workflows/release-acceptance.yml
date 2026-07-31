@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v6
       - name: Run public production acceptance
         run: infrastructure/production/scripts/production-acceptance.sh "$BASE_URL"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: production-acceptance-${{ github.run_id }}
           path: production-acceptance.json
