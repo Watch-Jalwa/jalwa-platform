@@ -24,7 +24,7 @@ export function queryString(params: ReportSearch, overrides: Record<string, stri
 }
 
 export function ReportTabs({ active }: { active: string }) {
-  const tabs = [
+  const tabs: readonly [string, string, string][] = [
     ["summary", "/studio/finance/reports", "Summary"],
     ["payments", "/studio/finance/reports/payments", "Payments"],
     ["subscriptions", "/studio/finance/reports/subscriptions", "Subscriptions"],
