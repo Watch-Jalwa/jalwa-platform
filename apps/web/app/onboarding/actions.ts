@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ACTIVE_PROFILE_COOKIE } from "@/lib/customer/active-profile";
+import { localeCookieOptions, LOCALE_COOKIE, normalizeLocale } from "@/lib/customer/locale";
 import { createClient } from "@/lib/supabase/server";
 import { isFrontendPreview } from "@/lib/runtime";
 
@@ -11,12 +12,13 @@ const languages = new Set(["en", "ur", "roman_ur"]);
 export async function completeOnboarding(formData: FormData) {
   const displayName = String(formData.get("displayName") ?? "").trim();
   const viewerName = String(formData.get("viewerName") ?? displayName).trim();
-  const preferredLanguage = String(formData.get("preferredLanguage") ?? "en");
+  const preferredLanguageInput = String(formData.get("preferredLanguage") ?? "en");
+  const preferredLanguage = normalizeLocale(preferredLanguageInput);
   const plan = String(formData.get("plan") ?? "free");
   const accepted = formData.get("acceptedTerms") === "on";
   const marketingOptIn = formData.get("marketingOptIn") === "on";
 
-  if (displayName.length < 2 || viewerName.length < 1 || !languages.has(preferredLanguage) || !accepted) {
+  if (displayName.length < 2 || viewerName.length < 1 || !languages.has(preferredLanguageInput) || !accepted) {
     redirect(`/onboarding?error=invalid&plan=${encodeURIComponent(plan)}`);
   }
   if (isFrontendPreview()) redirect(plan === "free" ? "/profile?onboarding=preview" : `/pricing?selected=${encodeURIComponent(plan)}`);
@@ -37,7 +39,9 @@ export async function completeOnboarding(formData: FormData) {
   const { data: viewer } = await supabase.from("viewer_profiles")
     .update({ name: viewerName, preferred_language: preferredLanguage })
     .eq("user_id", user.id).eq("is_default", true).select("id").maybeSingle();
-  if (viewer?.id) (await cookies()).set(ACTIVE_PROFILE_COOKIE, viewer.id, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: "/", maxAge: 60 * 60 * 24 * 365 });
+  const cookieStore = await cookies();
+  cookieStore.set(LOCALE_COOKIE, preferredLanguage, localeCookieOptions());
+  if (viewer?.id) cookieStore.set(ACTIVE_PROFILE_COOKIE, viewer.id, localeCookieOptions());
 
   redirect(plan === "free" ? "/profile?onboarding=complete" : `/pricing?selected=${encodeURIComponent(plan)}`);
 }
