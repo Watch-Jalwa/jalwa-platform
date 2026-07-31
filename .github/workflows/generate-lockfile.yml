@@ -1,50 +1,31 @@
-name: Refresh deployment lockfile
+name: Verify dependency lockfile
 
 on:
-  push:
-    branches:
-      - agent/production-lifecycle-hardening
-    paths:
-      - package.json
-      - apps/web/package.json
-      - .github/workflows/generate-lockfile.yml
+  workflow_dispatch:
 
 permissions:
-  contents: write
-
-concurrency:
-  group: jalwa-lockfile-refresh
-  cancel-in-progress: false
+  contents: read
 
 jobs:
-  refresh:
-    if: github.actor != 'github-actions[bot]'
+  verify:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: agent/production-lifecycle-hardening
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
           package-manager-cache: false
-      - name: Correct the recommendation publication column
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-          path = Path('supabase/migrations/202607310001_social_recommendations.sql')
-          text = path.read_text()
-          count = text.count('c.published_at')
-          if count != 2:
-              raise SystemExit(f'Expected exactly two c.published_at references, found {count}.')
-          path.write_text(text.replace('c.published_at', 'c.publish_at'))
-          PY
-      - name: Re-resolve the full dependency graph
+      - name: Verify the committed lockfile is reproducible
         run: |
           set -euo pipefail
-          rm -rf node_modules package-lock.json
+          cp package-lock.json /tmp/package-lock.committed.json
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          cmp --silent /tmp/package-lock.committed.json package-lock.json || {
+            echo 'package-lock.json is not reproducible from the committed package manifests.' >&2
+            git diff -- package-lock.json
+            exit 1
+          }
       - name: Verify actual locked package paths
         run: |
           node <<'NODE'
@@ -60,11 +41,3 @@ jobs:
           NODE
       - name: Verify production dependency audit
         run: npm audit --omit=dev --audit-level=high
-      - name: Commit deterministic corrections
-        run: |
-          set -euo pipefail
-          git add package-lock.json supabase/migrations/202607310001_social_recommendations.sql
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Rebuild patched dependencies and fix recommendation publication dates'
-          git push origin HEAD:agent/production-lifecycle-hardening
