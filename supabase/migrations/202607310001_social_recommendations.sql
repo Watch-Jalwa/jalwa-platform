@@ -372,7 +372,7 @@ as $$
     from public.recommendation_events e
     where e.created_at>now()-interval '14 days'
     group by e.content_id
-  ), similar as (
+  ), similar_items as (
     select cs.similar_content_id,max(cs.score) as score
     from public.content_similarity cs
     where cs.content_id=p_context_content_id or cs.content_id in (select content_id from recent_seed)
@@ -395,7 +395,7 @@ as $$
     cross join profile p
     left join public.profile_category_affinities a on a.viewer_profile_id=p.id and a.category_id=c.primary_category_id
     left join trending t on t.content_id=c.id
-    left join similar s on s.similar_content_id=c.id
+    left join similar_items s on s.similar_content_id=c.id
     where c.status='published'
       and (not p.kids_mode or c.audience in ('kids','family','general'))
       and (p_context_content_id is null or c.id<>p_context_content_id)
