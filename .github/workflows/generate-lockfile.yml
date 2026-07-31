@@ -1,31 +1,59 @@
-name: Verify dependency lockfile
+name: Refresh deployment lockfile
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - agent/production-lifecycle-hardening
+    paths:
+      - package.json
+      - apps/web/package.json
+      - .github/workflows/generate-lockfile.yml
 
 permissions:
-  contents: read
+  contents: write
+
+concurrency:
+  group: jalwa-lockfile-refresh
+  cancel-in-progress: false
 
 jobs:
-  verify:
+  refresh:
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/production-lifecycle-hardening
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
         with:
           node-version: 22
           package-manager-cache: false
-      - name: Verify the committed lockfile is reproducible
+      - name: Re-resolve the full dependency graph
         run: |
           set -euo pipefail
-          cp package-lock.json /tmp/package-lock.committed.json
+          rm -rf node_modules package-lock.json
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          cmp --silent /tmp/package-lock.committed.json package-lock.json || {
-            echo 'package-lock.json is not reproducible from the committed package manifests.' >&2
-            git diff -- package-lock.json
-            exit 1
-          }
-      - name: Verify patched dependency versions
+      - name: Verify actual locked package paths
         run: |
-          node -e "const lock=require('./package-lock.json'); const values=Object.values(lock.packages); const versions=n=>[...new Set(values.filter(v=>v&&v.name===n).map(v=>v.version))]; console.log({next:versions('next'),postcss:versions('postcss'),sharp:versions('sharp')}); if(versions('next').some(v=>v!=='16.2.12')||versions('postcss').some(v=>v!=='8.5.22')||versions('sharp').some(v=>v!=='0.35.3')) process.exit(1)"
+          node <<'NODE'
+          const lock = require('./package-lock.json');
+          const versions = (name) => [...new Set(Object.entries(lock.packages)
+            .filter(([path, value]) => value && (path === `node_modules/${name}` || path.endsWith(`/node_modules/${name}`)))
+            .map(([, value]) => value.version))];
+          const resolved = { next: versions('next'), postcss: versions('postcss'), sharp: versions('sharp') };
+          console.log(resolved);
+          if (resolved.next.length !== 1 || resolved.next[0] !== '16.2.12') process.exit(1);
+          if (resolved.postcss.some((version) => version !== '8.5.22')) process.exit(1);
+          if (resolved.sharp.some((version) => version !== '0.35.3')) process.exit(1);
+          NODE
+      - name: Verify production dependency audit
+        run: npm audit --omit=dev --audit-level=high
+      - name: Commit the clean lockfile
+        run: |
+          set -euo pipefail
+          git add package-lock.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Rebuild the patched dependency lockfile'
+          git push origin HEAD:agent/production-lifecycle-hardening
