@@ -1,232 +1,150 @@
 # Delivery Roadmap and Backlog
 
-## Suggested twelve-week path
+This roadmap now reflects the implemented repository rather than the original twelve-week estimate. Detailed current evidence is maintained in [Current status and next-stage gates](16-current-status-and-next-stage-gates.md).
 
-This assumes one strong full-stack developer with part-time design, content and review support.
+## Completed foundation
 
-## Phase 0 — Business and access, days 1–5
+The repository implements the core platform, catalogue, Studio, rights controls, authentication, media processing, payments/entitlements, Premium finance reporting, AI gateway and release engineering required for controlled staging.
 
-- create `Watch-Jalwa/jalwa-platform`;
-- install GitHub app access;
-- confirm domain ownership;
-- choose legal entity and merchant applicant;
-- begin PayFast, JazzCash and easypaisa onboarding;
-- approve launch categories;
-- approve initial pricing hypothesis;
-- appoint content and rights owners.
+Completed repository epics:
 
-Exit: repository, environments and merchant onboarding are active.
+- platform foundation and responsive PWA;
+- identity, profiles, history and account data workflows;
+- catalogue, categories, search and discovery;
+- Studio source/rights/publication governance;
+- media upload, FFmpeg worker, MP4/HLS and signed playback;
+- payment provider boundary, lifecycle normalization, subscriptions and entitlements;
+- Premium finance definitions, ledgers, reconciliation and exports;
+- Ask Jalwa gateway, quotas, moderation and catalogue citations;
+- operations, support, moderation and diagnostics;
+- isolated staging/production deployment workflows, encrypted backups, restore drills and rollback;
+- CI migrations, audits, SBOM, image vulnerability policy, container boot and browser journeys.
 
-## Phase 1 — Foundation, weeks 1–2
+## Current phase — Isolated staging activation
 
-- monorepo;
-- Next.js PWA shell;
-- design tokens;
-- Urdu/RTL support;
-- PostgreSQL schema;
-- authentication;
-- staff RBAC;
-- CI;
-- staging;
-- observability.
+### Required work
 
-Exit: authenticated shell and studio skeleton deployed.
+- configure the GitHub `staging` environment with independently generated values;
+- provision or confirm the isolated DigitalOcean host;
+- configure staging DNS and pinned SSH identity;
+- configure isolated Cloudflare R2 buckets and media gateway;
+- deploy self-hosted Supabase services, web and worker images;
+- retain readiness, migration, backup/restore and browser evidence;
+- exercise authentication, email, mock checkout and finance reporting against the deployed stack.
 
-## Phase 2 — Catalogue and studio, weeks 3–4
+### Exit criteria
 
-- content model;
-- categories;
-- collections;
-- content pages;
-- admin editor;
-- source records;
-- rights records;
-- publishing workflow;
-- YouTube URL import;
-- search;
-- home rows.
+- readiness reports the exact deployed SHA;
+- all required services are healthy;
+- migrations are applied and background jobs are not stuck;
+- pre/post-deployment encrypted backups exist and restore successfully;
+- protected API and desktop/mobile browser acceptance pass;
+- staging remains noindex, analytics-isolated and mock-payment-only.
 
-Exit: editors can safely publish embedded and article content.
+## Next phase — Content pilot
 
-## Phase 3 — Media and viewing, weeks 5–6
+### Target
 
-- direct upload;
-- R2 storage;
-- FFmpeg worker;
-- short MP4 pipeline;
-- HLS long-form pipeline;
-- playback tokens;
-- watch progress;
-- favourites;
-- shorts feed;
-- playback telemetry.
+Onboard 20–30 reviewed items across Deen, Kissan and Rozgar/Tech using official embeds, verified open/public-domain material and Jalwa-owned content.
 
-Exit: owned/open media plays on mobile and desktop.
+### Required work
 
-## Phase 4 — Payments and premium, week 7
+- approve source programmes through structured content-source issues;
+- retain item-level source, licence, attribution, territory, expiry and takedown evidence;
+- create Urdu/Roman Urdu metadata and thumbnails;
+- publish through human review only;
+- verify mobile playback, embed availability and unpublish/takedown;
+- rerun staging acceptance with published content.
 
-- plans and prices;
-- checkout orders;
-- first provider adapter;
-- hosted checkout;
-- callbacks/webhooks;
-- entitlements;
-- premium gates;
-- receipts;
-- reconciliation admin.
+### Exit criteria
 
-Exit: real or sandbox payment activates and expires access.
+- at least one complete published item per selected programme;
+- no missing rights fields;
+- editorial and safety review owners recorded;
+- playback and takedown acceptance passed;
+- a repeatable weekly content operating process exists.
 
-## Phase 5 — AI layer, week 8
+## Next phase — Commerce provider and Premium offer
 
-- AI gateway;
-- prompt registry;
-- catalogue embeddings;
-- Ask Jalwa;
-- citations;
-- moderation;
-- usage ledger;
-- free/premium quotas;
-- basic eval suite.
+### Required work
 
-Exit: grounded AI works with measurable cost.
+- approve legal merchant entity and settlement account;
+- choose monthly/annual pricing and Premium benefits;
+- approve refund, cancellation, grace-period, receipt and support policy;
+- select a Pakistan-compatible hosted checkout provider;
+- configure sandbox credentials in staging;
+- test signed success, failure, replay, delayed events, refunds, reversals/disputes and reconciliation;
+- compare provider records with Jalwa summary, ledgers and CSV exports.
 
-## Phase 6 — Content seed and hardening, weeks 9–10
+### Exit criteria
 
-- 150-item launch catalogue;
-- Urdu/Roman Urdu metadata;
-- source and licence evidence;
-- Kissan and Deen review;
-- performance;
-- accessibility;
-- payment failure cases;
-- backups;
-- legal pages;
-- support scripts.
+- provider onboarding and sandbox acceptance complete;
+- entitlements activate/revoke only from verified server-side state;
+- finance and support ownership defined;
+- production mock payments remain disabled;
+- customer-facing policy wording approved.
 
-Exit: internal launch checklist passes.
+## Next phase — Closed beta
 
-## Phase 7 — Closed beta, week 11
+### Target
 
-- invite 50–100 users;
-- test low-end Android browsers;
-- test mobile networks;
-- monitor payment conversion;
-- fix playback failures;
-- gather content demand;
-- verify support response.
+A controlled group of 50–100 Pakistan-based users on representative browsers and networks.
 
-Exit: no unresolved critical defects.
+### Required work
 
-## Phase 8 — Public launch, week 12
+- invite/account support process;
+- low-end Android and mobile-network playback testing;
+- Urdu/RTL and accessibility review;
+- content demand and search-gap capture;
+- payment conversion and failure monitoring in sandbox or controlled live mode;
+- support response rehearsal;
+- incident and rollback rehearsal.
 
-- activate production pricing;
-- launch campaign;
-- daily operations room;
-- content calendar;
-- subscription dashboard;
-- weekly KPI review.
+### Exit criteria
 
-## Product epics
+- no unresolved critical defect;
+- acceptable playback and authentication reliability;
+- content and support operating rhythm demonstrated;
+- finance reconciliation and backup evidence retained;
+- launch blockers explicitly owned.
 
-### EPIC-001 Platform foundation
+## Production launch phase
 
-- monorepo;
-- environments;
-- CI;
-- configuration;
-- design system;
-- PWA.
+### Required work
 
-### EPIC-002 Identity and profiles
+- configure dedicated production infrastructure and secrets;
+- activate and test the real hosted payment provider;
+- approve launch catalogue and legal/support ownership;
+- promote an exact green `main` SHA already proven in staging;
+- retain immutable deployment manifest, SBOM/provenance and host acceptance;
+- verify health, migrations, queues, backups and restore;
+- conduct one controlled live transaction and reconciliation check;
+- monitor and preserve rollback authority.
 
-- auth;
-- preferences;
-- history;
-- account settings;
-- deletion.
+### Exit criteria
 
-### EPIC-003 Catalogue and discovery
+- all gates in the live activation issue are complete with evidence;
+- production readiness reports the expected SHA;
+- no unresolved security, payment, rights, privacy or backup blocker;
+- named launch-day on-call and stop-launch authority;
+- first-week KPI and operating cadence active.
 
-- taxonomy;
-- home;
-- search;
-- collections;
-- related content;
-- SEO.
+## Later decision — Native/store distribution
 
-### EPIC-004 Studio and rights
+Native packaging is not an MVP completion criterion. Evaluate it after web/PWA staging and live evidence establish that device distribution adds measurable value. A separate roadmap must cover store accounts, payment-policy compatibility, privacy disclosures, age ratings, signing, review and staged rollout.
 
-- source import;
-- rights evidence;
-- review states;
-- scheduling;
-- audit.
-
-### EPIC-005 Media pipeline
-
-- uploads;
-- validation;
-- FFmpeg;
-- R2;
-- player;
-- captions;
-- shorts.
-
-### EPIC-006 Payments and entitlement
-
-- provider adapter;
-- checkout;
-- webhook;
-- passes/subscription;
-- premium benefits;
-- finance admin.
-
-### EPIC-007 Ask Jalwa
-
-- RAG;
-- citations;
-- quotas;
-- prompts;
-- evals;
-- moderation.
-
-### EPIC-008 Analytics and operations
-
-- event plan;
-- dashboards;
-- error monitoring;
-- support;
-- reconciliation.
-
-### EPIC-009 Content launch
-
-- source allowlist;
-- catalogue targets;
-- localisation;
-- category calendar;
-- creator outreach.
-
-### EPIC-010 Security and legal
-
-- threat model;
-- policies;
-- privacy;
-- takedown;
-- penetration checklist;
-- incident response.
-
-## Definition of done for every feature
+## Definition of done for repository features
 
 - acceptance criteria met;
-- mobile UI checked;
-- Urdu/RTL checked;
-- tests added;
-- analytics event defined;
-- error state handled;
-- permission checks added;
-- accessibility checked;
+- mobile and low-data behaviour checked;
+- Urdu/RTL and accessibility checked;
+- tests added and full CI green;
+- analytics/observability defined;
+- error and partial-failure states handled;
+- authorization enforced server-side;
+- security/privacy and content-rights impact reviewed;
 - documentation updated;
-- no unresolved high-severity security issue;
-- AI features pass relevant evals;
-- content features preserve source and rights metadata.
+- migration and rollback/roll-forward approach documented;
+- no unresolved fixed high/critical shipped vulnerability;
+- AI changes pass relevant safety and citation evaluations;
+- content changes preserve source, rights, attribution, expiry and takedown metadata.
