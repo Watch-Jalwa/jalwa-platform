@@ -194,7 +194,8 @@ export async function getLiveCatalogue(): Promise<{ items: CatalogueItem[]; coll
       items: (membershipRows ?? [])
         .filter((membership) => membership.collection_id === row.id)
         .map((membership) => bySlug.get(slugById.get(membership.content_id) ?? ""))
-        .filter((item): item is CatalogueItem => Boolean(item) && item.playback?.availability !== "unavailable"),
+        .filter((item): item is CatalogueItem => item !== undefined)
+        .filter((item) => item.playback?.availability !== "unavailable"),
     })).filter((collection) => collection.items.length > 0);
     return { items: topLevel, collections };
   } catch (error) {
