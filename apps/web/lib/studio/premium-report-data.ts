@@ -58,7 +58,7 @@ export async function getPremiumSummary(input: ReportInput) {
   for (const event of statusEvents) if (!latestEvent.has(event.subscription_id)) latestEvent.set(event.subscription_id, event);
   const historicalSubscriptions = subscriptions.map((subscription) => {
     const event = latestEvent.get(subscription.id);
-    return event ? { ...subscription, status: event.status, current_period_start: event.current_period_start, current_period_end: event.current_period_end, cancel_at_period_end: event.cancel_at_period_end, grace_ends_at: event.grace_ends_at } : subscription;
+    return { ...(event ? { ...subscription, status: event.status, current_period_start: event.current_period_start, current_period_end: event.current_period_end, cancel_at_period_end: event.cancel_at_period_end, grace_ends_at: event.grace_ends_at } : subscription), auto_renew_consented: Boolean(subscription.auto_renew_consented_at && subscription.auto_renew_consented_at < range.endUtcExclusive) };
   });
   const selectedSubscriptions = historicalSubscriptions.filter((row) => (!filters.plan || planCode(row) === filters.plan) && (!filters.subscriptionStatus || row.status === filters.subscriptionStatus) && (!filters.user || row.user_id === filters.user));
   const selectedOrderIds = new Set(selectedOrders.map((order) => order.id));
@@ -71,7 +71,7 @@ export async function getPremiumSummary(input: ReportInput) {
 export async function getPaymentLedger(input: ReportInput, exportAll = false) {
   const { range, filters } = reportContext(input);
   const admin = createAdminClient();
-  let query = admin.from("checkout_orders").select("id,user_id,subscription_id,status,amount_minor,currency,provider,provider_order_reference,payment_purpose,plan_snapshot,price_snapshot,provider_status,created_at,initiated_at,completed_at,failed_at,reconciliation_state,attention_reason", { count: "exact" }).gte("created_at", expandedStart(range)).lt("created_at", range.endUtcExclusive).order("created_at", { ascending: false }).order("id", { ascending: false });
+  let query = admin.from("checkout_orders").select("id,user_id,subscription_id,status,amount_minor,currency,provider,provider_order_reference,payment_purpose,plan_snapshot,price_snapshot,provider_status,created_at,initiated_at,completed_at,failed_at,reconciliation_state,attention_reason", { count: "exact" }).gte("created_at", range.startUtc).lt("created_at", range.endUtcExclusive).order("created_at", { ascending: false }).order("id", { ascending: false });
   if (filters.purpose) query = query.eq("payment_purpose", filters.purpose);
   if (filters.paymentStatus) query = query.eq("status", filters.paymentStatus);
   if (filters.providerStatus) query = query.eq("provider_status", filters.providerStatus);
@@ -95,7 +95,7 @@ export async function getPaymentLedger(input: ReportInput, exportAll = false) {
 export async function getSubscriptionLedger(input: ReportInput, exportAll = false) {
   const { range, filters } = reportContext(input);
   const admin = createAdminClient();
-  let query = admin.from("subscriptions").select("id,user_id,status,activation_source,provider,activated_at,current_period_start,current_period_end,renewal_due_at,cancel_at_period_end,cancellation_requested_at,cancelled_at,grace_ends_at,expired_at,auto_renew_consented,auto_renew_consented_at,plan_snapshot,price_snapshot,created_at", { count: "exact" }).lte("created_at", range.endUtcExclusive).order("created_at", { ascending: false }).order("id", { ascending: false });
+  let query = admin.from("subscriptions").select("id,user_id,status,activation_source,provider,activated_at,current_period_start,current_period_end,renewal_due_at,cancel_at_period_end,cancellation_requested_at,cancelled_at,grace_ends_at,expired_at,auto_renew_consented,auto_renew_consented_at,plan_snapshot,price_snapshot,created_at", { count: "exact" }).lt("created_at", range.endUtcExclusive).order("created_at", { ascending: false }).order("id", { ascending: false });
   if (filters.subscriptionStatus) query = query.eq("status", filters.subscriptionStatus);
   if (filters.user) query = query.eq("user_id", filters.user);
   if (filters.plan) query = query.contains("plan_snapshot", { code: filters.plan });
