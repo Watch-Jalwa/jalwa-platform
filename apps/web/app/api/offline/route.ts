@@ -5,6 +5,28 @@ import { createClient } from "@/lib/supabase/server";
 const cacheKeyPattern = /^\/offline-media\/(\d{10})-[a-zA-Z0-9_-]{20,80}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+export async function GET(request: Request) {
+  const id = new URL(request.url).searchParams.get("id");
+  if (!id || !uuidPattern.test(id)) return NextResponse.json({ error: "Invalid offline item." }, { status: 400 });
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  const profile = await getActiveViewerProfile(user.id);
+  if (!profile) return NextResponse.json({ error: "Viewer profile unavailable." }, { status: 409 });
+  const { data: item, error } = await supabase.from("offline_items")
+    .select("id,cache_key,expires_at,content_items!inner(status,access_level,playback_sources!inner(format,status,is_primary))")
+    .eq("id", id).eq("user_id", user.id).eq("viewer_profile_id", profile.id)
+    .gt("expires_at", new Date().toISOString()).maybeSingle();
+  if (error) return NextResponse.json({ error: "Offline eligibility could not be verified." }, { status: 503 });
+  if (!item) return NextResponse.json({ error: "This offline item expired or is unavailable." }, { status: 410 });
+  const content = item.content_items as unknown as { status: string; access_level: string; playback_sources: Array<{ format: string; status: string; is_primary: boolean }> };
+  const source = content.playback_sources.find((candidate) => candidate.is_primary && candidate.status === "active");
+  if (content.status !== "published" || content.access_level !== "public" || source?.format !== "mp4") {
+    return NextResponse.json({ error: "This title is no longer eligible for offline playback." }, { status: 410 });
+  }
+  return NextResponse.json({ ok: true, cacheKey: item.cache_key, expiresAt: item.expires_at }, { headers: { "Cache-Control": "no-store" } });
+}
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => ({})) as { contentId?: string; cacheKey?: string; bytesDownloaded?: number; expiresAt?: string };
   const keyMatch = body.cacheKey?.match(cacheKeyPattern);
