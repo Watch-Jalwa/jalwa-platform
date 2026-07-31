@@ -27,6 +27,14 @@ if grep -Fq 'ssh-keyscan -H "$HOST"' .github/workflows/deploy-production.yml; th
   echo 'Production deployment must use pinned SSH host keys, not trust-on-first-use.' >&2
   exit 1
 fi
+if grep -E 'uses: (docker|cloudflare)/[^@]+@v[0-9]+' .github/workflows/deploy-production.yml; then
+  echo 'Production deployment contains mutable third-party action tags.' >&2
+  exit 1
+fi
+if grep -R -n -E '^  contents: write$' .github/workflows; then
+  echo 'Repository workflows must not retain general contents:write permission.' >&2
+  exit 1
+fi
 
 echo "Checking JavaScript utilities and generated secrets"
 node --check scripts/generate-supabase-secrets.mjs
@@ -94,6 +102,15 @@ require_match 'fetch(request, { cache: "no-store" })' apps/web/public/sw.js 'Nav
 require_match 'BACKUP_REASON=pre-migration' .github/workflows/deploy-production.yml 'Pre-migration backup is missing.'
 require_match 'deploy-release.sh' .github/workflows/deploy-production.yml 'Transactional release deployment is missing.'
 require_match 'PRODUCTION_SSH_KNOWN_HOSTS' .github/workflows/deploy-production.yml 'Pinned production SSH identity is missing.'
+require_match 'docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c' .github/workflows/deploy-production.yml 'Buildx action is not pinned.'
+require_match 'docker/login-action@dbcb813823bdd20940b903addbd779551569679f' .github/workflows/deploy-production.yml 'Registry login action is not pinned.'
+require_count 2 'docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a' .github/workflows/deploy-production.yml 'Image build actions are not pinned.'
+require_match 'cloudflare/wrangler-action@ebbaa1584979971c8614a24965b4405ff95890e0' .github/workflows/deploy-production.yml 'Cloudflare deployment action is not pinned.'
+require_count 2 'provenance: mode=max' .github/workflows/deploy-production.yml 'Image provenance is not enabled for both images.'
+require_count 2 'sbom: true' .github/workflows/deploy-production.yml 'Image SBOM attestations are not enabled for both images.'
+require_match 'restore-drill.sh' .github/workflows/deploy-production.yml 'Deployment does not rehearse database restoration.'
+require_match 'host-acceptance.sh' .github/workflows/deploy-production.yml 'Deployment does not enforce host acceptance.'
+require_match 'Content-Security-Policy-Report-Only' infrastructure/production/Caddyfile 'CSP reporting policy is missing.'
 require_match 'jalwa-restore-drill.timer' infrastructure/production/scripts/install-operations.sh 'Restore drill timer is not installed.'
 require_match 'jalwa-account-requests.timer' infrastructure/production/scripts/install-operations.sh 'Privacy processor timer is not installed.'
 require_match "status='applying'" infrastructure/production/scripts/apply-migrations.sh 'Migration applying-state tracking is missing.'
