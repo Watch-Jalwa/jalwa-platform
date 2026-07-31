@@ -104,7 +104,7 @@ jobs:
 
   container-builds:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 90
     needs: validate
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -135,3 +135,13 @@ jobs:
           test "$(docker image inspect --format '{{json .Config.Healthcheck.Test}}' jalwa-worker:ci)" != null
       - name: Boot and test production web image
         run: bash scripts/test-production-container.sh jalwa-web:ci "$GITHUB_SHA"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install pinned browser acceptance harness
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          npx playwright install --with-deps chromium
+      - name: Run production browser journeys
+        run: bash scripts/test-browser-acceptance.sh jalwa-web:ci "$GITHUB_SHA"
