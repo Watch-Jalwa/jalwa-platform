@@ -1,7 +1,30 @@
+import type { LiveAvailability, LiveDeliveryAdapter } from "@/lib/live-sources/registry";
+
 export type AccessLevel = "public" | "registered" | "premium" | "internal_preview";
 export type ContentType = "video" | "short" | "live" | "audio" | "article" | "image_story" | "quran" | "quiz";
 export type HostingMode = "embed_only" | "self_host_open" | "self_host_owned" | "partner_hosted" | "external_link" | "text_database";
 
 export type CatalogueCategory = { slug: string; label: string; urdu?: string | null; romanUrdu?: string | null; icon?: string | null };
-export type PlaybackSource = { provider: string; providerContentId?: string | null; embedUrl?: string | null; mediaUrl?: string | null; externalUrl?: string | null; mediaAssetId?: string | null; drmAssetId?: string | null; format?: "youtube" | "mp4" | "hls" | "dash" | "drm_hls" | "external" | null };
+export type PlaybackSource = {
+  provider: string;
+  providerContentId?: string | null;
+  embedUrl?: string | null;
+  mediaUrl?: string | null;
+  externalUrl?: string | null;
+  mediaAssetId?: string | null;
+  drmAssetId?: string | null;
+  format?: "youtube" | "mp4" | "hls" | "dash" | "drm_hls" | "external" | null;
+  sourceKey?: string | null;
+  deliveryAdapter?: LiveDeliveryAdapter | null;
+  availability?: LiveAvailability | null;
+  availabilityMessage?: string | null;
+  checkedAt?: string | null;
+  lastSuccessAt?: string | null;
+  sourceTimestamp?: string | null;
+  refreshIntervalSeconds?: number | null;
+  officialSourceUrl?: string | null;
+  termsUrl?: string | null;
+  requiredAttribution?: string | null;
+};
 export type CatalogueItem = { id?: string; slug: string; title: string; titleUrdu?: string | null; description?: string | null; category: string; categorySlug: string; durationSeconds?: number | null; accessLevel: AccessLevel; contentType: ContentType; hostingMode: HostingMode; thumbnailUrl?: string | null; playback?: PlaybackSource | null; sourceUrl?: string | null; attribution?: string | null };
+export type LiveCatalogueCollection = { slug: string; title: string; description?: string | null; items: CatalogueItem[] };

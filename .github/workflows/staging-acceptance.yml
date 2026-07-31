@@ -51,6 +51,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS" && test -n "$SERVICE_ROLE_KEY"
           grep -q "Premium reporting fixtures may run only in staging" scripts/seed-premium-reporting-staging.sql
+          grep -q "Public-domain live source fixtures may run only in staging" scripts/seed-public-domain-live-sources.sql
       - name: Configure pinned staging SSH identity
         run: |
           set -euo pipefail
@@ -106,6 +107,16 @@ jobs:
             "docker exec supabase-db psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
               -c \"select count(*) >= 5 from public.checkout_orders where idempotency_key like 'staging-report-%';\"" \
             | grep -qx t
+      - name: Seed allowlisted live-source drafts
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i supabase-db psql -v ON_ERROR_STOP=1 -U postgres -d postgres -v deployment_environment=staging" \
+            < scripts/seed-public-domain-live-sources.sql
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec supabase-db psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              -c \"select count(*) >= 15 from public.live_source_configs;\"" \
+            | grep -qx t
 
   live-browser-and-api:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
@@ -124,6 +135,8 @@ jobs:
       MIN_CONTENT_ITEMS: ${{ inputs.minimum_content_items || vars.MINIMUM_STAGING_CONTENT_ITEMS || '0' }}
       REPORT_FILE: ${{ github.workspace }}/staging-acceptance.json
       PREMIUM_REPORT_FILE: ${{ github.workspace }}/premium-reporting-acceptance.json
+      PUBLIC_DOMAIN_LIVE_REPORT_FILE: ${{ github.workspace }}/public-domain-live-acceptance.json
+      JALWA_EXPECT_LIVE_SOURCES: ${{ vars.STAGING_EXPECT_PUBLIC_DOMAIN_LIVE_SOURCES || 'false' }}
       EXPECTED_ENVIRONMENT: staging
       EXPECT_NOINDEX: "true"
       ALLOW_MOCK_PAYMENTS: "true"
@@ -166,6 +179,13 @@ jobs:
           JALWA_EXPECTED_VERSION: ${{ env.RELEASE_SHA }}
           JALWA_PREMIUM_REPORT_FILE: ${{ env.PREMIUM_REPORT_FILE }}
         run: node scripts/premium-reporting-acceptance.mjs
+      - name: Run public-domain live-source acceptance when enabled
+        if: env.JALWA_EXPECT_LIVE_SOURCES == 'true'
+        env:
+          JALWA_BROWSER_BASE_URL: ${{ env.BASE_URL }}
+          JALWA_EXPECTED_VERSION: ${{ env.RELEASE_SHA }}
+          JALWA_PUBLIC_DOMAIN_LIVE_REPORT_FILE: ${{ env.PUBLIC_DOMAIN_LIVE_REPORT_FILE }}
+        run: node scripts/public-domain-live-acceptance.mjs
       - name: Record staging evidence summary
         run: |
           {
@@ -183,6 +203,14 @@ jobs:
             echo '```json'
             cat "$PREMIUM_REPORT_FILE"
             echo '```'
+            if [[ "$JALWA_EXPECT_LIVE_SOURCES" == "true" ]]; then
+              echo '#### Public-domain live-source acceptance'
+              echo '```json'
+              cat "$PUBLIC_DOMAIN_LIVE_REPORT_FILE"
+              echo '```'
+            else
+              echo '- Public-domain live sources remain disabled; live-origin acceptance was intentionally skipped.'
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   host-acceptance:

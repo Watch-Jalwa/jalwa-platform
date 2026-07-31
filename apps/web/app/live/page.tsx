@@ -1,30 +1,56 @@
 import Link from "next/link";
-import { hasSupabaseConfig } from "@/lib/runtime";
-import { createClient } from "@/lib/supabase/server";
+import { getLiveCatalogue } from "@/lib/catalogue/repository";
+import { liveSourcesEnabled } from "@/lib/live-sources/registry";
+import type { CatalogueItem } from "@/lib/catalogue/types";
 
-export const metadata = { title: "Live" };
 export const dynamic = "force-dynamic";
 
-type Channel = { id: string; slug: string; title_en: string; title_ur: string | null; description_en: string | null; poster_url: string | null; access_level: string; status: string; live_events?: Array<{ title_en: string; scheduled_start: string; status: string }> };
-
-async function channels(): Promise<Channel[]> {
-  if (!hasSupabaseConfig()) return [{ id: "demo-live", slug: "jalwa-live-preview", title_en: "Jalwa Live channel preview", title_ur: "جلوہ لائیو", description_en: "The channel guide is ready. A real broadcast appears here after an authorized live input is connected.", poster_url: null, access_level: "public", status: "scheduled", live_events: [{ title_en: "First Jalwa broadcast", scheduled_start: new Date(Date.now()+86400000).toISOString(), status: "scheduled" }] }];
-  const supabase = await createClient();
-  const { data } = await supabase.from("live_channels").select("id,slug,title_en,title_ur,description_en,poster_url,access_level,status,live_events(title_en,scheduled_start,status)").eq("is_published", true).order("status", { ascending: false }).order("updated_at", { ascending: false });
-  return (data ?? []) as Channel[];
+function LiveCard({ item }: { item: CatalogueItem }) {
+  const status = item.playback?.availability ?? "degraded";
+  const label = status === "healthy" ? "Live" : status === "off_air" ? "Off air" : status === "unavailable" ? "Unavailable" : "Checking";
+  return <article className="live-card">
+    <Link href={`/watch/${item.slug}`}>
+      <div className="live-card-art" aria-hidden="true"><span className={`live-card-status live-card-status-${status}`}>{label}</span></div>
+      <h3>{item.title}</h3>
+      {item.titleUrdu ? <p className="urdu">{item.titleUrdu}</p> : null}
+      <p>{item.description}</p>
+    </Link>
+    {item.playback?.officialSourceUrl ? <Link className="live-source-link" href={item.playback.officialSourceUrl} rel="noreferrer" target="_blank">Official source ↗</Link> : null}
+  </article>;
 }
 
 export default async function LivePage() {
-  const items = await channels();
-  const active = items.filter((channel) => channel.status === "live");
-  const upcoming = items.filter((channel) => channel.status !== "live");
-  return <div className="page-shell live-guide"><section className="live-hero"><span className="eyebrow">Jalwa Live</span><h1>Live channels and original broadcasts.</h1><p>Watch scheduled programmes, recurring channels and special events in your browser. Premium and registered streams are protected by Jalwa access controls.</p></section>
-    <section><div className="section-heading"><div><span className="live-dot" /><h2>Live now</h2></div></div><div className="live-channel-grid">{active.length ? active.map((channel) => <ChannelCard channel={channel} key={channel.id} />) : <div className="empty-state"><h3>No broadcast is live right now</h3><p>Upcoming events remain listed below.</p></div>}</div></section>
-    <section><div className="section-heading"><div><span className="eyebrow">Schedule</span><h2>Channels and upcoming events</h2></div></div><div className="live-channel-grid">{upcoming.map((channel) => <ChannelCard channel={channel} key={channel.id} />)}</div></section>
-  </div>;
-}
+  if (!liveSourcesEnabled()) {
+    return <div className="page-shell"><section className="live-hero"><span className="eyebrow">Public information</span><h1>Live sources</h1><p>The approved public-domain live catalogue is installed but disabled in this environment.</p></section></div>;
+  }
+  const catalogue = await getLiveCatalogue();
+  const liveNow = catalogue.items.filter((item) => item.playback?.availability === "healthy" || item.playback?.availability === "degraded");
+  const offAir = catalogue.items.filter((item) => item.playback?.availability === "off_air");
+  return <div className="page-shell live-page">
+    <section className="live-hero">
+      <span className="eyebrow">NASA · NOAA · USGS</span>
+      <h1>Official live public sources</h1>
+      <p>Free public-information streams and current camera views. Jalwa does not restream, record or place advertising over an external player.</p>
+    </section>
 
-function ChannelCard({ channel }: { channel: Channel }) {
-  const event = channel.live_events?.sort((a,b) => +new Date(a.scheduled_start)-+new Date(b.scheduled_start))[0];
-  return <article className="live-channel-card"><Link href={`/live/${channel.slug}`}><div className="live-channel-art" style={channel.poster_url ? { backgroundImage: `linear-gradient(180deg,transparent,rgba(0,0,0,.88)),url(${channel.poster_url})` } : undefined}><span className={channel.status === "live" ? "live-badge" : "channel-status"}>{channel.status === "live" ? "LIVE" : channel.status}</span><span>{channel.access_level === "premium" ? "Premium" : "Watch in browser"}</span></div><h3>{channel.title_en}</h3>{channel.title_ur ? <p className="urdu">{channel.title_ur}</p> : null}<p>{event ? `${event.title_en} · ${new Date(event.scheduled_start).toLocaleString("en-PK", { dateStyle: "medium", timeStyle: "short" })}` : channel.description_en ?? "Channel schedule coming soon."}</p></Link></article>;
+    <section aria-labelledby="live-now-heading">
+      <div className="section-heading"><div><span className="eyebrow">Available</span><h2 id="live-now-heading">Live now</h2></div></div>
+      {liveNow.length ? <div className="live-grid">{liveNow.map((item) => <LiveCard item={item} key={item.slug} />)}</div> : <div className="empty-state">No approved source is live at the moment.</div>}
+    </section>
+
+    {offAir.length ? <section aria-labelledby="off-air-heading">
+      <div className="section-heading"><div><span className="eyebrow">Scheduled operations</span><h2 id="off-air-heading">Temporarily off air</h2></div></div>
+      <div className="live-grid">{offAir.map((item) => <LiveCard item={item} key={item.slug} />)}</div>
+    </section> : null}
+
+    {catalogue.collections.map((collection) => <section aria-labelledby={`${collection.slug}-heading`} key={collection.slug}>
+      <div className="section-heading"><div><span className="eyebrow">Public-domain cameras</span><h2 id={`${collection.slug}-heading`}>{collection.title}</h2><p>{collection.description}</p></div></div>
+      <div className="live-grid">{collection.items.map((item) => <LiveCard item={item} key={item.slug} />)}</div>
+    </section>)}
+
+    <aside className="live-disclaimer">
+      <strong>Source and advertising boundary</strong>
+      <p>NASA, NOAA and USGS do not sponsor or endorse Jalwa. Advertising may appear only in Jalwa-owned page regions and never over an official player or current-image view.</p>
+    </aside>
+  </div>;
 }

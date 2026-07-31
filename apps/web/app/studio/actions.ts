@@ -2,8 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { canonicalYouTubeUrl, parseYouTubeVideoId } from "@/lib/youtube/parse.mjs";
 import { requireStaff } from "@/lib/studio/auth";
+import { canonicalYouTubeUrl, parseYouTubeVideoId } from "@/lib/youtube/parse.mjs";
 
 function value(formData: FormData, key: string) {
   const item = formData.get(key);
@@ -44,6 +44,12 @@ async function recordAudit(
     entity_id: entityId,
     metadata,
   });
+}
+
+async function primaryPlaybackId(supabase: Awaited<ReturnType<typeof requireStaff>>["supabase"], contentId: string) {
+  const { data, error } = await supabase.from("playback_sources").select("id").eq("content_id", contentId).eq("is_primary", true).maybeSingle();
+  if (error) throw error;
+  return data?.id ?? null;
 }
 
 export async function importYouTubeAction(formData: FormData) {
@@ -132,6 +138,12 @@ export async function updateRightsAction(formData: FormData) {
     verified_at: null,
   }).eq("id", rightsId).eq("content_id", id);
   if (error) redirect(contentPath(id, error.message));
+  try {
+    const playbackId = await primaryPlaybackId(supabase, id);
+    if (playbackId) await supabase.from("live_source_configs").update({ enabled: false, rights_verified_at: null, next_review_at: null }).eq("playback_source_id", playbackId);
+  } catch (liveError) {
+    console.error("live_source_rights_reset_failed", liveError);
+  }
   await recordAudit(supabase, user.id, "rights_record_updated", id, { rights_id: rightsId });
   revalidatePath(contentPath(id));
   revalidatePath("/studio/content");
@@ -153,17 +165,59 @@ export async function approveRightsAction(formData: FormData) {
   if (profile.role !== "rights_reviewer" && profile.role !== "admin") redirect("/studio");
   const id = value(formData, "id");
   const rightsId = value(formData, "rightsId");
+  const verifiedAt = new Date();
+  const nextReviewAt = new Date(verifiedAt);
+  nextReviewAt.setUTCDate(nextReviewAt.getUTCDate() + 90);
   const { error } = await supabase.from("rights_records").update({
     status: "approved",
     verified_by: user.id,
-    verified_at: new Date().toISOString(),
+    verified_at: verifiedAt.toISOString(),
   }).eq("id", rightsId).eq("content_id", id);
   if (error) redirect(contentPath(id, error.message));
+  try {
+    const playbackId = await primaryPlaybackId(supabase, id);
+    if (playbackId) {
+      const { error: liveError } = await supabase.from("live_source_configs").update({
+        enabled: false,
+        rights_verified_at: verifiedAt.toISOString(),
+        next_review_at: nextReviewAt.toISOString(),
+      }).eq("playback_source_id", playbackId);
+      if (liveError) throw liveError;
+    }
+  } catch (liveError) {
+    redirect(contentPath(id, liveError instanceof Error ? liveError.message : "Live source review could not be recorded."));
+  }
   const { error: contentError } = await supabase.from("content_items").update({ status: "editorial_review", updated_by: user.id }).eq("id", id);
   if (contentError) redirect(contentPath(id, contentError.message));
-  await recordAudit(supabase, user.id, "rights_approved", id, { rights_id: rightsId });
+  await recordAudit(supabase, user.id, "rights_approved", id, { rights_id: rightsId, live_source_review_days: 90 });
   revalidatePath(contentPath(id));
   revalidatePath("/studio/content");
+}
+
+export async function setLiveSourceEnabledAction(formData: FormData) {
+  const { supabase, user, profile } = await requireStaff();
+  if (profile.role !== "rights_reviewer" && profile.role !== "admin") redirect("/studio");
+  const id = value(formData, "id");
+  const enabled = value(formData, "enabled") === "true";
+  const playbackId = await primaryPlaybackId(supabase, id);
+  if (!playbackId) redirect(contentPath(id, "Primary playback source unavailable."));
+  const [{ data: rights }, { data: config }] = await Promise.all([
+    supabase.from("rights_records").select("status").eq("content_id", id).maybeSingle(),
+    supabase.from("live_source_configs").select("next_review_at,rights_verified_at").eq("playback_source_id", playbackId).maybeSingle(),
+  ]);
+  if (!config) redirect(contentPath(id, "Live source configuration unavailable."));
+  if (enabled) {
+    if (rights?.status !== "approved") redirect(contentPath(id, "Approved rights are required before enabling a live source."));
+    const reviewAt = config.next_review_at ? new Date(config.next_review_at) : null;
+    if (!config.rights_verified_at || !reviewAt || reviewAt.getTime() <= Date.now()) redirect(contentPath(id, "Current live-source terms review is required."));
+  }
+  const { error } = await supabase.from("live_source_configs").update({ enabled }).eq("playback_source_id", playbackId);
+  if (error) redirect(contentPath(id, error.message));
+  await recordAudit(supabase, user.id, enabled ? "live_source_enabled" : "live_source_disabled", id, { playback_source_id: playbackId });
+  revalidatePath(contentPath(id));
+  revalidatePath("/live");
+  revalidatePath("/explore");
+  redirect(contentPath(id));
 }
 
 export async function publishContentAction(formData: FormData) {
@@ -181,6 +235,7 @@ export async function publishContentAction(formData: FormData) {
   revalidatePath("/studio/content");
   revalidatePath("/");
   revalidatePath("/explore");
+  revalidatePath("/live");
 }
 
 export async function unpublishContentAction(formData: FormData) {
@@ -193,9 +248,16 @@ export async function unpublishContentAction(formData: FormData) {
     updated_by: user.id,
   }).eq("id", id);
   if (error) redirect(contentPath(id, error.message));
+  try {
+    const playbackId = await primaryPlaybackId(supabase, id);
+    if (playbackId) await supabase.from("live_source_configs").update({ enabled: false }).eq("playback_source_id", playbackId);
+  } catch (liveError) {
+    console.error("live_source_kill_switch_failed", liveError);
+  }
   await recordAudit(supabase, user.id, "content_unpublished", id, { reason });
   revalidatePath(contentPath(id));
   revalidatePath("/studio/content");
   revalidatePath("/");
   revalidatePath("/explore");
+  revalidatePath("/live");
 }
