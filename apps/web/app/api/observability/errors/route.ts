@@ -32,23 +32,43 @@ function allowed(request: Request) {
   return true;
 }
 
+function sameOrigin(request: Request) {
+  const fetchSite = request.headers.get("sec-fetch-site");
+  if (fetchSite && !["same-origin", "same-site", "none"].includes(fetchSite)) return false;
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  const configured = process.env.NEXT_PUBLIC_APP_URL;
+  if (!configured) return process.env.NODE_ENV !== "production";
+  try {
+    return new URL(origin).origin === new URL(configured).origin;
+  } catch {
+    return false;
+  }
+}
+
 function text(value: unknown, maximum: number) {
   return typeof value === "string" ? value.slice(0, maximum) : "";
 }
 
 export async function POST(request: Request) {
+  if (!sameOrigin(request)) return new NextResponse(null, { status: 403 });
   const declaredLength = Number(request.headers.get("content-length") || 0);
   if (declaredLength > MAX_BODY_BYTES) return new NextResponse(null, { status: 413 });
   if (!allowed(request)) return new NextResponse(null, { status: 204 });
 
   const raw = await request.text();
   if (Buffer.byteLength(raw, "utf8") > MAX_BODY_BYTES) return new NextResponse(null, { status: 413 });
-  const body = JSON.parse(raw || "null") as Record<string, unknown> | null;
-  if (!body || typeof body !== "object") return new NextResponse(null, { status: 400 });
+  let body: Record<string, unknown> | null = null;
+  try {
+    body = JSON.parse(raw || "null") as Record<string, unknown> | null;
+  } catch {
+    return new NextResponse(null, { status: 400 });
+  }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return new NextResponse(null, { status: 400 });
 
   const message = text(body.message, 2000);
   const path = text(body.path, 500);
-  if (!message || !path.startsWith("/")) return new NextResponse(null, { status: 400 });
+  if (!message || !path.startsWith("/") || path.startsWith("//")) return new NextResponse(null, { status: 400 });
 
   const error = new Error(message);
   error.name = text(body.type, 100) || "BrowserError";
