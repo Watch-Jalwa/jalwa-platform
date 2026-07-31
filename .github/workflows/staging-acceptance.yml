@@ -24,8 +24,92 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  seed-reporting-fixtures:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
+      HOST: ${{ vars.STAGING_HOST }}
+      USER: ${{ vars.STAGING_USER || 'jalwa' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SERVICE_ROLE_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_SERVICE_ROLE_KEY }}
+      FINANCE_EMAIL: acceptance+premium-finance@watch-jalwa.com
+      VIEWER_EMAIL: acceptance+premium-viewer@watch-jalwa.com
+      MANUAL_EMAIL: acceptance+premium-manual@watch-jalwa.com
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
+      - name: Validate staging fixture boundary
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'A deployed commit SHA is required.' >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS" && test -n "$SERVICE_ROLE_KEY"
+          grep -q "Premium reporting fixtures may run only in staging" scripts/seed-premium-reporting-staging.sql
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
+      - name: Ensure deterministic acceptance users
+        id: users
+        run: |
+          set -euo pipefail
+          auth_url="https://api.$DOMAIN/auth/v1/admin/users"
+          headers=(-H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" -H 'Content-Type: application/json')
+          users_json=$(curl -fsS "${headers[@]}" "$auth_url?page=1&per_page=1000")
+          ensure_user() {
+            local email="$1" id payload
+            id=$(jq -r --arg email "$email" '.users[]? | select(.email == $email) | .id' <<<"$users_json" | head -1)
+            if [[ -z "$id" ]]; then
+              payload=$(jq -nc --arg email "$email" '{email:$email,email_confirm:true,user_metadata:{acceptance_fixture:true}}')
+              id=$(curl -fsS -X POST "${headers[@]}" --data "$payload" "$auth_url" | jq -r '.id // .user.id // empty')
+            fi
+            [[ "$id" =~ ^[0-9a-f-]{36}$ ]] || { echo "Could not resolve acceptance user $email" >&2; exit 1; }
+            printf '%s' "$id"
+          }
+          finance_id=$(ensure_user "$FINANCE_EMAIL")
+          viewer_id=$(ensure_user "$VIEWER_EMAIL")
+          manual_id=$(ensure_user "$MANUAL_EMAIL")
+          echo "finance_id=$finance_id" >> "$GITHUB_OUTPUT"
+          echo "viewer_id=$viewer_id" >> "$GITHUB_OUTPUT"
+          echo "manual_id=$manual_id" >> "$GITHUB_OUTPUT"
+      - name: Assign acceptance roles and seed reporting scenarios
+        env:
+          FINANCE_ID: ${{ steps.users.outputs.finance_id }}
+          VIEWER_ID: ${{ steps.users.outputs.viewer_id }}
+          MANUAL_ID: ${{ steps.users.outputs.manual_id }}
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec supabase-db psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              -v finance_id='$FINANCE_ID' -v viewer_id='$VIEWER_ID' -v manual_id='$MANUAL_ID' \
+              -c \"update public.profiles set role='finance', onboarding_completed=true where id=:'finance_id'; \
+                  update public.profiles set role='subscriber', onboarding_completed=true where id in (:'viewer_id',:'manual_id');\""
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i supabase-db psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              -v deployment_environment=staging \
+              -v fixture_user_id='$FINANCE_ID' \
+              -v fixture_user_id_2='$VIEWER_ID' \
+              -v fixture_user_id_3='$MANUAL_ID'" \
+            < scripts/seed-premium-reporting-staging.sql
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec supabase-db psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              -c \"select count(*) >= 5 from public.checkout_orders where idempotency_key like 'staging-report-%';\"" \
+            | grep -qx t
+
   live-browser-and-api:
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    needs: seed-reporting-fixtures
     runs-on: ubuntu-latest
     timeout-minutes: 45
     environment:
@@ -35,12 +119,16 @@ jobs:
       RELEASE_SHA: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
       BASE_URL: https://${{ vars.STAGING_DOMAIN }}
       SUPABASE_ANON_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_ANON_KEY }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_SERVICE_ROLE_KEY }}
       OPERATIONS_DIAGNOSTICS_SECRET: ${{ secrets.OPERATIONS_DIAGNOSTICS_SECRET }}
       MIN_CONTENT_ITEMS: ${{ inputs.minimum_content_items || vars.MINIMUM_STAGING_CONTENT_ITEMS || '0' }}
       REPORT_FILE: ${{ github.workspace }}/staging-acceptance.json
+      PREMIUM_REPORT_FILE: ${{ github.workspace }}/premium-reporting-acceptance.json
       EXPECTED_ENVIRONMENT: staging
       EXPECT_NOINDEX: "true"
       ALLOW_MOCK_PAYMENTS: "true"
+      FINANCE_EMAIL: acceptance+premium-finance@watch-jalwa.com
+      VIEWER_EMAIL: acceptance+premium-viewer@watch-jalwa.com
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -50,6 +138,7 @@ jobs:
           set -euo pipefail
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'A deployed commit SHA is required.' >&2; exit 1; }
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test -n "$SUPABASE_SERVICE_ROLE_KEY"
       - name: Run protected API and catalogue acceptance
         run: infrastructure/production/scripts/production-acceptance.sh "$BASE_URL"
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
@@ -58,7 +147,7 @@ jobs:
           package-manager-cache: false
       - name: Install pinned browser acceptance harness
         run: |
-          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1 @supabase/supabase-js@2.111.0
           npx playwright install --with-deps chromium
       - name: Run live desktop and Pakistan-mobile journeys
         env:
@@ -67,6 +156,16 @@ jobs:
           JALWA_EXPECT_READINESS_STATUS: "200"
           JALWA_EXPECT_NOINDEX: "true"
         run: node scripts/browser-acceptance.mjs
+      - name: Run authenticated Premium reporting acceptance
+        env:
+          JALWA_BROWSER_BASE_URL: ${{ env.BASE_URL }}
+          JALWA_SUPABASE_URL: https://api.${{ vars.STAGING_DOMAIN }}
+          JALWA_SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
+          JALWA_FINANCE_EMAIL: ${{ env.FINANCE_EMAIL }}
+          JALWA_VIEWER_EMAIL: ${{ env.VIEWER_EMAIL }}
+          JALWA_EXPECTED_VERSION: ${{ env.RELEASE_SHA }}
+          JALWA_PREMIUM_REPORT_FILE: ${{ env.PREMIUM_REPORT_FILE }}
+        run: node scripts/premium-reporting-acceptance.mjs
       - name: Record staging evidence summary
         run: |
           {
@@ -75,8 +174,14 @@ jobs:
             echo "- Release: $RELEASE_SHA"
             echo "- Minimum published catalogue: $MIN_CONTENT_ITEMS"
             echo '- Protected readiness, Supabase health, security headers, mobile browser journeys and noindex isolation passed'
+            echo '- Finance/read-only role separation, Karachi report filters, seeded payment lifecycle cases and audited CSV exports passed'
+            echo '#### Platform acceptance'
             echo '```json'
             cat "$REPORT_FILE"
+            echo '```'
+            echo '#### Premium reporting acceptance'
+            echo '```json'
+            cat "$PREMIUM_REPORT_FILE"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
