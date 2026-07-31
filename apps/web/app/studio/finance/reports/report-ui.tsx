@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import styles from "./reports.module.css";
 import { formatMinor, type ReportRange } from "@/lib/reports/premium.mjs";
@@ -52,7 +53,7 @@ export function EffectiveRange({ range, generatedAt }: { range: ReportRange; gen
   return <p className={styles.metadata}>Reporting boundary: <strong>{range.startDate}</strong> through <strong>{range.endDate}</strong> in <strong>{range.timezone}</strong>. UTC interval {range.startUtc} to {range.endUtcExclusive}{generatedAt ? ` · Generated ${new Date(generatedAt).toLocaleString("en-PK", { timeZone: range.timezone })}` : ""}.</p>;
 }
 
-export function KpiCard({ label, value, help }: { label: string; value: React.ReactNode; help?: string }) {
+export function KpiCard({ label, value, help }: { label: string; value: ReactNode; help?: string }) {
   return <article className={styles.kpi}><span>{label}</span><strong>{value}</strong>{help ? <small>{help}</small> : null}</article>;
 }
 
@@ -68,12 +69,14 @@ export function ErrorPanel({ title, error }: { title: string; error: unknown }) 
   return <section className={styles.errorPanel} role="alert"><h2>{title}</h2><p>{error instanceof Error ? error.message : "This report section could not be loaded."}</p><p>Other report sections remain available. Adjust the filters or retry.</p></section>;
 }
 
-export function EmptyState({ children }: { children: React.ReactNode }) {
+export function EmptyState({ children }: { children: ReactNode }) {
   return <div className={styles.empty}>{children}</div>;
 }
 
 export function ExportLink({ type, params, enabled = true }: { type: string; params: ReportSearch; enabled?: boolean }) {
   if (!enabled) return <span className={styles.disabledExport}>Export permission required</span>;
+  // A normal anchor is required so the browser preserves the backend filename and content type.
+  // eslint-disable-next-line @next/next/no-html-link-for-pages
   return <a className="button button-secondary" href={`/api/studio/premium-reports/export/${type}${queryString(params, { page: null })}`}>Export CSV</a>;
 }
 
