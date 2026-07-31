@@ -1,6 +1,16 @@
 "use client";
 
-export default function GlobalError({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+import { useEffect } from "react";
+
+export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useEffect(() => {
+    const payload = JSON.stringify({ type: "global_error", message: error.message, stack: error.stack, digest: error.digest, path: window.location.pathname });
+    const blob = new Blob([payload], { type: "application/json" });
+    if (!navigator.sendBeacon("/api/observability/client-error", blob)) {
+      void fetch("/api/observability/client-error", { method: "POST", headers: { "Content-Type": "application/json" }, body: payload, keepalive: true, credentials: "same-origin" });
+    }
+  }, [error]);
+
   return (
     <html lang="en">
       <body>
