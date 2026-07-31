@@ -8,6 +8,8 @@ LOCAL_RETENTION_DAYS="${BACKUP_LOCAL_RETENTION_DAYS:-14}"
 REMOTE_RETENTION_DAYS="${BACKUP_REMOTE_RETENTION_DAYS:-35}"
 DB_CONTAINER="${DB_CONTAINER:-supabase-db}"
 R2_BACKUP_BUCKET="${R2_BACKUP_BUCKET:-jalwa-backups}"
+BACKUP_AGE_IDENTITY_FILE="${BACKUP_AGE_IDENTITY_FILE:-/opt/jalwa/secrets/backup-age.key}"
+BACKUP_KEY_VERSION="${BACKUP_KEY_VERSION:-v1}"
 
 if [[ -r "$ENV_FILE" ]]; then
   set -a
@@ -19,9 +21,12 @@ fi
 : "${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required}"
 : "${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required}"
 : "${R2_ENDPOINT:?R2_ENDPOINT is required}"
-: "${BACKUP_AGE_RECIPIENT:?BACKUP_AGE_RECIPIENT is required}"
-: "${BACKUP_KEY_VERSION:?BACKUP_KEY_VERSION is required}"
 command -v age >/dev/null || { echo "age is required for backup encryption." >&2; exit 1; }
+command -v age-keygen >/dev/null || { echo "age-keygen is required to derive the backup recipient." >&2; exit 1; }
+if [[ -z "${BACKUP_AGE_RECIPIENT:-}" ]]; then
+  [[ -r "$BACKUP_AGE_IDENTITY_FILE" ]] || { echo "Backup age identity is not readable." >&2; exit 1; }
+  BACKUP_AGE_RECIPIENT="$(age-keygen -y "$BACKUP_AGE_IDENTITY_FILE")"
+fi
 
 mkdir -p "$BACKUP_DIR"
 exec 9>"$BACKUP_DIR/.backup.lock"
