@@ -85,13 +85,18 @@ if [[ "${NEXT_PUBLIC_ENABLE_PHONE_AUTH:-false}" == "true" ]]; then grep -q '^SMS
 headers="$(mktemp)"
 trap 'rm -f "$headers"' EXIT
 curl --fail --silent --show-error --head --max-time 20 "$BASE_URL/" > "$headers"
-for expected in 'strict-transport-security:' 'x-content-type-options: nosniff' 'referrer-policy:' 'permissions-policy:' 'x-frame-options:'; do
+for expected in 'strict-transport-security:' 'x-content-type-options: nosniff' 'referrer-policy:' 'permissions-policy:' 'x-frame-options:' 'content-security-policy:' 'reporting-endpoints:' 'cross-origin-opener-policy:'; do
   grep -qi "^${expected}" "$headers" || fail "Security header missing: $expected"
 done
-pass "Security response headers"
+pass "Security response headers and enforced content policy"
 
-version="$(curl --fail --silent --show-error --max-time 20 "$BASE_URL/api/readiness" | jq -r '.version // empty')"
+readiness="$(curl --fail --silent --show-error --max-time 20 "$BASE_URL/api/readiness")"
+version="$(jq -r '.version // empty' <<<"$readiness")"
 [[ "$version" == "$JALWA_IMAGE_TAG" ]] || fail "Readiness version ${version:-missing} does not match image tag $JALWA_IMAGE_TAG"
+jq -e 'keys | sort == ["service","status","time","version"]' <<<"$readiness" >/dev/null || fail "Public readiness exposes internal diagnostics"
+
+internal_status="$(curl --silent --show-error --max-time 20 --output /dev/null --write-out '%{http_code}' "$BASE_URL/api/internal/readiness")"
+[[ "$internal_status" == "401" ]] || fail "Internal readiness is accessible without authorization"
 
 printf '{"status":"passed","host":"%s","imageTag":"%s","version":"%s","backupAgeSeconds":%s,"restoreAgeSeconds":%s,"diskPercent":%s,"checkedAt":"%s"}\n' \
   "$(hostname -f)" "$JALWA_IMAGE_TAG" "$version" "$backup_age" "$restore_age" "$disk_percent" "$(date -u +%FT%TZ)"
