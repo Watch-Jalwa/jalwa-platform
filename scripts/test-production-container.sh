@@ -68,10 +68,13 @@ readiness_status="$(curl --silent --show-error --max-time 5 \
   "$base_url/api/readiness")"
 [[ "$readiness_status" == "503" ]] || fail "readiness must fail closed when production dependencies are absent"
 jq -e --arg expected "$expected_sha" \
-  '.service == "jalwa-web" and .status == "not_ready" and .version == $expected' \
-  "$temporary_directory/readiness.json" >/dev/null || fail "readiness response is not fail-closed or has the wrong release identity"
+  '.service == "jalwa-web" and .status == "not_ready" and .version == $expected and (keys | sort == ["service","status","time","version"])' \
+  "$temporary_directory/readiness.json" >/dev/null || fail "public readiness leaks diagnostics or has the wrong release identity"
+
+internal_status="$(curl --silent --show-error --max-time 5 --output /dev/null --write-out '%{http_code}' "$base_url/api/internal/readiness")"
+[[ "$internal_status" == "401" ]] || fail "internal readiness is not protected"
 
 running_user="$(docker inspect --format '{{.Config.User}}' "$container")"
 [[ "$running_user" == "node" ]] || fail "runtime container user is not node"
 
-printf 'PASS production web image boots, reports its release, exposes security headers and fails readiness closed\n'
+printf 'PASS production web image boots, reports its release, limits readiness diagnostics and fails readiness closed\n'
