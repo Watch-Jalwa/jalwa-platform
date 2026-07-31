@@ -10,7 +10,11 @@ const specialUrl = new URL("../lib/studio/premium-report-special.ts", import.met
 const capabilitiesUrl = new URL("../lib/studio/capabilities.ts", import.meta.url);
 const pageUrl = new URL("../app/studio/finance/reports/page.tsx", import.meta.url);
 const sectionUrl = new URL("../app/studio/finance/reports/[section]/page.tsx", import.meta.url);
+const reportUrl = new URL("../app/api/studio/premium-reports/[report]/route.ts", import.meta.url);
 const exportUrl = new URL("../app/api/studio/premium-reports/export/[report]/route.ts", import.meta.url);
+const acceptanceUrl = new URL("../../../scripts/premium-reporting-acceptance.mjs", import.meta.url);
+const seedUrl = new URL("../../../scripts/seed-premium-reporting-staging.sql", import.meta.url);
+const stagingWorkflowUrl = new URL("../../../.github/workflows/staging-acceptance.yml", import.meta.url);
 
 async function text(url) { return readFile(url, "utf8"); }
 
@@ -38,23 +42,36 @@ test("backend owns formulas, historical boundaries, pagination, CSV and export a
   assert.match(service, /createHash\("sha256"\)/);
   assert.match(service, /premium_report_exported/);
   assert.match(service, /content_sha256/);
+  assert.match(service, /row_count/);
+  assert.doesNotMatch(service, /label:\s*"Raw event"|label:\s*"Payload"|value:\s*"payload_hash"/i);
 });
 
-test("reconciliation covers stale payments, webhooks, failed renewals and refunds", async () => {
+test("reconciliation covers stale payments, webhooks, failed renewals and refunds without mutation", async () => {
   const special = await text(specialUrl);
   assert.match(special, /stale_pending_payment/);
   assert.match(special, /failed_or_ignored_webhook/);
   assert.match(special, /failed_renewal/);
   assert.match(special, /refund_not_reflected_in_subscription/);
   assert.match(special, /active_paid_subscription_without_completed_payment/);
+  assert.doesNotMatch(special, /\.insert\(|\.update\(|\.delete\(/);
 });
 
 test("report and export capabilities are separate and server enforced", async () => {
-  const [capabilities, exportRoute] = await Promise.all([text(capabilitiesUrl), text(exportUrl)]);
+  const [capabilities, reportRoute, exportRoute] = await Promise.all([
+    text(capabilitiesUrl),
+    text(reportUrl),
+    text(exportUrl),
+  ]);
   assert.match(capabilities, /premium:reports:read/);
   assert.match(capabilities, /premium:reports:export/);
   assert.match(capabilities, /premium:reconciliation:run/);
+  assert.match(reportRoute, /requirePremiumApiCapability\("premium:reports:read"\)/);
   assert.match(exportRoute, /requirePremiumApiCapability\("premium:reports:export"\)/);
+  assert.match(reportRoute, /StudioAccessError/);
+  assert.match(exportRoute, /StudioAccessError/);
+  assert.match(reportRoute, /private, no-store/);
+  assert.match(exportRoute, /private, no-store/);
+  assert.match(exportRoute, /auditPremiumExport\(user\.id/);
 });
 
 test("existing Studio contains the Premium reporting workspace and backend totals", async () => {
@@ -67,4 +84,33 @@ test("existing Studio contains the Premium reporting workspace and backend total
   assert.match(section, /Payment ledger/);
   assert.match(section, /Subscription ledger/);
   assert.match(section, /Reconciliation attention/);
+  assert.match(section, /loadReport/);
+  assert.match(section, /parseContext/);
+});
+
+test("staging acceptance seeds representative cases and proves role, export and responsive contracts", async () => {
+  const [acceptance, seed, workflow] = await Promise.all([
+    text(acceptanceUrl),
+    text(seedUrl),
+    text(stagingWorkflowUrl),
+  ]);
+  assert.match(seed, /deployment_environment.*staging/s);
+  assert.match(seed, /staging-report-activation/);
+  assert.match(seed, /staging-report-renewal/);
+  assert.match(seed, /staging-report-failed-renewal/);
+  assert.match(seed, /staging-report-failed-activation/);
+  assert.match(seed, /staging-report-pending/);
+  assert.match(seed, /partial refund/);
+  assert.match(seed, /manual_grant/);
+  assert.match(seed, /failed-webhook/);
+  assert.match(workflow, /seed-reporting-fixtures/);
+  assert.match(workflow, /seed-premium-reporting-staging\.sql/);
+  assert.match(workflow, /premium-reporting-acceptance\.mjs/);
+  assert.match(acceptance, /anonymousReport\.status\(\), 401/);
+  assert.match(acceptance, /viewerReport\.status\(\), 403/);
+  assert.match(acceptance, /viewerExport\.status\(\), 403/);
+  assert.match(acceptance, /premium_report_exported/);
+  assert.match(acceptance, /x-jalwa-report-sha256/);
+  assert.match(acceptance, /Asia\\\/Karachi/);
+  assert.match(acceptance, /width: 390, height: 844/);
 });
