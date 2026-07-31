@@ -30,6 +30,7 @@ concurrency:
 jobs:
   bootstrap:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     environment: production
     env:
       GH_TOKEN: ${{ github.token }}
@@ -40,8 +41,8 @@ jobs:
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: hashicorp/setup-terraform@v3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: hashicorp/setup-terraform@b9cd54a3c349d3f38e8881555d616ced269862dd
 
       - name: Validate required account connections
         env:
@@ -99,6 +100,21 @@ jobs:
           host=$(terraform output -raw ipv4_address)
           echo "host=$host" >> "$GITHUB_OUTPUT"
 
+      - name: Capture provisioned SSH host identity
+        id: hostkey
+        env:
+          HOST: ${{ steps.terraform.outputs.host }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if key=$(ssh-keyscan -T 5 -t ed25519 "$HOST" 2>/dev/null) && [[ -n "$key" ]]; then break; fi
+            sleep 10
+          done
+          [[ -n "${key:-}" ]] || { echo 'Could not read the new host Ed25519 key.' >&2; exit 1; }
+          printf '%s\n' "$key" > /tmp/production-known-hosts
+          fingerprint=$(ssh-keygen -lf /tmp/production-known-hosts | awk '{print $2}')
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+
       - name: Configure Cloudflare DNS
         env:
           HOST: ${{ steps.terraform.outputs.host }}
@@ -122,30 +138,30 @@ jobs:
           upsert_record "$DOMAIN"
           upsert_record "www.$DOMAIN"
           upsert_record "api.$DOMAIN"
-
-          # Cloudflare Workers custom domains create their own DNS record.
           curl -fsS "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records?name=media.$DOMAIN" \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-            | jq -r '.result[].id' \
-            | while read -r record_id; do
-                curl -fsS -X DELETE "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records/$record_id" \
-                  -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" >/dev/null
-              done
+            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | jq -r '.result[].id' | while read -r record_id; do
+              curl -fsS -X DELETE "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records/$record_id" \
+                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" >/dev/null
+            done
 
-      - name: Persist non-secret deployment outputs
+      - name: Persist deployment outputs
         env:
           HOST: ${{ steps.terraform.outputs.host }}
           DOMAIN: ${{ inputs.domain }}
+          HOST_FINGERPRINT: ${{ steps.hostkey.outputs.fingerprint }}
         run: |
           set -euo pipefail
           gh variable set PRODUCTION_HOST --env production --body "$HOST"
           gh variable set PRODUCTION_USER --env production --body "jalwa"
           gh variable set PRODUCTION_DOMAIN --env production --body "$DOMAIN"
           gh variable set NEXT_PUBLIC_SUPABASE_URL --env production --body "https://api.$DOMAIN"
+          gh variable set PRODUCTION_SSH_KNOWN_HOSTS --env production --body "$(cat /tmp/production-known-hosts)"
           {
             echo '### Platform bootstrap complete'
             echo "- DigitalOcean host: $HOST"
+            echo "- SSH Ed25519 fingerprint: $HOST_FINGERPRINT"
             echo "- Self-hosted Supabase API: https://api.$DOMAIN"
             echo '- R2 buckets and Cloudflare DNS configured'
-            echo '- No managed Supabase account was created'
+            echo '- Production SSH host identity pinned for subsequent deploys'
+            echo '- Run scripts/generate-supabase-secrets.mjs and store every generated value as a production environment secret'
           } >> "$GITHUB_STEP_SUMMARY"
