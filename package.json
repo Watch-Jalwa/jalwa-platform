@@ -5,6 +5,10 @@
   "packageManager": "npm@10.9.2",
   "engines": { "node": ">=22.0.0" },
   "workspaces": ["apps/*", "packages/*"],
+  "overrides": {
+    "postcss": "8.5.22",
+    "sharp": "0.35.3"
+  },
   "scripts": {
     "dev": "npm run dev --workspace @jalwa/web",
     "build": "npm run build --workspaces --if-present",
