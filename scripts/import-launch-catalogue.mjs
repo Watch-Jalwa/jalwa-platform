@@ -1,5 +1,5 @@
 import { pathToFileURL } from "node:url";
-import { loadJsonLines, validateLaunchCatalogue } from "./launch-catalogue.mjs";
+import { loadCatalogueFile, validateLaunchCatalogue } from "./launch-catalogue.mjs";
 
 function env(name) {
   const value = process.env[name]?.trim();
@@ -25,15 +25,59 @@ async function categoryId(baseUrl, key, slug) {
   return rows[0].id;
 }
 
+function evidenceFields(reference) {
+  try {
+    const url = new URL(reference);
+    if (url.protocol === "https:") return { evidence_url: reference, evidence_note: null };
+  } catch {
+    // Internal document references are stored as notes and resolved by operations.
+  }
+  return { evidence_url: null, evidence_note: reference };
+}
+
+async function upsertContentDraft(baseUrl, key, item, category) {
+  const existingParams = new URLSearchParams({ select: "id,status", slug: `eq.${item.slug}`, limit: "1" });
+  const existing = await request(baseUrl, key, `/rest/v1/content_items?${existingParams}`);
+  const payload = {
+    slug: item.slug,
+    content_type: item.contentType,
+    hosting_mode: item.hostingMode,
+    access_level: item.accessLevel,
+    title_en: item.titleEn,
+    title_ur: item.titleUr,
+    title_roman_ur: item.titleRomanUr,
+    description_en: item.descriptionEn,
+    description_ur: item.descriptionUr ?? null,
+    description_roman_ur: item.descriptionRomanUr ?? null,
+    primary_category_id: category,
+    language: item.language,
+    duration_seconds: item.durationSeconds ?? null,
+    audience: item.audience,
+    sensitivity: item.sensitivity,
+    thumbnail_url: item.thumbnailUrl ?? null,
+  };
+
+  if (existing?.[0]?.id) {
+    const rows = await request(baseUrl, key, `/rest/v1/content_items?id=eq.${existing[0].id}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(payload),
+    });
+    return { contentId: rows?.[0]?.id ?? existing[0].id, preservedStatus: existing[0].status };
+  }
+
+  const rows = await request(baseUrl, key, "/rest/v1/content_items", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify([{ ...payload, status: "draft" }]),
+  });
+  if (!rows?.[0]?.id) throw new Error(`Content insert returned no id for ${item.slug}`);
+  return { contentId: rows[0].id, preservedStatus: null };
+}
+
 async function importItem(baseUrl, key, item) {
   const category = await categoryId(baseUrl, key, item.categorySlug);
-  const contentRows = await request(baseUrl, key, "/rest/v1/content_items?on_conflict=slug", {
-    method: "POST",
-    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
-    body: JSON.stringify([{ slug: item.slug, content_type: item.contentType, hosting_mode: item.hostingMode, access_level: item.accessLevel, status: "draft", title_en: item.titleEn, title_ur: item.titleUr, title_roman_ur: item.titleRomanUr, description_en: item.descriptionEn, description_ur: item.descriptionUr ?? null, description_roman_ur: item.descriptionRomanUr ?? null, primary_category_id: category, language: item.language, duration_seconds: item.durationSeconds ?? null, audience: item.audience, sensitivity: item.sensitivity, thumbnail_url: item.thumbnailUrl ?? null }]),
-  });
-  const contentId = contentRows?.[0]?.id;
-  if (!contentId) throw new Error(`Content upsert returned no id for ${item.slug}`);
+  const { contentId, preservedStatus } = await upsertContentDraft(baseUrl, key, item, category);
 
   const source = item.source;
   await request(baseUrl, key, "/rest/v1/playback_sources?on_conflict=provider,provider_content_id", {
@@ -42,24 +86,55 @@ async function importItem(baseUrl, key, item) {
     body: JSON.stringify([{ content_id: contentId, provider: source.provider, provider_content_id: source.providerContentId ?? null, embed_url: source.embedUrl ?? null, media_url: source.mediaUrl ?? null, external_url: source.externalUrl ?? null, is_primary: true, status: "active" }]),
   });
 
-  const rightsParams = new URLSearchParams({ select: "id", content_id: `eq.${contentId}`, source_url: `eq.${item.rights.sourceUrl}`, limit: "1" });
+  const rightsParams = new URLSearchParams({ select: "id,status", content_id: `eq.${contentId}`, source_url: `eq.${item.rights.sourceUrl}`, limit: "1" });
   const existingRights = await request(baseUrl, key, `/rest/v1/rights_records?${rightsParams}`);
+  const rightsPayload = {
+    content_id: contentId,
+    source_url: item.rights.sourceUrl,
+    creator: item.rights.creator,
+    licence_code: item.rights.licenceCode,
+    attribution_text: item.rights.attributionText,
+    jurisdiction_note: item.rights.jurisdictionNote ?? null,
+    ...evidenceFields(item.rights.evidenceReference),
+    takedown_contact: item.rights.takedownContact,
+    expires_at: item.rights.expiresAt ?? null,
+    commercial_use_confirmed: item.rights.commercialUseConfirmed === true,
+    modification_confirmed: item.rights.modificationConfirmed === true,
+    self_hosting_confirmed: item.rights.selfHostingConfirmed === true,
+    embedding_confirmed: item.rights.embeddingConfirmed === true,
+    status: "pending",
+    verified_by: null,
+    verified_at: null,
+  };
+
   if (!existingRights?.length) {
     await request(baseUrl, key, "/rest/v1/rights_records", {
       method: "POST",
       headers: { Prefer: "return=minimal" },
-      body: JSON.stringify([{ content_id: contentId, source_url: item.rights.sourceUrl, creator: item.rights.creator, licence_code: item.rights.licenceCode, attribution_text: item.rights.attributionText, jurisdiction_note: [item.rights.jurisdictionNote, `Evidence: ${item.rights.evidenceReference}`].filter(Boolean).join(" | "), commercial_use_confirmed: item.rights.commercialUseConfirmed === true, modification_confirmed: item.rights.modificationConfirmed === true, self_hosting_confirmed: item.rights.selfHostingConfirmed === true, embedding_confirmed: item.rights.embeddingConfirmed === true, status: "pending" }]),
+      body: JSON.stringify([rightsPayload]),
+    });
+  } else if (existingRights[0].status !== "approved") {
+    await request(baseUrl, key, `/rest/v1/rights_records?id=eq.${existingRights[0].id}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=minimal" },
+      body: JSON.stringify(rightsPayload),
     });
   }
-  return { slug: item.slug, contentId };
+
+  return {
+    slug: item.slug,
+    contentId,
+    preservedContentStatus: preservedStatus,
+    preservedApprovedRights: existingRights?.[0]?.status === "approved",
+  };
 }
 
 async function main() {
   const filePath = process.argv[2];
   const commit = process.argv.includes("--commit");
   const minimumItems = Number(process.argv.find((arg) => arg.startsWith("--min="))?.split("=")[1] ?? 1);
-  if (!filePath) throw new Error("Usage: node scripts/import-launch-catalogue.mjs <catalogue.jsonl> [--min=150] [--commit]");
-  const items = await loadJsonLines(filePath);
+  if (!filePath) throw new Error("Usage: node scripts/import-launch-catalogue.mjs <catalogue.jsonl|catalogue.csv> [--min=150] [--commit]");
+  const items = await loadCatalogueFile(filePath);
   const validation = validateLaunchCatalogue(items, { minimumItems, allowPlaceholders: false });
   if (!validation.ok) {
     console.error(JSON.stringify(validation, null, 2));

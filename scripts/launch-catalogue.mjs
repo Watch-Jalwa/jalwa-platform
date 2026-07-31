@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { extname } from "node:path";
 import { pathToFileURL } from "node:url";
 
 const contentTypes = new Set(["video", "short", "live", "audio", "article", "image_story", "quran", "quiz"]);
@@ -24,6 +25,102 @@ function validHttps(value, field, errors, index, allowPlaceholders) {
   }
 }
 
+function csvBoolean(value, field, rowNumber) {
+  if (value === "") return false;
+  if (/^(true|yes|1)$/i.test(value)) return true;
+  if (/^(false|no|0)$/i.test(value)) return false;
+  throw new Error(`CSV row ${rowNumber}: ${field} must be true or false`);
+}
+
+export function parseCatalogueCsv(source) {
+  const rows = [];
+  let row = [];
+  let field = "";
+  let quoted = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (quoted) {
+      if (character === '"' && source[index + 1] === '"') {
+        field += '"';
+        index += 1;
+      } else if (character === '"') {
+        quoted = false;
+      } else {
+        field += character;
+      }
+      continue;
+    }
+    if (character === '"') {
+      quoted = true;
+    } else if (character === ",") {
+      row.push(field);
+      field = "";
+    } else if (character === "\n") {
+      row.push(field);
+      if (row.some((entry) => entry.trim() !== "")) rows.push(row);
+      row = [];
+      field = "";
+    } else if (character !== "\r") {
+      field += character;
+    }
+  }
+  if (quoted) throw new Error("CSV contains an unterminated quoted field");
+  row.push(field);
+  if (row.some((entry) => entry.trim() !== "")) rows.push(row);
+  if (rows.length < 2) return [];
+
+  const headers = rows[0].map((entry) => entry.trim());
+  if (new Set(headers).size !== headers.length) throw new Error("CSV contains duplicate headers");
+
+  return rows.slice(1).map((values, offset) => {
+    const rowNumber = offset + 2;
+    const record = Object.fromEntries(headers.map((header, index) => [header, (values[index] ?? "").trim()]));
+    const duration = record.durationSeconds === "" ? undefined : Number(record.durationSeconds);
+    if (duration !== undefined && !Number.isInteger(duration)) throw new Error(`CSV row ${rowNumber}: durationSeconds must be an integer`);
+    return {
+      slug: record.slug,
+      contentType: record.contentType,
+      hostingMode: record.hostingMode,
+      accessLevel: record.accessLevel,
+      titleEn: record.titleEn,
+      titleUr: record.titleUr,
+      titleRomanUr: record.titleRomanUr,
+      descriptionEn: record.descriptionEn,
+      descriptionUr: record.descriptionUr || undefined,
+      descriptionRomanUr: record.descriptionRomanUr || undefined,
+      categorySlug: record.categorySlug,
+      language: record.language,
+      durationSeconds: duration,
+      audience: record.audience,
+      sensitivity: record.sensitivity,
+      thumbnailUrl: record.thumbnailUrl || undefined,
+      source: {
+        provider: record["source.provider"],
+        providerContentId: record["source.providerContentId"] || undefined,
+        embedUrl: record["source.embedUrl"] || undefined,
+        mediaUrl: record["source.mediaUrl"] || undefined,
+        externalUrl: record["source.externalUrl"],
+      },
+      rights: {
+        sourceUrl: record["rights.sourceUrl"],
+        creator: record["rights.creator"],
+        licenceCode: record["rights.licenceCode"],
+        attributionText: record["rights.attributionText"],
+        evidenceReference: record["rights.evidenceReference"],
+        takedownContact: record["rights.takedownContact"],
+        expiresAt: record["rights.expiresAt"] || undefined,
+        jurisdictionNote: record["rights.jurisdictionNote"] || undefined,
+        embeddingConfirmed: csvBoolean(record["rights.embeddingConfirmed"], "rights.embeddingConfirmed", rowNumber),
+        selfHostingConfirmed: csvBoolean(record["rights.selfHostingConfirmed"], "rights.selfHostingConfirmed", rowNumber),
+        commercialUseConfirmed: csvBoolean(record["rights.commercialUseConfirmed"], "rights.commercialUseConfirmed", rowNumber),
+        modificationConfirmed: csvBoolean(record["rights.modificationConfirmed"], "rights.modificationConfirmed", rowNumber),
+        reviewedByAi: false,
+      },
+    };
+  });
+}
+
 export async function loadJsonLines(filePath) {
   const raw = await readFile(filePath, "utf8");
   const items = [];
@@ -39,11 +136,17 @@ export async function loadJsonLines(filePath) {
   return items;
 }
 
+export async function loadCatalogueFile(filePath) {
+  if (extname(filePath).toLowerCase() === ".csv") return parseCatalogueCsv(await readFile(filePath, "utf8"));
+  return loadJsonLines(filePath);
+}
+
 export function validateLaunchCatalogue(items, { minimumItems = 1, allowPlaceholders = false } = {}) {
   const errors = [];
   const warnings = [];
   const slugs = new Set();
   const providerIds = new Set();
+  const sourceUrls = new Set();
 
   if (!Array.isArray(items)) return { ok: false, errors: ["catalogue must be an array"], warnings, summary: { items: 0 } };
   if (items.length < minimumItems) errors.push(`catalogue contains ${items.length} items; minimum is ${minimumItems}`);
@@ -84,7 +187,11 @@ export function validateLaunchCatalogue(items, { minimumItems = 1, allowPlacehol
     } else {
       if (!providers.has(source.provider)) errors.push(`item ${index}: unsupported source provider`);
       requiredString(source.externalUrl, "source.externalUrl", errors, index, 8);
-      if (source.externalUrl) validHttps(source.externalUrl, "source.externalUrl", errors, index, allowPlaceholders);
+      if (source.externalUrl) {
+        validHttps(source.externalUrl, "source.externalUrl", errors, index, allowPlaceholders);
+        if (sourceUrls.has(source.externalUrl)) errors.push(`item ${index}: duplicate source URL ${source.externalUrl}`);
+        sourceUrls.add(source.externalUrl);
+      }
       if (source.providerContentId) {
         const key = `${source.provider}:${source.providerContentId}`;
         if (providerIds.has(key)) errors.push(`item ${index}: duplicate provider content id ${key}`);
@@ -111,10 +218,16 @@ export function validateLaunchCatalogue(items, { minimumItems = 1, allowPlacehol
       requiredString(rights.licenceCode, "rights.licenceCode", errors, index, 2);
       requiredString(rights.attributionText, "rights.attributionText", errors, index, 8);
       requiredString(rights.evidenceReference, "rights.evidenceReference", errors, index, 4);
+      requiredString(rights.takedownContact, "rights.takedownContact", errors, index, 4);
       if (rights.sourceUrl) validHttps(rights.sourceUrl, "rights.sourceUrl", errors, index, allowPlaceholders);
+      if (rights.expiresAt) {
+        const expiry = new Date(rights.expiresAt).getTime();
+        if (!Number.isFinite(expiry)) errors.push(`item ${index}: rights.expiresAt must be a valid date`);
+        else if (expiry <= Date.now()) errors.push(`item ${index}: rights.expiresAt is already expired`);
+      }
       if (item.hostingMode === "embed_only" && rights.embeddingConfirmed !== true) errors.push(`item ${index}: embed_only requires embeddingConfirmed=true`);
       if (["self_host_open", "self_host_owned"].includes(item.hostingMode) && rights.selfHostingConfirmed !== true) errors.push(`item ${index}: self-hosting rights must be confirmed`);
-      if (item.hostingMode === "self_host_open" && rights.commercialUseConfirmed !== true) errors.push(`item ${index}: open content requires commercialUseConfirmed=true`);
+      if ((["self_host_open", "self_host_owned"].includes(item.hostingMode) || item.accessLevel === "premium") && rights.commercialUseConfirmed !== true) errors.push(`item ${index}: self-hosted or premium content requires commercialUseConfirmed=true`);
       if (rights.reviewedByAi === true) errors.push(`item ${index}: AI cannot approve rights`);
     }
   });
@@ -131,10 +244,10 @@ export function validateLaunchCatalogue(items, { minimumItems = 1, allowPlacehol
 
 async function main() {
   const filePath = process.argv[2];
-  if (!filePath) throw new Error("Usage: node scripts/launch-catalogue.mjs <catalogue.jsonl> [--min=150] [--allow-placeholders]");
+  if (!filePath) throw new Error("Usage: node scripts/launch-catalogue.mjs <catalogue.jsonl|catalogue.csv> [--min=150] [--allow-placeholders]");
   const minimumItems = Number(process.argv.find((arg) => arg.startsWith("--min="))?.split("=")[1] ?? 1);
   const allowPlaceholders = process.argv.includes("--allow-placeholders");
-  const items = await loadJsonLines(filePath);
+  const items = await loadCatalogueFile(filePath);
   const result = validateLaunchCatalogue(items, { minimumItems, allowPlaceholders });
   console.log(JSON.stringify(result, null, 2));
   if (!result.ok) process.exitCode = 1;
