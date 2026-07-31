@@ -27,16 +27,17 @@ The latest frontend is built on Vercel. That is not evidence of a full transacti
 
 ## Next operating phase
 
-Repository development is ready to move into four controlled workstreams:
+Repository development is ready to move into five controlled workstreams:
 
 1. configure the isolated staging environment and retain live acceptance evidence;
-2. onboard an initial rights-cleared catalogue through the governed Studio workflow;
-3. complete merchant/provider, pricing, refund and customer-support decisions;
-4. promote a validated staging release to production only after the production checklist is complete.
+2. implement and stage the approved NASA, NOAA and USGS public-domain live-source catalogue;
+3. onboard an initial rights-cleared catalogue through the governed Studio workflow;
+4. complete merchant/provider, pricing, refund and customer-support decisions;
+5. promote a validated staging release to production only after the production checklist is complete.
 
 The approved delivery model is mobile-first web/PWA only. Android and iOS native applications, Google Play distribution and Apple App Store distribution are not part of the current roadmap or release gates.
 
-See [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md).
+See [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md) and [Initial public-domain live source integration](docs/19-public-domain-live-source-integration.md).
 
 ## Local development
 
@@ -102,6 +103,7 @@ docs/                          product, architecture, operations and handoff doc
 17. [Current status and next-stage gates](docs/16-current-status-and-next-stage-gates.md)
 18. [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md)
 19. [Repository readiness audit — 31 July 2026](docs/18-repository-audit-2026-07-31.md)
+20. [Initial public-domain live source integration](docs/19-public-domain-live-source-integration.md)
 
 ## Non-negotiable release rules
 
