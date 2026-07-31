@@ -1,16 +1,10 @@
 import type { Instrumentation } from "next";
 
 export async function register() {
-  if (process.env.NEXT_RUNTIME !== "nodejs") return;
-
-  const { emitObservabilityEvent } = await import("@/lib/observability/event");
-
-  process.on("uncaughtException", (error) => {
-    emitObservabilityEvent({ level: "fatal", event: "web.uncaught_exception", error });
-  });
-  process.on("unhandledRejection", (reason) => {
-    emitObservabilityEvent({ level: "fatal", event: "web.unhandled_rejection", error: reason });
-  });
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { registerNodeProcessHandlers } = await import("@/lib/observability/register-node-process-handlers");
+    registerNodeProcessHandlers();
+  }
 }
 
 export const onRequestError: Instrumentation.onRequestError = async (error, request, context) => {
