@@ -8,10 +8,13 @@ const imageRouteUrl = new URL("../app/api/live-sources/[sourceKey]/image/route.t
 const healthUrl = new URL("../app/api/cron/source-health/route.ts", import.meta.url);
 const watchUrl = new URL("../app/watch/[slug]/page.tsx", import.meta.url);
 const livePageUrl = new URL("../app/live/page.tsx", import.meta.url);
-const migrationUrl = new URL("../../../supabase/migrations/202608010001_public_domain_live_sources.sql", import.meta.url);
+const contractMigrationUrl = new URL("../../../supabase/migrations/202608010001_public_domain_live_sources.sql", import.meta.url);
+const approvedMigrationUrl = new URL("../../../supabase/migrations/202608010002_approved_public_domain_live_inventory.sql", import.meta.url);
 const seedUrl = new URL("../../../scripts/seed-public-domain-live-sources.sql", import.meta.url);
+const stateUrl = new URL("../../../scripts/set-public-domain-live-catalogue-state.sql", import.meta.url);
 const acceptanceUrl = new URL("../../../scripts/public-domain-live-acceptance.mjs", import.meta.url);
-const workflowUrl = new URL("../../../.github/workflows/staging-acceptance.yml", import.meta.url);
+const stagingWorkflowUrl = new URL("../../../.github/workflows/staging-acceptance.yml", import.meta.url);
+const activationWorkflowUrl = new URL("../../../.github/workflows/set-public-domain-live-sources.yml", import.meta.url);
 const cssUrl = new URL("../app/phase9.css", import.meta.url);
 
 async function text(url) { return readFile(url, "utf8"); }
@@ -42,13 +45,8 @@ test("live image delivery is an allowlisted source-key route and not a generic p
   assert.doesNotMatch(route, /searchParams|get\("url"\)|new URL\(request\.url\).*url/i);
 });
 
-test("schema makes rights review, public access and enablement separate fail-closed gates", async () => {
-  const migration = await text(migrationUrl);
-  assert.match(migration, /add value if not exists 'noaa'/i);
-  assert.match(migration, /add value if not exists 'usgs'/i);
-  assert.match(migration, /live_delivery_adapter/);
-  assert.match(migration, /official_live_embed/);
-  assert.match(migration, /public_domain_live_image/);
+test("schema keeps rights, publication and runtime enablement as separate fail-closed gates", async () => {
+  const migration = await text(contractMigrationUrl);
   assert.match(migration, /enabled boolean not null default false/);
   assert.match(migration, /next_review_at/);
   assert.match(migration, /approved agency live sources must remain public/);
@@ -57,15 +55,46 @@ test("schema makes rights review, public access and enablement separate fail-clo
   assert.match(migration, /off_air/);
 });
 
-test("staging seed never publishes or enables external live sources", async () => {
+test("approved inventory migration records owner approval without auto-publishing", async () => {
+  const migration = await text(approvedMigrationUrl);
+  for (const key of [
+    "nasa-space-station-views", "noaa-ocean-camera-1", "noaa-ocean-camera-2", "noaa-ocean-camera-3",
+    "usgs-kilauea-v1", "usgs-kilauea-v2", "usgs-kilauea-v3",
+    "usgs-mauna-loa-mlcam", "usgs-mauna-loa-mtcam", "usgs-mauna-loa-mk2cam", "usgs-mauna-loa-mkcam",
+    "usgs-river-pequest", "usgs-river-delaware-belvidere", "usgs-lake-hopatcong", "usgs-river-rancocas",
+  ]) assert.match(migration, new RegExp(key));
+  assert.match(migration, /'approved'/);
+  assert.match(migration, /2026-08-01 09:51:00\+00/);
+  assert.match(migration, /2026-10-30 09:51:00\+00/);
+  assert.match(migration, /'public_domain_live_image','self_host_open'/);
+  assert.match(migration, /'official_live_embed','embed_only'/);
+  assert.match(migration, /false,'content-operations'/);
+  assert.match(migration, /'editorial_review'/);
+  assert.doesNotMatch(migration, /select .*'published'.*approved_live_inventory/s);
+});
+
+test("staging compatibility seed verifies migrated approval and performs no mutation", async () => {
   const seed = await text(seedUrl);
-  assert.match(seed, /fixtures may run only in staging/);
-  assert.match(seed, /'draft'/);
-  assert.match(seed, /'pending'/);
-  assert.match(seed, /enabled,false|false,'content-operations'/);
-  assert.doesNotMatch(seed, /'published'.*NASA Space Station Views/s);
-  assert.match(seed, /usgs-mauna-loa-live/);
-  assert.match(seed, /usgs-rivers-lakes-live/);
+  assert.match(seed, /fixtures may run only in staging/i);
+  assert.match(seed, /Approved live rights records are incomplete/);
+  assert.match(seed, /USGS image hosting modes are incorrect/);
+  assert.doesNotMatch(seed, /\binsert\s+into\b|\bupdate\s+public\.|\bdelete\s+from\b/i);
+});
+
+test("activation changes database publication before runtime enablement and supports fail-closed disable", async () => {
+  const [state, workflow] = await Promise.all([text(stateUrl), text(activationWorkflowUrl)]);
+  assert.match(state, /v_ready <> 15/);
+  assert.match(state, /r\.status='approved'/);
+  assert.match(state, /l\.next_review_at > now\(\)/);
+  assert.match(state, /set enabled=true/);
+  assert.match(state, /set status='published'/);
+  assert.match(state, /set status='unavailable'/);
+  assert.match(state, /set status='draft'/);
+  assert.match(workflow, /set-public-domain-live-catalogue-state\.sql/);
+  assert.match(workflow, /set_database_state true[\s\S]*set-public-domain-live-sources\.sh true/);
+  assert.match(workflow, /set-public-domain-live-sources\.sh false[\s\S]*set_database_state false/);
+  assert.match(workflow, /Roll back failed enablement/);
+  assert.match(workflow, /issues\/52/);
 });
 
 test("provider-aware health distinguishes off-air, stale, overdue and repeated failures", async () => {
@@ -93,8 +122,8 @@ test("mobile live experience preserves official players, attribution and non-end
   assert.doesNotMatch(watch, /autoplay=1/);
 });
 
-test("staging acceptance proves the source inventory only when explicitly enabled", async () => {
-  const [acceptance, workflow] = await Promise.all([text(acceptanceUrl), text(workflowUrl)]);
+test("staging acceptance verifies migration-installed inventory and live acceptance remains explicit", async () => {
+  const [acceptance, workflow] = await Promise.all([text(acceptanceUrl), text(stagingWorkflowUrl)]);
   assert.match(acceptance, /width: 390, height: 844/);
   assert.match(acceptance, /does not sponsor or endorse Jalwa/);
   assert.match(acceptance, /x-jalwa-live-source/);
