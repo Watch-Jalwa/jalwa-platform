@@ -31,9 +31,9 @@ export default async function LivePage() {
   const offAir = catalogue.items.filter((item) => item.playback?.availability === "off_air");
   return <div className="page-shell live-page">
     <section className="live-hero">
-      <span className="eyebrow">NASA · NOAA · USGS · European Parliament · United Nations</span>
+      <span className="eyebrow">Science · nature · government · public affairs</span>
       <h1>Official live public sources</h1>
-      <p>Free public-information streams, camera views and official institutional coverage. Jalwa does not restream, record or place advertising over an external player.</p>
+      <p>Public-domain camera views and official institutional coverage from approved government and multilateral sources. Jalwa does not extract, restream or record external video.</p>
     </section>
 
     <section aria-labelledby="live-now-heading">
@@ -53,7 +53,7 @@ export default async function LivePage() {
 
     <aside className="live-disclaimer">
       <strong>Source, rights and advertising boundary</strong>
-      <p>NASA, NOAA, USGS, the European Parliament and the United Nations do not sponsor or endorse Jalwa. Advertising may appear only in Jalwa-owned page regions and never over an official player or current-image view. United Nations entries open the official UN Web TV site and are not embedded, reproduced or restreamed.</p>
+      <p>Source institutions do not sponsor or endorse Jalwa. Public-domain current images are served only from committed allowlists. Event and institutional entries marked “Official site” open the original service and are not embedded, reproduced, cached, recorded or restreamed. House, Senate and EbS entries are treated as ad-free source experiences.</p>
     </aside>
   </div>;
 }

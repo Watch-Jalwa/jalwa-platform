@@ -9,30 +9,24 @@ if (!baseUrl) throw new Error("JALWA_BROWSER_BASE_URL is required");
 if (!expectedVersion || !/^[0-9a-f]{40}$/.test(expectedVersion)) throw new Error("JALWA_EXPECTED_VERSION must be a 40-character Git SHA");
 
 const expectedTitles = [
-  "NASA Space Station Views",
-  "NOAA Ocean Exploration Camera 1",
-  "NOAA Ocean Exploration Camera 2",
-  "NOAA Ocean Exploration Camera 3",
-  "USGS Kīlauea V1",
-  "USGS Kīlauea V2",
-  "USGS Kīlauea V3",
-  "USGS Mauna Loa Webcams",
-  "USGS Rivers and Lakes",
-  "European Parliament Plenary",
-  "European Parliament Committee Rooms",
-  "UN Web TV",
-  "UN General Assembly",
-  "UN Security Council",
-  "UN Human Rights Council",
+  "NASA Space Station Views", "NOAA Ocean Exploration Camera 1", "NOAA Ocean Exploration Camera 2", "NOAA Ocean Exploration Camera 3",
+  "USGS Kīlauea V1", "USGS Kīlauea V2", "USGS Kīlauea V3", "USGS Mauna Loa Webcams", "USGS Rivers and Lakes",
+  "European Parliament Plenary", "European Parliament Committee Rooms", "UN Web TV", "UN General Assembly", "UN Security Council", "UN Human Rights Council",
+  "DVIDS Live Webcasts", "Pentagon Press Briefings", "White House Public Events via DVIDS", "U.S. Navy Recruit Training Graduations", "Defense Conferences and Ceremonies",
+  "NASA+ Live Events", "NASA Mission and Launch Coverage", "NASA Space-to-Ground",
+  "NPS Devils Tower Entrance", "NPS Mount Rainier Sunrise", "NPS Mount Rainier Paradise", "NPS Mount Rainier Tatoosh Range",
+  "NPS Guadalupe Pine Springs Canyon", "NPS Guadalupe El Capitan", "NPS Shenandoah Mountain View", "NPS Shenandoah Big Meadows",
+  "NPS Great Smoky Mountains Newfound Gap", "NPS Point Reyes Beach", "NPS Yellowstone Electric Peak", "NPS Glacier Night Sky",
+  "NPS Bunker Hill Monument West View", "NPS Painted Desert Inn", "NPS El Morro National Monument",
+  "NIH VideoCast", "FDA Advisory Committee Live", "SEC Public Meetings", "FCC Open Meetings and Workshops",
+  "Europe by Satellite — EbS", "Europe by Satellite — EbS+", "U.S. House FloorCast", "U.S. Senate Floor Webcast",
 ];
 
 const officialLinkSlugs = [
-  "european-parliament-plenary",
-  "european-parliament-committee-rooms",
-  "un-web-tv",
-  "un-general-assembly",
-  "un-security-council",
-  "un-human-rights-council",
+  "european-parliament-plenary", "european-parliament-committee-rooms", "un-web-tv", "un-general-assembly", "un-security-council", "un-human-rights-council",
+  "dvids-live-webcasts", "dvids-pentagon-press-briefings", "dvids-white-house-public-events", "dvids-navy-recruit-graduations", "dvids-defense-conferences-ceremonies",
+  "nasa-plus-live-events", "nasa-mission-launch-coverage", "nasa-space-to-ground", "nih-videocast", "fda-advisory-committee-live",
+  "sec-public-meetings", "fcc-open-meetings", "europe-by-satellite-ebs", "europe-by-satellite-ebs-plus", "us-house-floorcast", "us-senate-floor-webcast",
 ];
 
 const browser = await chromium.launch({ headless: true });
@@ -40,16 +34,7 @@ const report = { release: expectedVersion, baseUrl, checkedAt: new Date().toISOS
 function passed(name, detail = null) { report.checks.push({ name, status: "passed", detail }); }
 
 try {
-  const context = await browser.newContext({
-    baseURL: baseUrl,
-    viewport: { width: 390, height: 844 },
-    deviceScaleFactor: 2,
-    isMobile: true,
-    hasTouch: true,
-    locale: "en-PK",
-    timezoneId: "Asia/Karachi",
-    reducedMotion: "reduce",
-  });
+  const context = await browser.newContext({ baseURL: baseUrl, viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, locale: "en-PK", timezoneId: "Asia/Karachi", reducedMotion: "reduce" });
   const page = await context.newPage();
   const response = await page.goto("/live", { waitUntil: "domcontentloaded" });
   assert.equal(response?.status(), 200);
@@ -58,13 +43,13 @@ try {
   for (const title of expectedTitles) assert.match(body, new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), `${title} missing from /live`);
   assert.doesNotMatch(body, /Premium/i, "Approved public live sources must not be Premium-gated");
   assert.match(body, /does not sponsor or endorse Jalwa/i);
-  assert.match(body, /United Nations entries open the official UN Web TV site/i);
+  assert.match(body, /official source/i);
   const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }));
   assert.ok(dimensions.scrollWidth <= dimensions.clientWidth + 1, `Mobile /live overflow: ${dimensions.scrollWidth} > ${dimensions.clientWidth}`);
   passed("mobile-live-discovery", { titles: expectedTitles.length, width: dimensions.clientWidth });
 
   const watchLinks = await page.locator('a[href^="/watch/"]').evaluateAll((nodes) => [...new Set(nodes.map((node) => node.getAttribute("href")).filter(Boolean))]);
-  assert.ok(watchLinks.length >= 13, `Expected at least thirteen active live watch links, found ${watchLinks.length}`);
+  assert.ok(watchLinks.length >= 44, `Expected at least forty-four direct live watch links, found ${watchLinks.length}`);
   passed("active-watch-links", { count: watchLinks.length });
 
   for (const slug of officialLinkSlugs) {
@@ -73,8 +58,7 @@ try {
     assert.equal(linkResponse?.status(), 200, `${slug} watch page unavailable`);
     await linkPage.getByRole("link", { name: /Open official live coverage/i }).waitFor();
     assert.equal(await linkPage.locator("iframe").count(), 0, `${slug} must not render an inline iframe`);
-    const linkBody = await linkPage.locator("body").innerText();
-    assert.match(linkBody, /does not reproduce, restream or record/i);
+    assert.match(await linkPage.locator("body").innerText(), /does not reproduce, restream or record/i);
     await linkPage.close();
   }
   passed("official-link-only-boundary", { sources: officialLinkSlugs.length });
@@ -85,7 +69,7 @@ try {
   assert.equal(healthJson.version, expectedVersion);
   passed("release-identity", expectedVersion);
 
-  const imageSources = ["usgs-mauna-loa-mlcam", "usgs-river-pequest"];
+  const imageSources = ["usgs-mauna-loa-mlcam", "usgs-river-pequest", "nps-devils-tower-entrance"];
   for (const sourceKey of imageSources) {
     const image = await page.request.get(`/api/live-sources/${sourceKey}/image`);
     assert.equal(image.status(), 200, `${sourceKey} image route unavailable`);

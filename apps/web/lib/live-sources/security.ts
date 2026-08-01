@@ -1,4 +1,5 @@
 import "server-only";
+import "./open-government-sources";
 
 import { createHash } from "node:crypto";
 import { lookup } from "node:dns/promises";
@@ -15,6 +16,8 @@ const HTML_LIMIT_BYTES = 1_500_000;
 const IMAGE_LIMIT_BYTES = 12_000_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+type ExtendedLiveSourceDefinition = LiveSourceDefinition & { imagePathPattern?: string };
 
 function privateIpv4(address: string) {
   const parts = address.split(".").map(Number);
@@ -63,7 +66,7 @@ async function fetchAllowed(value: string, definition: LiveSourceDefinition, met
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
         accept: method === "GET" ? "text/html,image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9,*/*;q=0.2" : "*/*",
-        "user-agent": "Jalwa-Public-Domain-Live/1.0 (+https://watch-jalwa.com)",
+        "user-agent": "Jalwa-Approved-Live/2.0 (+https://watch-jalwa.com)",
       },
     });
     if (response.status >= 300 && response.status < 400) {
@@ -132,22 +135,17 @@ export async function resolveOfficialEmbed(sourceKey: string): Promise<{
 }> {
   const definition = getLiveSourceDefinition(sourceKey);
   if (!definition || definition.adapter !== "official_live_embed") throw new Error("Unknown official live source.");
-  if (definition.embedVideoId) {
-    return { availability: "healthy", embedUrl: officialYouTubeEmbed(definition.embedVideoId), message: null };
-  }
+  if (definition.embedVideoId) return { availability: "healthy", embedUrl: officialYouTubeEmbed(definition.embedVideoId), message: null };
+
   const { response, finalUrl } = await fetchAllowed(definition.officialSourceUrl, definition);
   if (!response.ok) throw new Error(`Official live page returned HTTP ${response.status}.`);
   const contentType = response.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase() ?? "";
   if (contentType && !contentType.includes("html")) throw new Error("Official live page did not return HTML.");
   const html = decodeHtml(await readBounded(response, HTML_LIMIT_BYTES));
   const iframeUrls = htmlAttributeUrls(html, "src")
-    .map((value) => {
-      try { return new URL(value, finalUrl).toString(); } catch { return null; }
-    })
+    .map((value) => { try { return new URL(value, finalUrl).toString(); } catch { return null; } })
     .filter((value): value is string => Boolean(value))
-    .filter((value) => {
-      try { return new URL(value).hostname.includes("youtube"); } catch { return false; }
-    });
+    .filter((value) => { try { return new URL(value).hostname.includes("youtube"); } catch { return false; } });
   const selected = iframeUrls[definition.iframeIndex ?? 0];
   const embedUrl = selected ? normalizeYouTubeEmbed(selected) : null;
   if (!embedUrl) {
@@ -166,7 +164,7 @@ function candidateImageUrls(html: string, baseUrl: URL) {
     /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["'][^>]*>/gi,
   ];
   for (const pattern of metaPatterns) for (const match of html.matchAll(pattern)) if (match[1]) values.push(match[1]);
-  values.push(...htmlAttributeUrls(html, "src"));
+  values.push(...htmlAttributeUrls(html, "src"), ...htmlAttributeUrls(html, "href"));
   return values.map((value) => {
     try { return new URL(value, baseUrl).toString(); } catch { return null; }
   }).filter((value): value is string => Boolean(value));
@@ -182,7 +180,7 @@ export type ResolvedLiveImage = {
 };
 
 export async function resolveLiveImage(sourceKey: string): Promise<ResolvedLiveImage> {
-  const definition = getLiveSourceDefinition(sourceKey);
+  const definition = getLiveSourceDefinition(sourceKey) as ExtendedLiveSourceDefinition | null;
   if (!definition || definition.adapter !== "public_domain_live_image" || !definition.imageUrl) {
     throw new Error("Unknown public-domain live image source.");
   }
@@ -207,11 +205,14 @@ export async function resolveLiveImage(sourceKey: string): Promise<ResolvedLiveI
     if (!contentType.includes("html")) throw new Error("Public-domain camera did not return an approved image type.");
     const html = decodeHtml(await readBounded(response, HTML_LIMIT_BYTES));
     const candidates = candidateImageUrls(html, finalUrl);
+    const pathPattern = definition.imagePathPattern ? new RegExp(definition.imagePathPattern, "i") : null;
     let next: string | null = null;
     for (const candidate of candidates) {
       try {
-        await assertAllowedPublicHttps(candidate, definition.allowedHosts);
-        if (/\.(?:jpe?g|png|webp|gif)(?:\?|$)/i.test(candidate) || candidate.includes("newest")) {
+        const allowed = await assertAllowedPublicHttps(candidate, definition.allowedHosts);
+        const imageLike = /\.(?:jpe?g|png|webp|gif)(?:\?|$)/i.test(candidate) || candidate.includes("newest");
+        const pathAllowed = !pathPattern || pathPattern.test(allowed.pathname);
+        if (imageLike && pathAllowed) {
           next = candidate;
           break;
         }
@@ -229,32 +230,15 @@ async function checkOfficialLink(definition: LiveSourceDefinition) {
   const head = await fetchAllowed(definition.officialSourceUrl, definition, "HEAD");
   if (head.response.ok) {
     await head.response.body?.cancel();
-    return {
-      availability: "healthy" as const,
-      embedUrl: null,
-      message: "Official source page is available.",
-      sourceTimestamp: null,
-      etag: head.response.headers.get("etag"),
-      lastModified: head.response.headers.get("last-modified"),
-      contentHash: null,
-    };
+    return { availability: "healthy" as const, embedUrl: null, message: "Official source page is available.", sourceTimestamp: null, etag: head.response.headers.get("etag"), lastModified: head.response.headers.get("last-modified"), contentHash: null };
   }
-
   await head.response.body?.cancel();
   const get = await fetchAllowed(definition.officialSourceUrl, definition, "GET");
   if (!get.response.ok) throw new Error(`Official source page returned HTTP ${get.response.status}.`);
   const contentType = get.response.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase() ?? "";
   if (contentType && !contentType.includes("html")) throw new Error("Official source page did not return HTML.");
   await readBounded(get.response, HTML_LIMIT_BYTES);
-  return {
-    availability: "healthy" as const,
-    embedUrl: null,
-    message: "Official source page is available.",
-    sourceTimestamp: null,
-    etag: get.response.headers.get("etag"),
-    lastModified: get.response.headers.get("last-modified"),
-    contentHash: null,
-  };
+  return { availability: "healthy" as const, embedUrl: null, message: "Official source page is available.", sourceTimestamp: null, etag: get.response.headers.get("etag"), lastModified: get.response.headers.get("last-modified"), contentHash: null };
 }
 
 export async function checkLiveSource(sourceKey: string) {

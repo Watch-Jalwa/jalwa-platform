@@ -15,38 +15,21 @@ end $$;
 
 begin;
 
-create temporary table approved_live_state_inventory (
-  source_key text primary key,
-  slug text not null unique
-);
+create temporary table approved_live_state_inventory as
+select source_key,slug,user_facing_entry
+from public.approved_live_catalogue_manifest;
 
-insert into approved_live_state_inventory values
-('nasa-space-station-views','nasa-space-station-views'),
-('noaa-ocean-camera-1','noaa-ocean-exploration-camera-1'),
-('noaa-ocean-camera-2','noaa-ocean-exploration-camera-2'),
-('noaa-ocean-camera-3','noaa-ocean-exploration-camera-3'),
-('usgs-kilauea-v1','usgs-kilauea-v1'),
-('usgs-kilauea-v2','usgs-kilauea-v2'),
-('usgs-kilauea-v3','usgs-kilauea-v3'),
-('usgs-mauna-loa-mlcam','usgs-mauna-loa-mlcam'),
-('usgs-mauna-loa-mtcam','usgs-mauna-loa-mtcam'),
-('usgs-mauna-loa-mk2cam','usgs-mauna-loa-mk2cam'),
-('usgs-mauna-loa-mkcam','usgs-mauna-loa-mkcam'),
-('usgs-river-pequest','usgs-river-pequest'),
-('usgs-river-delaware-belvidere','usgs-river-delaware-belvidere'),
-('usgs-lake-hopatcong','usgs-lake-hopatcong'),
-('usgs-river-rancocas','usgs-river-rancocas'),
-('european-parliament-plenary','european-parliament-plenary'),
-('european-parliament-committee-rooms','european-parliament-committee-rooms'),
-('un-web-tv','un-web-tv'),
-('un-general-assembly','un-general-assembly'),
-('un-security-council','un-security-council'),
-('un-human-rights-council','un-human-rights-council');
+alter table approved_live_state_inventory add primary key(source_key);
+create unique index on approved_live_state_inventory(slug);
 
 do $$
 declare
   v_ready integer;
+  v_expected integer;
 begin
+  select count(*) into v_expected from approved_live_state_inventory;
+  if v_expected <> 52 then raise exception 'Approved live manifest is incomplete; found %', v_expected; end if;
+
   if current_setting('jalwa.public_domain_live_desired_state', true) = 'true' then
     select count(*) into v_ready
     from approved_live_state_inventory i
@@ -62,8 +45,8 @@ begin
           and (r.expires_at is null or r.expires_at > now())
       );
 
-    if v_ready <> 21 then
-      raise exception 'All 21 approved underlying live items require current rights and configuration before enablement; found %', v_ready;
+    if v_ready <> v_expected then
+      raise exception 'All % approved underlying live items require current rights and configuration before enablement; found %', v_expected, v_ready;
     end if;
 
     update public.live_source_configs l
@@ -72,9 +55,7 @@ begin
     where l.source_key=i.source_key;
 
     update public.content_items c
-    set status='published',
-        publish_at=coalesce(c.publish_at, now()),
-        unpublish_at=null
+    set status='published', publish_at=coalesce(c.publish_at, now()), unpublish_at=null
     from approved_live_state_inventory i
     where c.slug=i.slug;
 
@@ -88,8 +69,7 @@ begin
     where l.source_key=i.source_key;
 
     update public.content_items c
-    set status='unavailable',
-        unpublish_at=now()
+    set status='unavailable', unpublish_at=now()
     from approved_live_state_inventory i
     where c.slug=i.slug;
 
@@ -102,10 +82,12 @@ end $$;
 do $$
 declare
   v_desired boolean := current_setting('jalwa.public_domain_live_desired_state', true)::boolean;
+  v_expected integer;
   v_configs integer;
   v_content integer;
   v_collections integer;
 begin
+  select count(*) into v_expected from approved_live_state_inventory;
   select count(*) into v_configs
   from public.live_source_configs l
   join approved_live_state_inventory i on i.source_key=l.source_key
@@ -122,8 +104,8 @@ begin
   where slug in ('usgs-mauna-loa-live','usgs-rivers-lakes-live')
     and ((v_desired and status='published') or (not v_desired and status='draft'));
 
-  if v_configs <> 21 then raise exception 'Live source configuration state update was incomplete'; end if;
-  if v_content <> 21 then raise exception 'Live content publication state update was incomplete'; end if;
+  if v_configs <> v_expected then raise exception 'Live source configuration state update was incomplete'; end if;
+  if v_content <> v_expected then raise exception 'Live content publication state update was incomplete'; end if;
   if v_collections <> 2 then raise exception 'Live collection state update was incomplete'; end if;
 end $$;
 
@@ -132,7 +114,7 @@ commit;
 select jsonb_build_object(
   'environment',current_setting('jalwa.deployment_environment', true),
   'enabled',current_setting('jalwa.public_domain_live_desired_state', true)::boolean,
-  'user_facing_entries',15,
+  'user_facing_entries',(select count(*) + 2 from approved_live_state_inventory where user_facing_entry),
   'source_configs',(select count(*) from public.live_source_configs l join approved_live_state_inventory i on i.source_key=l.source_key),
   'content_items',(select count(*) from public.content_items c join approved_live_state_inventory i on i.slug=c.slug),
   'collections',(select count(*) from public.collections where slug in ('usgs-mauna-loa-live','usgs-rivers-lakes-live'))
