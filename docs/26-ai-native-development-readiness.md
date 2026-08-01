@@ -29,9 +29,10 @@ No additional product feature is required before staging deployment.
 - moved grounding, prompt-injection and moderation instructions out of route-level ad-hoc text;
 - added a synthetic, versioned AI evaluation set and deterministic `npm run test:ai` gate;
 - made the stored prompt version come from the prompt actually used;
-- bounded AI request bodies before authentication, quota, database or provider work;
+- bounded AI request bodies before quota, database or provider work;
 - stopped including AI-provider response bodies in application errors/logs;
-- added prompt-injection, private/unpublished-data, high-consequence, language and request-boundary tests;
+- added a shared fail-closed `ai_enabled` database flag and protected exact-SHA **Set AI state** workflow;
+- added prompt-injection, private/unpublished-data, high-consequence, language, request-boundary and runtime-control tests;
 - expanded agent, contributor, feature-intake and pull-request requirements for AI changes;
 - documented the post-deployment development restart and AI release gates.
 
@@ -43,9 +44,10 @@ Jalwa is ready for further AI-native development after deployment acceptance whe
 2. Vercel is connected to that backend without browser exposure of privileged values;
 3. the selected media plane, backups, restore and rollback are proven;
 4. 50 rights-complete items and the governed live catalogue pass their acceptance gates;
-5. Ask Jalwa passes exact-configuration staging evaluation for grounding, citations, Urdu/Roman Urdu, refusal, prompt injection, leakage, latency and cost;
-6. named product, rights, operations, security and stop-activation owners sign off;
-7. the next phase is selected from measured tester and operational evidence.
+5. Ask Jalwa is explicitly enabled through the protected workflow and passes exact-configuration staging evaluation for grounding, citations, Urdu/Roman Urdu, refusal, prompt injection, leakage, latency and cost;
+6. the protected disable path is exercised and verified;
+7. named product, rights, operations, security and stop-activation owners sign off;
+8. the next phase is selected from measured tester and operational evidence.
 
 ## Required pattern for future AI features
 
@@ -59,7 +61,7 @@ Every AI feature must include:
 - deterministic fixtures plus live staging evaluation;
 - safety, privacy, authorization and rights review;
 - usage, latency, cost, model and prompt-version observability;
-- emergency disablement and provider rollback;
+- protected shared disablement and provider rollback;
 - human approval for high-impact or privileged decisions.
 
 ## Provider strategy
