@@ -6,6 +6,15 @@ on:
       - main
     paths:
       - .github/workflows/cleanup-merged-branches.yml
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+      - closed
+    paths:
+      - .github/workflows/cleanup-merged-branches.yml
   schedule:
     - cron: "17 3 * * 0"
   workflow_dispatch:
@@ -19,7 +28,8 @@ concurrency:
 
 jobs:
   cleanup:
-    name: Delete safely merged branches
+    name: Delete safely completed branches
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -30,7 +40,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Delete branches fully merged into main
+      - name: Delete safely completed branches
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -43,14 +53,13 @@ jobs:
           skipped=()
           owner="${GITHUB_REPOSITORY%%/*}"
 
-          mapfile -t merged_branches < <(
-            git branch --remotes --merged origin/main --format='%(refname:short)' \
-              | sed 's#^origin/##' \
+          mapfile -t remote_branches < <(
+            git for-each-ref --format='%(refname:strip=3)' refs/remotes/origin/ \
               | grep -v '^HEAD$' \
               | sort -u
           )
 
-          for branch in "${merged_branches[@]}"; do
+          for branch in "${remote_branches[@]}"; do
             case "$branch" in
               main|master|develop|development|staging|production|release/*|hotfix/*|backup/*)
                 skipped+=("$branch (retained by policy)")
@@ -65,17 +74,59 @@ jobs:
           PY
             )"
 
-            open_pr_count="$(
+            open_prs="$(
               curl --fail --silent --show-error \
                 --header "Authorization: Bearer ${GITHUB_TOKEN}" \
                 --header 'Accept: application/vnd.github+json' \
                 --header 'X-GitHub-Api-Version: 2022-11-28' \
-                "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pulls?state=open&head=${owner}%3A${encoded_branch}&per_page=1" \
-                | jq 'length'
+                "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pulls?state=open&head=${owner}%3A${encoded_branch}&per_page=100"
             )"
 
-            if [[ "$open_pr_count" != "0" ]]; then
+            if [[ "$(jq 'length' <<<"$open_prs")" != "0" ]]; then
               skipped+=("$branch (open pull request)")
+              continue
+            fi
+
+            branch_sha="$(git rev-parse "origin/${branch}")"
+            completed_by_git=false
+            completed_by_merged_pr=false
+            completed_by_superseded_pr=false
+            completed_by_test_marker=false
+
+            if git merge-base --is-ancestor "origin/${branch}" origin/main; then
+              completed_by_git=true
+            fi
+
+            closed_prs="$(
+              curl --fail --silent --show-error \
+                --header "Authorization: Bearer ${GITHUB_TOKEN}" \
+                --header 'Accept: application/vnd.github+json' \
+                --header 'X-GitHub-Api-Version: 2022-11-28' \
+                "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/pulls?state=closed&head=${owner}%3A${encoded_branch}&per_page=100"
+            )"
+
+            if jq --exit-status --arg sha "$branch_sha" \
+              'any(.[]; .merged_at != null and .base.ref == "main" and .head.sha == $sha)' \
+              <<<"$closed_prs" >/dev/null; then
+              completed_by_merged_pr=true
+            fi
+
+            if jq --exit-status --arg sha "$branch_sha" \
+              'any(.[]; .merged_at == null and .head.sha == $sha and ((.body // "") | test("^Superseded by"; "i")))' \
+              <<<"$closed_prs" >/dev/null; then
+              completed_by_superseded_pr=true
+            fi
+
+            if [[ "$branch" == agent/*-test ]]; then
+              merge_base="$(git merge-base origin/main "origin/${branch}")"
+              mapfile -t unique_files < <(git diff --name-only "$merge_base..origin/${branch}")
+              if [[ "${#unique_files[@]}" == 1 && "${unique_files[0]}" == "tmp-do-not-merge.txt" ]]; then
+                completed_by_test_marker=true
+              fi
+            fi
+
+            if [[ "$completed_by_git" != true && "$completed_by_merged_pr" != true && "$completed_by_superseded_pr" != true && "$completed_by_test_marker" != true ]]; then
+              skipped+=("$branch (unmerged or unexplained head)")
               continue
             fi
 
@@ -90,7 +141,7 @@ jobs:
           done
 
           {
-            echo '## Merged branch cleanup'
+            echo '## Completed branch cleanup'
             echo
             echo "Deleted branches: ${#deleted[@]}"
             if (( ${#deleted[@]} > 0 )); then
