@@ -1,8 +1,19 @@
 # Internal Alpha Content Platform
 
-**Status:** repository implementation for protected staging validation
-**Owner tracker:** GitHub issue #59
-**Source approval register:** `content/alpha-approved-sources.json`
+**Status:** repository implementation complete; protected backend deployment and alpha activation pending  
+**Owner tracker:** GitHub issue #59  
+**Source approval register:** `content/alpha-approved-sources.json`  
+**Implementation PR:** #60  
+**Implementation merge SHA:** `ffe439ce1481f690f305fae3f681b7550c2b697e`  
+**Current audited `main` SHA:** `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`
+
+## Release evidence
+
+The repository implementation, release-health correction and browser release-marker correction are merged through PRs #60, #61 and #62.
+
+The connected Vercel deployment `dpl_8aJR63X2r7gJQy6XWkqs3b4m1uju` is READY and reports `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430` through both `/api/health` and the root HTML `data-release` marker.
+
+This is frontend deployment evidence only. The transactional Supabase/PostgreSQL backend, worker, private media infrastructure and protected alpha activation still require owner-controlled environment values and deployed acceptance.
 
 ## Purpose
 
@@ -174,15 +185,15 @@ A failed enablement is rolled back to disabled/invite-only.
 Before calling the internal alpha ready:
 
 - migrations and all CI checks are green;
-- AWS Terraform plan and apply are retained against the exact release SHA;
-- raw S3 origins return access denied;
-- signed CloudFront HLS and MP4 playback works;
+- AWS Terraform plan and apply are retained against the exact release SHA, or the first cycle explicitly selects the proven R2/FFmpeg rollback path;
+- raw storage origins return access denied;
+- signed HLS and MP4 playback works;
 - at least 50 mixed items pass rights, media and editorial QA;
 - source and item kill switches block catalogue and new playback;
-- MediaConvert failure, queue retry and DLQ recovery are exercised;
+- transcode failure, queue retry and DLQ recovery are exercised;
 - Android Chrome, iPhone Safari and desktop journeys pass;
 - startup time, buffering, playback errors and delivered minutes are visible;
-- AWS budget and queue alarms are confirmed;
+- budget and queue alarms are confirmed;
 - named rights, operations and incident owners sign off.
 
 ## External configuration boundary
