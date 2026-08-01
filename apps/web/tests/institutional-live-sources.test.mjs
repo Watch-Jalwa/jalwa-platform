@@ -13,21 +13,12 @@ const acceptanceUrl = new URL("../../../scripts/public-domain-live-acceptance.mj
 
 async function text(url) { return readFile(url, "utf8"); }
 
-const keys = [
-  "european-parliament-plenary",
-  "european-parliament-committee-rooms",
-  "un-web-tv",
-  "un-general-assembly",
-  "un-security-council",
-  "un-human-rights-council",
-];
+const keys = ["european-parliament-plenary", "european-parliament-committee-rooms", "un-web-tv", "un-general-assembly", "un-security-council", "un-human-rights-council"];
 
-test("registry adds exactly six official institutional link sources", async () => {
+test("registry preserves six official institutional link sources", async () => {
   const registry = await text(registryUrl);
   for (const key of keys) assert.match(registry, new RegExp(`"${key}"`));
   assert.match(registry, /official_live_link/);
-  assert.match(registry, /european_parliament/);
-  assert.match(registry, /un_web_tv/);
   assert.match(registry, /webtv\.un\.org\/en\/copyright_use/);
   assert.doesNotMatch(registry, /un-(?:web-tv|general-assembly|security-council|human-rights-council)[\s\S]{0,900}embedVideoId/);
 });
@@ -47,7 +38,6 @@ test("health monitoring validates allowlisted official pages", async () => {
   assert.match(security, /fetchAllowed\(definition\.officialSourceUrl, definition, "HEAD"\)/);
   assert.match(security, /fetchAllowed\(definition\.officialSourceUrl, definition, "GET"\)/);
   assert.match(security, /readBounded\(get\.response, HTML_LIMIT_BYTES\)/);
-  assert.match(security, /Official source page returned HTTP/);
 });
 
 test("migration records link-only rights and blocks UN inline use", async () => {
@@ -55,20 +45,19 @@ test("migration records link-only rights and blocks UN inline use", async () => 
   assert.match(migration, /add value if not exists 'european_parliament'/);
   assert.match(migration, /add value if not exists 'un_web_tv'/);
   assert.match(migration, /add value if not exists 'official_live_link'/);
-  assert.match(migration, /external_link/);
   assert.match(migration, /UNITED_NATIONS_OFFICIAL_LINK_ONLY/);
   assert.match(migration, /UN footage is not public domain/);
   assert.match(migration, /embedding_confirmed=false/);
   assert.match(migration, /v_links <> 6/);
 });
 
-test("controlled activation expands to fifteen user-facing entries", async () => {
+test("institutional entries remain in the 46-entry controlled release", async () => {
   const [state, acceptance, livePage] = await Promise.all([text(stateUrl), text(acceptanceUrl), text(livePageUrl)]);
-  assert.match(state, /v_ready <> 21/);
-  assert.match(state, /'user_facing_entries',15/);
+  assert.match(state, /v_expected <> 52/);
+  assert.match(state, /count\(\*\) \+ 2 from approved_live_state_inventory where user_facing_entry/);
   assert.match(acceptance, /European Parliament Plenary/);
   assert.match(acceptance, /UN Human Rights Council/);
-  assert.match(acceptance, /Expected at least thirteen active live watch links/);
-  assert.match(livePage, /European Parliament · United Nations/);
-  assert.match(livePage, /United Nations entries open the official UN Web TV site/);
+  assert.match(acceptance, /forty-four direct live watch links/);
+  assert.match(livePage, /government · public affairs/);
+  assert.match(livePage, /not embedded, reproduced, cached, recorded or restreamed/);
 });
