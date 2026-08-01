@@ -44,47 +44,38 @@ jobs:
 
           migration = Path('supabase/migrations/202608010006_internal_alpha_content_controls.sql')
           text = migration.read_text()
+          function_start = text.index('create or replace function public.promote_source_item_to_draft(')
+          function_end = text.index('create or replace function public.claim_source_download_job', function_start)
+          before = text[:function_start]
+          function = text[function_start:function_end]
+          after = text[function_end:]
 
-          old_select = "  select i, s into v_item, v_source\n"
-          new_select = "  select i.* into v_item\n"
-          if text.count(old_select) != 1:
-              raise SystemExit('Expected source-item select exactly once')
-          text = text.replace(old_select, new_select, 1)
-
-          old_lock = (
-              "    and s.approved_for_discovery\n"
-              "    and (s.next_review_at is null or s.next_review_at > now())\n"
-              "  for update of i;\n\n"
-              "  if v_item.id is null then\n"
-          )
-          new_lock = (
-              "    and s.approved_for_discovery\n"
-              "    and (s.next_review_at is null or s.next_review_at > now())\n"
-              "  for update of i, s;\n\n"
-              "  if v_item.id is null then\n"
-          )
-          if text.count(old_lock) != 1:
-              raise SystemExit('Expected source-item lock sequence exactly once')
-          text = text.replace(old_lock, new_lock, 1)
-
-          anchor = (
-              "  if v_item.id is null then\n"
-              "    raise exception 'approved unimported source item not found';\n"
-              "  end if;\n\n"
-              "  if p_hosting_mode = 'self_host_open' then\n"
-          )
-          replacement = (
-              "  if v_item.id is null then\n"
-              "    raise exception 'approved unimported source item not found';\n"
-              "  end if;\n\n"
-              "  select s.* into v_source\n"
-              "  from public.source_accounts s\n"
-              "  where s.id = v_item.source_account_id;\n\n"
-              "  if p_hosting_mode = 'self_host_open' then\n"
-          )
-          if text.count(anchor) != 1:
-              raise SystemExit('Expected source lookup anchor exactly once')
-          migration.write_text(text.replace(anchor, replacement, 1))
+          replacements = [
+              (
+                  '  select i, s into v_item, v_source\n',
+                  '  select i.* into v_item\n',
+                  'source-item select',
+              ),
+              (
+                  '  for update of i;\n',
+                  '  for update of i, s;\n',
+                  'source-item lock',
+              ),
+              (
+                  "  end if;\n\n  if p_hosting_mode = 'self_host_open' then\n",
+                  "  end if;\n\n"
+                  "  select s.* into v_source\n"
+                  "  from public.source_accounts s\n"
+                  "  where s.id = v_item.source_account_id;\n\n"
+                  "  if p_hosting_mode = 'self_host_open' then\n",
+                  'source-account lookup',
+              ),
+          ]
+          for old, new, label in replacements:
+              if function.count(old) != 1:
+                  raise SystemExit(f'Expected {label} exactly once, found {function.count(old)}')
+              function = function.replace(old, new, 1)
+          migration.write_text(before + function + after)
 
           validator = Path('infrastructure/production/scripts/validate-production.sh')
           text = validator.read_text()
@@ -96,7 +87,7 @@ jobs:
               "'Processed media output is not uploaded by the media worker.'"
           )
           if text.count(old) != 1:
-              raise SystemExit('Expected legacy processed-bucket contract exactly once')
+              raise SystemExit(f'Expected legacy processed-bucket contract exactly once, found {text.count(old)}')
           validator.write_text(text.replace(old, new, 1))
           PY
           terraform fmt -recursive infrastructure/aws-media
