@@ -36,6 +36,15 @@ export async function POST(request: Request) {
     }
 
     const supabase = await createClient();
+    const { data: sharedAiEnabled, error: aiFlagError } = await supabase.rpc("alpha_flag_enabled", { p_key: "ai_enabled" });
+    if (aiFlagError) {
+      console.error("ask_jalwa_runtime_state_unavailable", aiFlagError.message);
+      return NextResponse.json({ error: "Ask Jalwa is temporarily unavailable.", code: "ai_state_unavailable" }, { status: 503 });
+    }
+    if (!sharedAiEnabled) {
+      return NextResponse.json({ error: "Ask Jalwa is currently disabled.", code: "ai_disabled" }, { status: 503 });
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Sign in to use Ask Jalwa.", code: "sign_in_required" }, { status: 401 });
 
