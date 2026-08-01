@@ -5,13 +5,13 @@
 **Source approval register:** `content/alpha-approved-sources.json`  
 **Implementation PR:** #60  
 **Implementation merge SHA:** `ffe439ce1481f690f305fae3f681b7550c2b697e`  
-**Current audited `main` SHA:** `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`
+**Application baseline after release-correlation fixes:** `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`
 
 ## Release evidence
 
-The repository implementation, release-health correction and browser release-marker correction are merged through PRs #60, #61 and #62.
+The repository implementation, release-health correction and browser release-marker correction are merged through PRs #60, #61 and #62. Organization audit and maintenance are recorded through PRs #63–#66.
 
-The connected Vercel deployment `dpl_8aJR63X2r7gJQy6XWkqs3b4m1uju` is READY and reports `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430` through both `/api/health` and the root HTML `data-release` marker.
+The connected Vercel deployment is READY. Its current exact SHA is intentionally not copied into this mutable document: `/api/health` and the root HTML `data-release` marker must report the same selected deployment SHA.
 
 This is frontend deployment evidence only. The transactional Supabase/PostgreSQL backend, worker, private media infrastructure and protected alpha activation still require owner-controlled environment values and deployed acceptance.
 

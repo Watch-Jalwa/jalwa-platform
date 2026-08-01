@@ -12,8 +12,9 @@ Jalwa is a mobile-first Pakistani content platform for curated entertainment, le
 
 Repository development for the controlled internal alpha is complete on `main` and protected by automated release gates.
 
-- Final audited release SHA: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`.
-- The connected Vercel frontend deployment is ready and reports that exact SHA through `/api/health` and the browser release marker.
+- Internal-alpha application baseline: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430` (PRs #60–#62).
+- Organization audit and maintenance are recorded through PRs #63–#66. The current deployed frontend SHA is intentionally not hard-coded here; `/api/health` and the browser `data-release` marker are the release sources of truth.
+- The connected Vercel frontend deployment is ready and reports its exact deployment SHA through both release surfaces.
 - Vercel remains a noindex frontend-preview environment until the transactional backend is deployed and connected.
 - The rights-first alpha source register contains 151 approved discovery lanes. Source approval permits metadata discovery; it never auto-approves an individual asset for publication.
 - The governed live-source implementation contains 46 user-facing entries backed by 52 source records. They remain disabled until the protected staging rights and activation process succeeds.
