@@ -29,7 +29,9 @@ No additional product feature is required before staging deployment.
 - moved grounding, prompt-injection and moderation instructions out of route-level ad-hoc text;
 - added a synthetic, versioned AI evaluation set and deterministic `npm run test:ai` gate;
 - made the stored prompt version come from the prompt actually used;
-- added prompt-injection, private/unpublished-data, high-consequence and language evaluation cases;
+- bounded AI request bodies before authentication, quota, database or provider work;
+- stopped including AI-provider response bodies in application errors/logs;
+- added prompt-injection, private/unpublished-data, high-consequence, language and request-boundary tests;
 - expanded agent, contributor, feature-intake and pull-request requirements for AI changes;
 - documented the post-deployment development restart and AI release gates.
 
@@ -50,6 +52,7 @@ Jalwa is ready for further AI-native development after deployment acceptance whe
 Every AI feature must include:
 
 - a stable Jalwa-side contract independent of one provider;
+- bounded request and context inputs;
 - versioned prompts and response schemas;
 - access-filtered retrieval and minimum necessary context;
 - explicit treatment of source/tool data as untrusted;
