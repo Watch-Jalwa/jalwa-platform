@@ -95,51 +95,15 @@ jobs:
           health="$(curl --fail --silent --show-error --max-time 20 "https://$DOMAIN/api/health")"
           test "$(jq -r '.version // empty' <<<"$health")" = "$RELEASE_SHA"
 
-      - name: Apply AI state transactionally
+      - name: Apply shared database state
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "bash -s -- '$DESIRED_STATE' '$RELEASE_SHA' '$DOMAIN'" <<'REMOTE'
-          set -Eeuo pipefail
-          desired="${1:?desired state required}"
-          release_sha="${2:?release SHA required}"
-          domain="${3:?domain required}"
-          root=/opt/jalwa
-          env_file="$root/.env.production"
-          [[ "$desired" == true || "$desired" == false ]]
-          [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]]
-          [[ -s "$env_file" ]]
-
-          current="$(awk -F= '$1 == "AI_ENABLED" { value=$2 } END { print value }' "$env_file")"
-          current="${current:-true}"
-          [[ "$current" == true || "$current" == false ]]
-
-          set_state() {
-            local state="$1"
-            local temporary
-            temporary="$(mktemp "${env_file}.XXXXXX")"
-            awk -v state="$state" '
-              BEGIN { seen = 0 }
-              /^AI_ENABLED=/ {
-                if (!seen) print "AI_ENABLED=" state
-                seen = 1
-                next
-              }
-              { print }
-              END { if (!seen) print "AI_ENABLED=" state }
-            ' "$env_file" > "$temporary"
-            chmod 600 "$temporary"
-            mv -f "$temporary" "$env_file"
-          }
-
-          set_state "$desired"
-          if ! "$root/scripts/deploy-release.sh" "$release_sha" "$domain"; then
-            echo 'AI state change failed; restoring previous state.' >&2
-            set_state "$current"
-            "$root/scripts/deploy-release.sh" "$release_sha" "$domain" || true
-            exit 1
-          fi
-          REMOTE
+            "docker exec -i supabase-db psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              -v deployment_environment='$TARGET_ENV' \
+              -v desired_state='$DESIRED_STATE' \
+              -v release_sha='$RELEASE_SHA'" \
+            < scripts/set-ai-state.sql
 
       - name: Verify public AI boundary
         run: |
@@ -168,7 +132,7 @@ jobs:
         if: failure()
         run: |
           gh issue comment 22 --repo "$GITHUB_REPOSITORY" --body \
-            "Ask Jalwa runtime state change failed for \`$TARGET_ENV\` at release \`$RELEASE_SHA\`; the workflow attempted to restore the prior state. Evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            "Ask Jalwa runtime state change failed for \`$TARGET_ENV\` at release \`$RELEASE_SHA\`. The database transaction failed closed or the public verification did not match. Evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
 
       - name: Summarize
         if: success()
@@ -178,5 +142,5 @@ jobs:
             echo "- Environment: $TARGET_ENV"
             echo "- Enabled: $DESIRED_STATE"
             echo "- Release: $RELEASE_SHA"
-            echo '- Exact release and public disabled/authentication boundaries verified.'
+            echo '- Shared database flag, exact release and public disabled/authentication boundaries verified.'
           } >> "$GITHUB_STEP_SUMMARY"
