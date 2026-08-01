@@ -8,13 +8,7 @@ on:
       - .github/workflows/cleanup-merged-branches.yml
   pull_request:
     types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
       - closed
-    paths:
-      - .github/workflows/cleanup-merged-branches.yml
   schedule:
     - cron: "17 3 * * 0"
   workflow_dispatch:
