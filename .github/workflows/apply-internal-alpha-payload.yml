@@ -1,0 +1,55 @@
+name: Apply internal alpha payload
+
+on:
+  push:
+    branches:
+      - agent/internal-alpha-content-platform
+    paths:
+      - ".github/internal-alpha-xz.part-*"
+      - ".github/workflows/apply-internal-alpha-payload.yml"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-internal-alpha-payload
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: agent/internal-alpha-content-platform
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Verify and extract implementation payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(find .github -maxdepth 1 -name 'internal-alpha-xz.part-*' | wc -l | tr -d ' ')" = "10"
+          cat .github/internal-alpha-xz.part-* | base64 --decode > /tmp/internal-alpha.tar.xz
+          echo "ee23da8a845815ae23b23386966cfe127aeec5b4faf86aefebf116d39aac7b2e  /tmp/internal-alpha.tar.xz" | sha256sum --check -
+          if tar -tJf /tmp/internal-alpha.tar.xz | grep -Eq '(^/|(^|/)\.\.(/|$))'; then
+            echo "Unsafe archive path" >&2
+            exit 1
+          fi
+          tar -xJf /tmp/internal-alpha.tar.xz -C .
+          rm -f .github/internal-alpha-xz.part-* .github/internal-alpha-payload.part-* .github/workflows/apply-internal-alpha-payload.yml
+          node -e "const x=require('./content/alpha-approved-sources.json'); if (!Array.isArray(x) || x.length !== 151) process.exit(1)"
+          ! grep -qx 'placeholder' supabase/migrations/202608010006_internal_alpha_content_controls.sql
+          ! grep -qx 'placeholder' content/alpha-approved-sources.json
+
+      - name: Commit implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "jalwa-release-bot"
+          git config user.email "release-bot@watch-jalwa.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Implement internal alpha content platform"
+          git push origin HEAD:agent/internal-alpha-content-platform
