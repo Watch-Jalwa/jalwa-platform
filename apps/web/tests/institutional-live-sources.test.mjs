@@ -45,7 +45,8 @@ test("health monitoring validates allowlisted official pages", async () => {
   const security = await text(securityUrl);
   assert.match(security, /checkOfficialLink/);
   assert.match(security, /fetchAllowed\(definition\.officialSourceUrl, definition, "HEAD"\)/);
-  assert.match(security, /response\.status === 405 \|\| response\.status === 501/);
+  assert.match(security, /fetchAllowed\(definition\.officialSourceUrl, definition, "GET"\)/);
+  assert.match(security, /readBounded\(get\.response, HTML_LIMIT_BYTES\)/);
   assert.match(security, /Official source page returned HTTP/);
 });
 
