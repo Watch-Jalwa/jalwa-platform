@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { buildRetrievalQuery } from "@/lib/ai/grounding.mjs";
 import { createGroundedAnswer, moderateQuestion, type GroundedSource } from "@/lib/ai/openai";
+import { AiRequestBodyError, readAiRequestBody } from "@/lib/ai/request.mjs";
 
 export const runtime = "nodejs";
 
@@ -15,7 +16,16 @@ function tokenValue(value: unknown) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { question?: unknown; language?: unknown; contentId?: unknown };
+    let body: Record<string, unknown>;
+    try {
+      body = await readAiRequestBody(request, Number(process.env.AI_REQUEST_MAX_BYTES ?? 16_384));
+    } catch (error) {
+      if (error instanceof AiRequestBodyError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
+    }
+
     const question = typeof body.question === "string" ? body.question.trim() : "";
     if (question.length < 3 || question.length > 1200) {
       return NextResponse.json({ error: "Question must be between 3 and 1,200 characters." }, { status: 400 });
