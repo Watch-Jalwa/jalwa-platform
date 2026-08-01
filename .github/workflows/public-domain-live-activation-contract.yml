@@ -1,0 +1,38 @@
+name: Public-domain live activation contract
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/set-public-domain-live-sources.yml"
+      - ".github/workflows/public-domain-live-activation-contract.yml"
+      - "infrastructure/production/scripts/set-public-domain-live-sources.sh"
+      - "scripts/test-public-domain-live-activation.sh"
+  push:
+    branches:
+      - main
+      - "agent/**"
+    paths:
+      - ".github/workflows/set-public-domain-live-sources.yml"
+      - ".github/workflows/public-domain-live-activation-contract.yml"
+      - "infrastructure/production/scripts/set-public-domain-live-sources.sh"
+      - "scripts/test-public-domain-live-activation.sh"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-domain-live-activation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Validate activation scripts
+        run: |
+          bash -n infrastructure/production/scripts/set-public-domain-live-sources.sh
+          bash -n scripts/test-public-domain-live-activation.sh
+      - name: Run fail-closed activation contract
+        run: bash scripts/test-public-domain-live-activation.sh
