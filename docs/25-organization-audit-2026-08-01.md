@@ -9,7 +9,7 @@ This audit covers the complete GitHub organization available to the connected ap
 - Repository: `Watch-Jalwa/jalwa-platform`
 - Visibility: private
 - Default branch: `main`
-- Application release audited at the start of cleanup: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`
+- Internal-alpha application baseline: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`
 
 No second repository or hidden sample repository was omitted from the connected organization scope.
 
@@ -17,10 +17,10 @@ No second repository or hidden sample repository was omitted from the connected 
 
 The organization is in a safe development pause while the project team deploys and manually tests the transactional backend.
 
-- No open pull requests remain after the audit-maintenance pull request is merged.
+- No open pull requests remain after the audit-normalization pull request is merged.
 - Three open issues remain, each tied to a real deployment or activation boundary.
-- Repository CI, database migrations, production builds, container security policy and browser journeys passed on the final implementation and audit-maintenance changes.
-- The Vercel frontend deployment is ready and reports its exact deployed SHA.
+- Repository CI, database migrations, production builds, container security policy and browser journeys passed on the implementation and audit-maintenance changes.
+- The Vercel frontend deployment is ready and reports its exact deployed SHA through `/api/health` and the browser `data-release` marker.
 - Internal alpha and governed live-source activation remain fail-closed.
 - No further speculative feature development is required before backend deployment.
 
@@ -31,15 +31,17 @@ The organization is in a safe development pause while the project team deploys a
 - PR #60 implemented the internal-alpha content platform.
 - PR #61 fixed exact Vercel release reporting in health checks.
 - PR #62 aligned the browser release marker with Vercel release identity.
-- Application release audited before organization cleanup: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`.
-- Vercel deployment at that point: `dpl_8aJR63X2r7gJQy6XWkqs3b4m1uju`, READY.
+- Stable internal-alpha application baseline after those changes: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`.
+
+The exact current frontend release is intentionally not frozen into this mutable document. `/api/health` and the root HTML `data-release` marker are the release sources of truth and must match.
 
 ### Audit and cleanup lineage
 
 - PR #63 synchronized the operating documentation, governance and issue trackers and introduced guarded branch maintenance.
 - PR #64 scheduled completed-branch cleanup.
 - PR #65 fixed authenticated private-repository ref discovery.
-- PR #66 added guarded same-repository execution, squash-merge recognition, explicit supersession recognition, synthetic-ref filtering and verified do-not-merge test-marker cleanup.
+- PR #66 added squash-merge recognition, explicit supersession recognition, synthetic-ref filtering and verified do-not-merge test-marker cleanup.
+- PR #67 normalized mutable release references and changed branch cleanup to run after every same-repository PR closes.
 
 Every audit-maintenance change was required to pass the same repository pipeline as product code before merge.
 
@@ -110,6 +112,7 @@ No duplicate open feature issue or completed implementation issue remains open.
 - `docs/16-current-status-and-next-stage-gates.md` was dated before the 151-source alpha implementation and still reported launch content as not started.
 - `docs/17-content-commerce-and-deployment-handoff.md` still instructed the team to begin a generic 20–30 item pilot instead of deploying the completed backend and proving the first 50 alpha items.
 - The internal-alpha documentation did not include the final merged and Vercel release evidence.
+- Mutable operating documents hard-coded a deployment SHA and ID that became stale after documentation-only merges.
 - The repository lacked a current organization-wide audit record after the alpha implementation.
 - Issue #59 still read as an unstarted engineering plan even though its repository implementation was merged.
 
@@ -119,11 +122,10 @@ The audit updates those sources without rewriting historical planning or prior d
 
 At the start of the audit the repository contained 49 non-`main` branches. Temporary audit work raised the peak inventory to 53 total branches.
 
-The guarded cleanup removed 48 completed, explicitly superseded or verified do-not-merge test branches from that peak inventory. Immediately before the final cleanup PR is merged, five branches remain:
+The guarded cleanup removed 49 completed, explicitly superseded, verified do-not-merge or completed audit branches from that peak inventory. The steady-state repository contains four branches:
 
 - `main`;
 - `backup/pre-mvp-main`, retained intentionally;
-- `chore/run-merged-branch-cleanup`, retained while its pull request is open and eligible for deletion on the pull-request close event;
 - `agent/browser-launch-acceptance`;
 - `agent/security-boundary`.
 
@@ -147,7 +149,7 @@ The workflow deliberately retains:
 - every branch with an open pull request;
 - every otherwise unexplained unmerged head.
 
-It runs when its definition changes in a same-repository pull request, when that pull request closes, on relevant `main` pushes, weekly and by manual dispatch. Fork pull requests cannot execute its write job.
+It runs whenever a same-repository pull request closes, on relevant `main` workflow-definition changes, weekly and by manual dispatch. Fork pull requests cannot execute its write job.
 
 ## Security and secrets audit
 
