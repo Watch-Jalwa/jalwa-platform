@@ -11,6 +11,7 @@
 # Product surfaces
 /apps/web/ @waseem99
 /apps/worker/ @waseem99
+/evals/ @waseem99
 
 # Product and operating documentation
 /docs/ @waseem99

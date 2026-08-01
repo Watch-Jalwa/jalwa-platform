@@ -1,0 +1,146 @@
+name: Set AI state
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Protected environment
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      enabled:
+        description: Desired Ask Jalwa runtime state
+        required: true
+        type: choice
+        default: "false"
+        options:
+          - "false"
+          - "true"
+      release_sha:
+        description: Exact deployed 40-character main commit SHA
+        required: true
+        type: string
+      approval_reference:
+        description: Issue #22 rollout, incident or acceptance reference
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: jalwa-${{ inputs.target_environment }}-ai-state
+  cancel-in-progress: false
+
+jobs:
+  change-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: ${{ inputs.target_environment }}
+      url: ${{ inputs.target_environment == 'staging' && format('https://{0}', vars.STAGING_DOMAIN) || format('https://{0}', vars.PRODUCTION_DOMAIN) }}
+    env:
+      TARGET_ENV: ${{ inputs.target_environment }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      DESIRED_STATE: ${{ inputs.enabled }}
+      APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
+      HOST: ${{ inputs.target_environment == 'staging' && vars.STAGING_HOST || vars.PRODUCTION_HOST }}
+      USER: ${{ inputs.target_environment == 'staging' && (vars.STAGING_USER || 'jalwa') || (vars.PRODUCTION_USER || 'jalwa') }}
+      DOMAIN: ${{ inputs.target_environment == 'staging' && vars.STAGING_DOMAIN || vars.PRODUCTION_DOMAIN }}
+      SSH_KEY: ${{ inputs.target_environment == 'staging' && secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY }}
+      KNOWN_HOSTS: ${{ inputs.target_environment == 'staging' && vars.STAGING_SSH_KNOWN_HOSTS || vars.PRODUCTION_SSH_KNOWN_HOSTS }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Validate request
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$TARGET_ENV" == staging || "$TARGET_ENV" == production ]]
+          [[ "$DESIRED_STATE" == true || "$DESIRED_STATE" == false ]]
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          test -n "$APPROVAL_REFERENCE" && [[ ${#APPROVAL_REFERENCE} -le 500 ]]
+          [[ "$APPROVAL_REFERENCE" != *$'\n'* ]]
+          if [[ "$TARGET_ENV" == production && "$DESIRED_STATE" == true ]]; then
+            [[ "$APPROVAL_REFERENCE" == https://github.com/Watch-Jalwa/jalwa-platform/issues/22* ]] || {
+              echo 'Production AI enablement requires issue #22 acceptance evidence.' >&2
+              exit 1
+            }
+          fi
+
+      - name: Configure pinned SSH identity
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Verify exact deployed release
+        run: |
+          set -euo pipefail
+          health="$(curl --fail --silent --show-error --max-time 20 "https://$DOMAIN/api/health")"
+          test "$(jq -r '.version // empty' <<<"$health")" = "$RELEASE_SHA"
+
+      - name: Apply shared database state
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i supabase-db psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              -v deployment_environment='$TARGET_ENV' \
+              -v desired_state='$DESIRED_STATE' \
+              -v release_sha='$RELEASE_SHA'" \
+            < scripts/set-ai-state.sql
+
+      - name: Verify public AI boundary
+        run: |
+          set -euo pipefail
+          response_file="$(mktemp)"
+          status="$(curl --silent --show-error --max-time 20 \
+            --output "$response_file" --write-out '%{http_code}' \
+            --request POST --header 'Content-Type: application/json' \
+            --data '{"question":"release health check"}' \
+            "https://$DOMAIN/api/ai/query")"
+          if [[ "$DESIRED_STATE" == false ]]; then
+            test "$status" = 503
+            test "$(jq -r '.code // empty' "$response_file")" = ai_disabled
+          else
+            test "$status" = 401
+            test "$(jq -r '.code // empty' "$response_file")" = sign_in_required
+          fi
+
+      - name: Record state change
+        if: success()
+        run: |
+          gh issue comment 22 --repo "$GITHUB_REPOSITORY" --body \
+            "Ask Jalwa runtime state updated: environment \`$TARGET_ENV\`, enabled \`$DESIRED_STATE\`, release \`$RELEASE_SHA\`. Evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Approval reference: $APPROVAL_REFERENCE"
+
+      - name: Record failure
+        if: failure()
+        run: |
+          gh issue comment 22 --repo "$GITHUB_REPOSITORY" --body \
+            "Ask Jalwa runtime state change failed for \`$TARGET_ENV\` at release \`$RELEASE_SHA\`. The database transaction failed closed or the public verification did not match. Evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Summarize
+        if: success()
+        run: |
+          {
+            echo '### Ask Jalwa runtime state'
+            echo "- Environment: $TARGET_ENV"
+            echo "- Enabled: $DESIRED_STATE"
+            echo "- Release: $RELEASE_SHA"
+            echo '- Shared database flag, exact release and public disabled/authentication boundaries verified.'
+          } >> "$GITHUB_STEP_SUMMARY"

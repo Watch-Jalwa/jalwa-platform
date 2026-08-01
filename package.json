@@ -17,10 +17,11 @@
     "lint": "npm run lint --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "test:ai": "node --test apps/web/tests/ai-provider.test.mjs apps/web/tests/ai-readiness.test.mjs apps/web/tests/ai-request.test.mjs apps/web/tests/ai-runtime-control.test.mjs",
     "test:release": "bash scripts/test-production-release.sh",
     "test:container": "bash scripts/test-production-container.sh",
     "test:backup-encryption": "bash scripts/test-backup-encryption.sh",
     "harvest:alpha": "node scripts/harvest-alpha-open-content.mjs",
-    "ci": "npm run lint && npm run typecheck && npm run test && npm run test:release && npm run test:backup-encryption && npm run build"
+    "ci": "npm run lint && npm run typecheck && npm run test && npm run test:ai && npm run test:release && npm run test:backup-encryption && npm run build"
   }
 }

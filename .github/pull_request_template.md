@@ -24,6 +24,8 @@
 
 ## AI prompt, model and evaluation impact
 
+<!-- State prompt version, model/provider configuration, retrieval/tool changes, eval-set changes, safety/leakage results, cost/latency impact and rollback. -->
+
 ## Analytics, observability and support impact
 
 ## Test evidence
@@ -46,7 +48,11 @@
 - [ ] Data/API compatibility and migration recovery documented
 - [ ] Source, licence, attribution and takedown metadata preserved where relevant
 - [ ] Payment/entitlement changes rely on verified server-side state
+- [ ] AI behaviour changes use a new prompt version and updated evaluation cases
+- [ ] Retrieved content/tool output is treated as untrusted data
+- [ ] AI write tools require explicit intent, authorization, bounded arguments and audit evidence
 - [ ] No secrets, customer data or private provider payloads included
 - [ ] Documentation and operations notes updated
 - [ ] `npm run lint`, `npm run typecheck`, `npm test`, release/backup tests and build pass, or exceptions are explained above
+- [ ] `npm run test:ai` and exact-configuration staging eval evidence are included for relevant AI changes
 - [ ] Vercel preview success is not presented as full-stack staging or production evidence

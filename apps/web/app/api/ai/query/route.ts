@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { buildRetrievalQuery } from "@/lib/ai/grounding.mjs";
 import { createGroundedAnswer, moderateQuestion, type GroundedSource } from "@/lib/ai/openai";
+import { AiRequestBodyError, isAiEnabled, readAiRequestBody } from "@/lib/ai/request.mjs";
 
 export const runtime = "nodejs";
 
@@ -15,13 +16,39 @@ function tokenValue(value: unknown) {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as { question?: unknown; language?: unknown; contentId?: unknown };
+    if (!isAiEnabled()) {
+      return NextResponse.json({ error: "Ask Jalwa is currently disabled.", code: "ai_disabled" }, { status: 503 });
+    }
+
+    let body: Record<string, unknown>;
+    try {
+      body = await readAiRequestBody(request, Number(process.env.AI_REQUEST_MAX_BYTES ?? 16_384));
+    } catch (error) {
+      if (error instanceof AiRequestBodyError) {
+        return NextResponse.json({ error: error.message }, { status: error.status });
+      }
+      throw error;
+    }
+
     const question = typeof body.question === "string" ? body.question.trim() : "";
     if (question.length < 3 || question.length > 1200) {
       return NextResponse.json({ error: "Question must be between 3 and 1,200 characters." }, { status: 400 });
     }
 
     const supabase = await createClient();
+    const deploymentEnvironment = process.env.DEPLOYMENT_ENVIRONMENT
+      ?? (process.env.NODE_ENV === "production" ? "production" : "local");
+    if (deploymentEnvironment !== "local") {
+      const { data: sharedAiEnabled, error: aiFlagError } = await supabase.rpc("alpha_flag_enabled", { p_key: "ai_enabled" });
+      if (aiFlagError) {
+        console.error("ask_jalwa_runtime_state_unavailable", aiFlagError.message);
+        return NextResponse.json({ error: "Ask Jalwa is temporarily unavailable.", code: "ai_state_unavailable" }, { status: 503 });
+      }
+      if (!sharedAiEnabled) {
+        return NextResponse.json({ error: "Ask Jalwa is currently disabled.", code: "ai_disabled" }, { status: 503 });
+      }
+    }
+
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return NextResponse.json({ error: "Sign in to use Ask Jalwa.", code: "sign_in_required" }, { status: 401 });
 
@@ -102,7 +129,7 @@ export async function POST(request: Request) {
       p_answer: answer.answer,
       p_cited_content_ids: sources.map((source) => source.id),
       p_model_key: answer.model,
-      p_prompt_version: "ask-jalwa-v1",
+      p_prompt_version: answer.promptVersion,
       p_input_tokens: tokenValue(usage?.input_tokens),
       p_output_tokens: tokenValue(usage?.output_tokens),
     });

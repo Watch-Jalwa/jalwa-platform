@@ -39,3 +39,26 @@ declare module "@/lib/ai/grounding.mjs" {
   export function hasHardSafetyRisk(text: string): boolean;
   export function parseModerationDecision(text: string): boolean | null;
 }
+
+declare module "@/lib/ai/prompts.mjs" {
+  export const ASK_JALWA_PROMPT_VERSION: string;
+  export const MODERATION_PROMPT_VERSION: string;
+  export const MODERATION_SYSTEM_PROMPT: string;
+  export const AI_PROMPT_MANIFEST: ReadonlyArray<Readonly<{
+    id: string;
+    version: string;
+    owner: string;
+    purpose: string;
+    supportedLanguages: ReadonlyArray<string>;
+    evalSet: string;
+  }>>;
+  export function buildAskJalwaSystemPrompt(language?: "en" | "ur" | "roman_ur"): string;
+}
+
+declare module "@/lib/ai/request.mjs" {
+  export class AiRequestBodyError extends Error {
+    status: number;
+  }
+  export function isAiEnabled(value?: string): boolean;
+  export function readAiRequestBody(request: Request, maxBytes?: number): Promise<Record<string, unknown>>;
+}

@@ -1,209 +1,159 @@
 # Launch Runbook
 
-This runbook covers isolated staging, closed beta and production promotion. Do not skip directly from a Vercel frontend build to production.
+This runbook covers isolated staging, invite-only alpha, governed live-source observation and production promotion. Do not skip directly from a Vercel frontend build to production.
 
 ## Release candidate selection
 
 - select an exact green `main` commit;
 - confirm lint, type checking, tests, migrations, dependency audit, SBOM, image vulnerability policy, production build, container boot and Chromium journeys are green;
 - confirm no unresolved review thread or release-blocker issue applies to the SHA;
-- confirm the change set has current documentation and rollback/roll-forward notes;
+- confirm documentation and rollback/roll-forward notes are current;
 - record the candidate SHA before deployment.
+
+AI-affecting candidates must identify prompt, model, provider, retrieval and eval-set versions.
 
 ## Isolated staging preparation
 
 - configure staging-only DigitalOcean, DNS, SSH, GHCR, Supabase, R2, SMTP, AI, observability, application and age-backup values;
-- verify no production credential is reused;
+- verify no production credential, bucket or account state is reused;
 - verify R2 bucket names use the `jalwa-staging-*` prefix;
-- independently verify the host Ed25519 fingerprint before storing known hosts;
-- keep mock payments enabled only in explicit staging;
-- keep live streaming and web DRM disabled;
-- confirm staging is noindex and excluded from production analytics.
+- independently verify the host Ed25519 fingerprint;
+- keep mock payments limited to explicit staging;
+- keep staging noindex and excluded from production analytics.
 
 ## Isolated staging deployment
 
-1. Run **Bootstrap staging** if the host/resources do not exist.
-2. Verify provisioned host, DNS and SSH identity out of band.
-3. Run **Deploy staging** from the selected `main` SHA.
-4. Confirm immutable web/worker images were pushed using the exact SHA.
-5. Confirm pre-migration encrypted backup completed.
-6. Confirm migrations applied in order.
-7. Confirm deployment readiness reports the exact SHA.
+1. Run **Bootstrap staging** if resources do not exist.
+2. Verify host, DNS and SSH identity out of band.
+3. Run **Deploy staging** from the selected exact SHA.
+4. Confirm immutable web/worker images use that SHA.
+5. Confirm pre-migration encrypted backup.
+6. Confirm migrations apply in order.
+7. Confirm readiness reports the exact SHA.
 8. Confirm web, worker, proxy, PostgreSQL, Auth and REST health.
-9. Confirm post-deployment backup and restore drill.
-10. Run automatic staging release acceptance.
+9. Confirm post-deployment backup, restore drill and rollback path.
+10. Run automatic zero-content staging acceptance.
+11. Connect and redeploy the Vercel frontend with public backend values only.
 
-## Staging customer and content acceptance
+## First 50-item catalogue acceptance
+
+- import the 151 approved discovery lanes;
+- harvest metadata only through approved adapters;
+- complete item-level rights and editorial review;
+- process and QA approximately 30 short, 10 medium, 5 long and 5 audio/story or provider-linked items;
+- publish and explicitly enable only passed items;
+- confirm no import or transcode auto-publishes;
+- verify search, feeds, collections, Shorts and watch pages;
+- verify HLS/MP4, captions, constrained networks and token expiry;
+- verify source/item disablement, rights hold, expiry and urgent takedown.
+
+## Governed 46-entry live catalogue
+
+- apply the 52-record manifest disabled and unpublished;
+- retain dated source/terms evidence and review deadlines;
+- confirm official embed, secured-image and official-link-only boundaries;
+- verify all 22 link-only pages contain no iframe;
+- pass provider/source health and mobile acceptance;
+- exercise blocked, stale, off-air, degraded and emergency-unpublish states;
+- observe staging continuously for seven days;
+- activate only through the protected exact-SHA workflow.
+
+## Platform acceptance
 
 ### Identity and privacy
 
-- sign-up and email verification;
-- login, logout and session renewal;
-- password reset;
-- profile/family and device controls;
-- account export and deletion request processing;
-- unauthorized/expired session behaviour;
-- role and capability separation in Studio.
-
-### Catalogue and playback
-
-- home, categories, search, content page and related discovery;
-- official embed availability and fallback;
-- self-hosted MP4/HLS playback and token expiry;
-- watch history and resume;
-- Shorts and mobile gestures;
-- PWA install/offline surfaces;
-- low-end Android and constrained-network behaviour;
-- Urdu/RTL and accessibility.
+- sign-up, verification, login, logout, password reset and session renewal;
+- profiles, devices, tester grant and revocation;
+- account export/deletion;
+- unauthorized/expired-session behaviour;
+- Studio role/capability separation.
 
 ### Rights and operations
 
-- item source, licence, attribution, evidence, territory, expiry and takedown completeness;
-- publication rejection for incomplete/expired rights;
+- source, licence, attribution, evidence, territory, expiry and takedown completeness;
+- fail-closed publication for incomplete/expired rights;
 - immediate unpublish/takedown;
 - support, moderation and operations queues;
-- no automatic publication from batch import.
+- queue retries, DLQ replay, failed processing and late-job cancellation.
 
 ### Payments and Premium
 
-- hosted/mock staging checkout creation;
-- signed success and failure;
-- duplicate and conflicting replay handling;
-- delayed payment state;
-- partial/full refund and reversal/dispute representation;
+- staging checkout creation and signed lifecycle events;
+- duplicate/conflicting replay handling;
+- partial/full refund and dispute representation;
 - entitlement activation, expiry and revocation;
-- cancellation-at-period-end;
-- Premium summary, ledgers, recurring customers and reconciliation;
-- separate report/export permissions;
-- CSV redaction, formula protection and export audit evidence;
-- desktop and 390×844 mobile report screens.
+- Premium reports, ledgers, reconciliation and export permissions;
+- privacy-safe, formula-protected and audited CSV exports.
 
-## Closed beta readiness
+### AI
 
-Before inviting users:
+- exact prompt/model/provider configuration recorded;
+- `npm run test:ai` passed on the release;
+- live staging eval covers citations, unsupported claims, Urdu/Roman Urdu, prompt injection, leakage, refusal, high-consequence safety, latency and cost;
+- retrieved content cannot override system rules;
+- private/unpublished data is not exposed;
+- quota, moderation, provider failure and emergency disablement work;
+- AI answers are clearly labelled and source-backed.
 
-- at least 20–30 rights-complete catalogue items;
-- at least three coherent content programmes;
-- support mailbox and named escalation owner;
-- privacy, terms, refund/cancellation and takedown wording approved;
-- analytics/error/payment dashboards active;
-- daily content and support operating rhythm defined;
-- backup/restore and rollback rehearsed;
-- known limitations disclosed to testers;
-- no unresolved critical defect.
+## Invite-only alpha activation
+
+Before activation:
+
+- at least 50 rights-complete, playable items are available;
+- at least one active tester grant exists;
+- backend, media, backups, restore, monitoring and incident ownership are healthy;
+- required mobile/desktop and AI acceptance evidence is retained;
+- no stop-activation condition remains.
+
+Use only the protected **Set internal alpha state** workflow. Failed activation must roll back to disabled/invite-only.
 
 ## Production preparation
 
-- production DigitalOcean host provisioned with restricted administrator CIDRs;
-- production DNS and pinned SSH identity configured;
-- GHCR pull credentials validated;
-- dedicated production Supabase and R2 values loaded;
-- SMTP verification/reset delivery tested;
-- AI quotas, moderation and cost alerts configured;
-- observability alerts and destinations configured;
-- real Pakistan-compatible hosted payment provider active;
-- signed provider lifecycle acceptance complete;
-- pricing and Premium benefits approved;
-- launch catalogue frozen with complete rights evidence;
-- support, finance, moderation, incident and takedown owners named;
-- launch-day rollback and stop-launch authority recorded.
+- production infrastructure, DNS, SSH, GHCR, Supabase, media and backup values are dedicated and verified;
+- SMTP and enabled identity providers pass acceptance;
+- AI quotas, moderation, provider configuration, data controls and cost alerts are approved;
+- real hosted payment provider lifecycle and reconciliation pass;
+- launch catalogue and legal/support ownership are approved;
+- launch-day rollback and stop-launch authority are recorded.
 
 ## Production deployment
 
-1. Confirm the release SHA is green and was proven in isolated staging.
-2. Run the manual production deployment workflow.
-3. Preserve the deployment manifest, SBOM/provenance and host-acceptance artifact.
+1. Confirm the SHA is green and proven in staging.
+2. Run the protected production deployment workflow.
+3. Preserve manifest, SBOM/provenance and host-acceptance artifacts.
 4. Confirm readiness reports the exact SHA.
-5. Confirm services, migrations and worker queues.
-6. Confirm pre-migration/post-deployment off-site backups and restore verification.
+5. Confirm services, migrations and queues.
+6. Confirm encrypted backups and restore verification.
 7. Run protected API and desktop/mobile browser acceptance.
-8. Conduct one controlled live merchant transaction.
-9. Verify receipt, entitlement and provider/Jalwa reconciliation.
-10. Start launch monitoring and record the release.
-
-## Launch-day checks
-
-### Technical
-
-- DNS, TLS and security headers;
-- home, search, player, login, account and checkout;
-- exact readiness SHA;
-- analytics and observability;
-- AI quota/moderation;
-- media token expiry;
-- database/worker health;
-- payment events and reconciliation;
-- backup completion.
-
-### Content
-
-- featured items available;
-- external embeds working;
-- attribution and rights display correct;
-- expiry/takedown monitor active;
-- first seven days of updates scheduled;
-- complaint/takedown channel staffed.
-
-### Commercial and support
-
-- monthly and any annual purchase;
-- receipt and settlement visibility;
-- refund/cancellation route;
-- failed-payment and pending-order support;
-- checkout abandonment monitoring;
-- finance export and reconciliation access;
-- escalation macros and ownership.
+8. Run production AI smoke checks without private fixture data.
+9. Conduct one controlled live merchant transaction when commerce is approved.
+10. Verify receipt, entitlement and provider/Jalwa reconciliation.
+11. Start monitoring and record the release.
 
 ## Stop-launch and rollback triggers
 
-Immediately stop promotion or execute rollback for:
+Stop promotion or roll back for:
 
-- duplicate charging;
-- entitlement without verified payment;
 - authentication/authorization bypass;
-- exposed secrets, customer data or private media;
+- exposed secrets, customer data, private media or unpublished AI context;
+- duplicate charging or entitlement without verified payment;
 - broad playback/account outage;
 - readiness SHA mismatch;
-- failed migrations with uncertain data state;
-- failed backup or restore verification;
-- fixed critical/high vulnerability in shipped images;
+- uncertain migration state;
+- failed backup/restore verification;
+- unresolved fixable critical/high image vulnerability;
 - materially incorrect finance totals;
-- serious rights complaint without immediate containment;
-- AI disclosure of private or unpublished information.
+- serious rights complaint without containment;
+- AI prompt injection, unsafe high-consequence output, citation failure or private-data leakage.
 
-Rollback must restore the previous application image and reported version together. Database migrations are forward-only; use the documented compatible roll-forward/recovery plan rather than rewriting applied migrations.
+Rollback must restore the previous application image and reported version together. Database migrations are forward-only; use compatible roll-forward/recovery rather than rewriting applied migrations.
 
-## Payment fallback
+## Post-launch development restart
 
-If a provider callback is delayed:
+After retained production/internal-alpha evidence and an approved go/no-go decision:
 
-- keep the order pending;
-- do not activate from a screenshot or browser return URL;
-- verify the provider portal and webhook/event history;
-- record a finance reconciliation case;
-- only authorized staff may grant a time-limited manual entitlement with reason and audit entry;
-- reconcile and remove/replace the manual grant when verified provider state arrives.
-
-## First-week operating rhythm
-
-Daily:
-
-- new/verified users and active viewers;
-- playback and authentication failures;
-- payment attempts, success, pending and failed states;
-- Premium activations, renewals, cancellations and refunds;
-- reconciliation exceptions;
-- catalogue availability and rights/takedown alerts;
-- AI usage/cost and moderation events;
-- support backlog and severity;
-- backups and worker queues.
-
-Weekly:
-
-- retained viewers and conversion;
-- churn/renewal and recurring customers;
-- top and underperforming categories;
-- source reliability and content supply;
-- gross collections, refunds, net collections and MRR/ARR;
-- support and rights incidents;
-- experiments and next release candidate.
+- create issues from reproduced defects and measured tester needs;
+- prioritize reliability, content operations and user value before speculative expansion;
+- require every AI change to declare prompt/model/provider/eval impact;
+- keep changes small, reversible and staging-proven;
+- preserve rollback and emergency disablement authority.

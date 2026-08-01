@@ -1,13 +1,17 @@
 # External References
 
-Verify terms and pricing again before procurement or launch.
+Verify terms, supported APIs, model availability and pricing again before procurement or launch.
 
 ## AI
 
 - OpenAI developer documentation: https://platform.openai.com/docs/
+- OpenAI Responses API: https://platform.openai.com/docs/api-reference/responses
+- OpenAI structured outputs: https://platform.openai.com/docs/guides/structured-outputs
+- OpenAI evaluations: https://platform.openai.com/docs/guides/evals
 - OpenAI API models: https://developers.openai.com/api/docs/models
 - OpenAI Moderation API: https://platform.openai.com/docs/api-reference/moderations
 - OpenAI Batch API: https://platform.openai.com/docs/api-reference/batch
+- OpenAI data controls: https://platform.openai.com/docs/guides/your-data
 
 ## Media and infrastructure
 
