@@ -10,7 +10,14 @@ on:
       - "scripts/seed-public-domain-live-sources.sql"
       - "scripts/test-public-domain-live-activation.sh"
       - "scripts/test-public-domain-live-rights-readiness.sh"
+      - "scripts/test-institutional-live-readiness.sh"
       - "supabase/migrations/202608010002_approved_public_domain_live_inventory.sql"
+      - "supabase/migrations/202608010003_institutional_public_affairs_live_sources.sql"
+      - "apps/web/lib/live-sources/**"
+      - "apps/web/components/official-live-link-player.tsx"
+      - "apps/web/app/live/page.tsx"
+      - "apps/web/app/watch/[slug]/page.tsx"
+      - "scripts/public-domain-live-acceptance.mjs"
   push:
     branches:
       - main
@@ -23,7 +30,14 @@ on:
       - "scripts/seed-public-domain-live-sources.sql"
       - "scripts/test-public-domain-live-activation.sh"
       - "scripts/test-public-domain-live-rights-readiness.sh"
+      - "scripts/test-institutional-live-readiness.sh"
       - "supabase/migrations/202608010002_approved_public_domain_live_inventory.sql"
+      - "supabase/migrations/202608010003_institutional_public_affairs_live_sources.sql"
+      - "apps/web/lib/live-sources/**"
+      - "apps/web/components/official-live-link-player.tsx"
+      - "apps/web/app/live/page.tsx"
+      - "apps/web/app/watch/[slug]/page.tsx"
+      - "scripts/public-domain-live-acceptance.mjs"
 
 permissions:
   contents: read
@@ -43,7 +57,10 @@ jobs:
           bash -n infrastructure/production/scripts/set-public-domain-live-sources.sh
           bash -n scripts/test-public-domain-live-activation.sh
           bash -n scripts/test-public-domain-live-rights-readiness.sh
+          bash -n scripts/test-institutional-live-readiness.sh
       - name: Run fail-closed activation contract
         run: bash scripts/test-public-domain-live-activation.sh
       - name: Run approved rights readiness contract
         run: bash scripts/test-public-domain-live-rights-readiness.sh
+      - name: Run institutional live readiness contract
+        run: bash scripts/test-institutional-live-readiness.sh

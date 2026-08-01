@@ -18,6 +18,21 @@ const expectedTitles = [
   "USGS Kīlauea V3",
   "USGS Mauna Loa Webcams",
   "USGS Rivers and Lakes",
+  "European Parliament Plenary",
+  "European Parliament Committee Rooms",
+  "UN Web TV",
+  "UN General Assembly",
+  "UN Security Council",
+  "UN Human Rights Council",
+];
+
+const officialLinkSlugs = [
+  "european-parliament-plenary",
+  "european-parliament-committee-rooms",
+  "un-web-tv",
+  "un-general-assembly",
+  "un-security-council",
+  "un-human-rights-council",
 ];
 
 const browser = await chromium.launch({ headless: true });
@@ -43,13 +58,26 @@ try {
   for (const title of expectedTitles) assert.match(body, new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), `${title} missing from /live`);
   assert.doesNotMatch(body, /Premium/i, "Approved public live sources must not be Premium-gated");
   assert.match(body, /does not sponsor or endorse Jalwa/i);
+  assert.match(body, /United Nations entries open the official UN Web TV site/i);
   const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }));
   assert.ok(dimensions.scrollWidth <= dimensions.clientWidth + 1, `Mobile /live overflow: ${dimensions.scrollWidth} > ${dimensions.clientWidth}`);
   passed("mobile-live-discovery", { titles: expectedTitles.length, width: dimensions.clientWidth });
 
   const watchLinks = await page.locator('a[href^="/watch/"]').evaluateAll((nodes) => [...new Set(nodes.map((node) => node.getAttribute("href")).filter(Boolean))]);
-  assert.ok(watchLinks.length >= 7, `Expected at least seven active live watch links, found ${watchLinks.length}`);
+  assert.ok(watchLinks.length >= 13, `Expected at least thirteen active live watch links, found ${watchLinks.length}`);
   passed("active-watch-links", { count: watchLinks.length });
+
+  for (const slug of officialLinkSlugs) {
+    const linkPage = await context.newPage();
+    const linkResponse = await linkPage.goto(`/watch/${slug}`, { waitUntil: "domcontentloaded" });
+    assert.equal(linkResponse?.status(), 200, `${slug} watch page unavailable`);
+    await linkPage.getByRole("link", { name: /Open official live coverage/i }).waitFor();
+    assert.equal(await linkPage.locator("iframe").count(), 0, `${slug} must not render an inline iframe`);
+    const linkBody = await linkPage.locator("body").innerText();
+    assert.match(linkBody, /does not reproduce, restream or record/i);
+    await linkPage.close();
+  }
+  passed("official-link-only-boundary", { sources: officialLinkSlugs.length });
 
   const health = await page.request.get("/api/health");
   assert.equal(health.status(), 200);
@@ -69,7 +97,7 @@ try {
 
   await context.close();
   await writeFile(reportFile, `${JSON.stringify(report, null, 2)}\n`, "utf8");
-  console.log(`Public-domain live acceptance passed. Report: ${reportFile}`);
+  console.log(`Approved live acceptance passed. Report: ${reportFile}`);
 } catch (error) {
   report.checks.push({ name: "acceptance", status: "failed", detail: error instanceof Error ? error.message : String(error) });
   await writeFile(reportFile, `${JSON.stringify(report, null, 2)}\n`, "utf8");

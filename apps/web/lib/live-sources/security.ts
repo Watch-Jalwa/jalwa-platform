@@ -225,9 +225,42 @@ export async function resolveLiveImage(sourceKey: string): Promise<ResolvedLiveI
   throw new Error("The official webcam image could not be resolved.");
 }
 
+async function checkOfficialLink(definition: LiveSourceDefinition) {
+  const head = await fetchAllowed(definition.officialSourceUrl, definition, "HEAD");
+  if (head.response.ok) {
+    await head.response.body?.cancel();
+    return {
+      availability: "healthy" as const,
+      embedUrl: null,
+      message: "Official source page is available.",
+      sourceTimestamp: null,
+      etag: head.response.headers.get("etag"),
+      lastModified: head.response.headers.get("last-modified"),
+      contentHash: null,
+    };
+  }
+
+  await head.response.body?.cancel();
+  const get = await fetchAllowed(definition.officialSourceUrl, definition, "GET");
+  if (!get.response.ok) throw new Error(`Official source page returned HTTP ${get.response.status}.`);
+  const contentType = get.response.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase() ?? "";
+  if (contentType && !contentType.includes("html")) throw new Error("Official source page did not return HTML.");
+  await readBounded(get.response, HTML_LIMIT_BYTES);
+  return {
+    availability: "healthy" as const,
+    embedUrl: null,
+    message: "Official source page is available.",
+    sourceTimestamp: null,
+    etag: get.response.headers.get("etag"),
+    lastModified: get.response.headers.get("last-modified"),
+    contentHash: null,
+  };
+}
+
 export async function checkLiveSource(sourceKey: string) {
   const definition = getLiveSourceDefinition(sourceKey);
   if (!definition) throw new Error("Unknown approved live source.");
+  if (definition.adapter === "official_live_link") return checkOfficialLink(definition);
   if (definition.adapter === "official_live_embed") {
     if (definition.embedVideoId) {
       const oembed = `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${definition.embedVideoId}`)}&format=json`;

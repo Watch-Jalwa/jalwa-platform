@@ -19,7 +19,7 @@ const cssUrl = new URL("../app/phase9.css", import.meta.url);
 
 async function text(url) { return readFile(url, "utf8"); }
 
-test("registry contains only the approved NASA, NOAA and USGS launch scope", async () => {
+test("registry preserves the approved NASA, NOAA and USGS launch scope", async () => {
   const registry = await text(registryUrl);
   for (const key of [
     "nasa-space-station-views", "noaa-ocean-camera-1", "noaa-ocean-camera-2", "noaa-ocean-camera-3",
@@ -78,12 +78,16 @@ test("staging compatibility seed verifies migrated approval and performs no muta
   assert.match(seed, /fixtures may run only in staging/i);
   assert.match(seed, /Approved live rights records are incomplete/);
   assert.match(seed, /USGS image hosting modes are incorrect/);
+  assert.match(seed, /'user_facing_entries',15/);
+  assert.match(seed, /'content_items',21/);
+  assert.match(seed, /'official_link_entries',6/);
   assert.doesNotMatch(seed, /\binsert\s+into\b|\bupdate\s+public\.|\bdelete\s+from\b/i);
 });
 
 test("activation changes database publication before runtime enablement and supports fail-closed disable", async () => {
   const [state, workflow] = await Promise.all([text(stateUrl), text(activationWorkflowUrl)]);
-  assert.match(state, /v_ready <> 15/);
+  assert.match(state, /v_ready <> 21/);
+  assert.match(state, /'user_facing_entries',15/);
   assert.match(state, /r\.status='approved'/);
   assert.match(state, /l\.next_review_at > now\(\)/);
   assert.match(state, /set enabled=true/);
@@ -108,9 +112,10 @@ test("provider-aware health distinguishes off-air, stale, overdue and repeated f
   assert.match(health, /last_success_at/);
 });
 
-test("mobile live experience preserves official players, attribution and non-endorsement", async () => {
+test("mobile live experience preserves official delivery, attribution and non-endorsement", async () => {
   const [watch, livePage, css] = await Promise.all([text(watchUrl), text(livePageUrl), text(cssUrl)]);
   assert.match(watch, /OfficialLiveEmbedPlayer/);
+  assert.match(watch, /OfficialLiveLinkPlayer/);
   assert.match(watch, /PublicDomainLiveImagePlayer/);
   assert.match(watch, /does not sponsor or endorse Jalwa/);
   assert.match(livePage, /Official live public sources/);
@@ -128,6 +133,8 @@ test("staging acceptance verifies migration-installed inventory and live accepta
   assert.match(acceptance, /does not sponsor or endorse Jalwa/);
   assert.match(acceptance, /x-jalwa-live-source/);
   assert.match(acceptance, /Premium/);
+  assert.match(acceptance, /European Parliament Plenary/);
+  assert.match(acceptance, /UN Human Rights Council/);
   assert.match(workflow, /seed-public-domain-live-sources\.sql/);
   assert.match(workflow, /public-domain-live-acceptance\.mjs/);
   assert.match(workflow, /JALWA_EXPECT_LIVE_SOURCES/);
