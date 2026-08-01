@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { buildRetrievalQuery } from "@/lib/ai/grounding.mjs";
 import { createGroundedAnswer, moderateQuestion, type GroundedSource } from "@/lib/ai/openai";
-import { AiRequestBodyError, readAiRequestBody } from "@/lib/ai/request.mjs";
+import { AiRequestBodyError, isAiEnabled, readAiRequestBody } from "@/lib/ai/request.mjs";
 
 export const runtime = "nodejs";
 
@@ -16,6 +16,10 @@ function tokenValue(value: unknown) {
 
 export async function POST(request: Request) {
   try {
+    if (!isAiEnabled()) {
+      return NextResponse.json({ error: "Ask Jalwa is currently disabled.", code: "ai_disabled" }, { status: 503 });
+    }
+
     let body: Record<string, unknown>;
     try {
       body = await readAiRequestBody(request, Number(process.env.AI_REQUEST_MAX_BYTES ?? 16_384));
