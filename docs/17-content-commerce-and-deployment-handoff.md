@@ -1,11 +1,11 @@
 # Content, Commerce and Deployment Handoff
 
-This is the current handoff after repository and frontend readiness. It separates backend deployment, media infrastructure, governed content onboarding, internal-alpha acceptance and later commerce activation so one workstream cannot silently authorize another.
+This is the current handoff after repository and frontend readiness. It separates backend deployment, media infrastructure, governed content onboarding, AI acceptance, internal-alpha activation and later commerce activation so one workstream cannot silently authorize another.
 
 ## Release identity
 
 - Internal-alpha application baseline: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430` (PRs #60–#62).
-- Organization audit and maintenance: PRs #63–#66.
+- Organization audit and maintenance: PRs #63–#67.
 - Current frontend release: read the exact SHA from `/api/health` and the browser `data-release` marker; both must match.
 - Vercel state: READY.
 - Current Vercel mode: noindex frontend preview until transactional backend values are connected.
@@ -13,8 +13,9 @@ This is the current handoff after repository and frontend readiness. It separate
 - Transactional backend deployment: pending.
 - Internal-alpha activation: disabled.
 - Governed live catalogue: installed in code/database migrations but disabled.
+- AI development baseline: versioned prompts/evals and deterministic checks implemented; live exact-configuration evaluation pending staging.
 
-No additional feature development should begin before backend deployment and manual integration testing. Development resumes from reproduced defects and approved follow-up scope.
+No unrelated feature development should begin before backend deployment and manual integration testing. Development resumes from reproduced defects and approved follow-up scope.
 
 ## Workstream 1 — Configure isolated staging
 
@@ -26,10 +27,10 @@ No additional feature development should begin before backend deployment and man
 - GHCR deployment credentials;
 - generated self-hosted Supabase/PostgreSQL secrets;
 - Cloudflare account, isolated R2 buckets and media-signing values;
-- SMTP, AI, observability and application-operation secrets;
+- SMTP, AI-provider, observability and application-operation secrets;
 - age backup identity;
 - staging mock-payment secret;
-- internal tester IDs and named operations/rights/incident owners.
+- internal tester IDs and named product/operations/rights/security/incident owners.
 
 ### Required AWS inputs when the managed media path is selected
 
@@ -68,7 +69,7 @@ The deployment is incomplete when the frontend is reachable but the worker, data
 
 ### Safe first option
 
-Use the existing rollback path:
+Use the existing path:
 
 ```text
 MEDIA_BACKEND=r2
@@ -92,8 +93,8 @@ Do not create long-lived AWS keys on the application host. Use the implemented O
 
 After the backend is healthy:
 
-1. configure the Vercel staging/production environment variables for the selected backend URL and public keys;
-2. keep service-role, database, media-control and signing secrets server-side only;
+1. configure the Vercel environment variables for the selected backend URL and public keys;
+2. keep service-role, database, media-control, AI-provider and signing secrets server-side only;
 3. redeploy the frontend;
 4. verify `/api/health` and browser `data-release` show the exact Vercel deployment SHA;
 5. verify backend readiness and application release evidence point to the intended release family;
@@ -179,6 +180,18 @@ No metadata import may publish automatically. Stock libraries remain production 
 - rollback returns to the previous media/backend state;
 - monitoring, budget and incident alerts reach the named owners.
 
+### AI journeys
+
+- `npm run test:ai` passes for the candidate;
+- exact prompt, model, provider, moderation and eval revisions are recorded;
+- catalogue citations and insufficient-context behaviour are correct;
+- Urdu and Roman Urdu quality are accepted;
+- source-injected instructions do not override the prompt policy;
+- private/unpublished records are not leaked;
+- farming, religious, health, legal and financial limitations behave conservatively;
+- quota, provider timeout/failure and emergency disablement are exercised;
+- latency, tokens and cost are retained for the staging run.
+
 ### Device acceptance
 
 - Android Chrome;
@@ -188,7 +201,16 @@ No metadata import may publish automatically. Stock libraries remain production 
 - constrained network and interrupted playback;
 - PWA installation and service-worker behavior.
 
-## Workstream 8 — Activate invite-only internal alpha
+## Workstream 8 — Complete live-source observation
+
+- run provider/source health and the 46-entry mobile suite;
+- verify all 22 official-link-only pages have no iframe;
+- verify representative official-player and current-image routes;
+- exercise stale, blocked, off-air, degraded and emergency-unpublish states;
+- retain seven continuous days of staging health evidence;
+- recheck terms, attribution and review deadlines before activation.
+
+## Workstream 9 — Activate invite-only internal alpha
 
 Use **Set internal alpha state** only after all preceding evidence exists.
 
@@ -200,11 +222,12 @@ Enablement must verify:
 - at least 50 published, playable and explicitly available items;
 - no rights holds or expired evidence;
 - at least one active tester grant;
-- retained acceptance artifacts and named sign-off.
+- retained platform, device, AI and operational acceptance artifacts;
+- named sign-off and stop-activation authority.
 
 Failed activation must roll back to disabled/invite-only. Do not enable through direct database edits or ad-hoc environment changes.
 
-## Workstream 9 — Team manual testing and development restart
+## Workstream 10 — Team manual testing and development restart
 
 The project manager should return:
 
@@ -212,7 +235,8 @@ The project manager should return:
 - backend and frontend deployed SHAs;
 - infrastructure/workflow run references;
 - 50-item inventory and rights report;
-- device/browser test results;
+- seven-day live-source evidence;
+- device/browser and AI-evaluation results;
 - security, backup, rollback and takedown results;
 - known issues with reproduction steps and severity;
 - signed alpha go/no-go decision.
@@ -221,8 +245,9 @@ After that handoff:
 
 1. fix verified integration defects;
 2. stabilize alpha operations and analytics;
-3. prioritize the next product phase from actual tester evidence;
-4. avoid reopening historical implementation PRs.
+3. prioritize the next product/AI phase from actual tester evidence;
+4. create scoped issues with prompt/model/provider/eval impact where relevant;
+5. avoid reopening historical implementation PRs.
 
 ## Commerce and public production remain separate
 
@@ -234,7 +259,7 @@ Before commerce or general production:
 - select and onboard a Pakistan-compatible hosted checkout provider;
 - test signed success, failure, duplicate, conflict, refund, dispute and reconciliation paths;
 - approve legal/support/finance ownership;
-- complete production infrastructure, content and incident acceptance;
+- complete production infrastructure, content, AI and incident acceptance;
 - promote only an exact release already proven in staging.
 
 ## Open trackers
