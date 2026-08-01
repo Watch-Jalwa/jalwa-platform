@@ -6,7 +6,11 @@ on:
       - ".github/workflows/set-public-domain-live-sources.yml"
       - ".github/workflows/public-domain-live-activation-contract.yml"
       - "infrastructure/production/scripts/set-public-domain-live-sources.sh"
+      - "scripts/set-public-domain-live-catalogue-state.sql"
+      - "scripts/seed-public-domain-live-sources.sql"
       - "scripts/test-public-domain-live-activation.sh"
+      - "scripts/test-public-domain-live-rights-readiness.sh"
+      - "supabase/migrations/202608010002_approved_public_domain_live_inventory.sql"
   push:
     branches:
       - main
@@ -15,7 +19,11 @@ on:
       - ".github/workflows/set-public-domain-live-sources.yml"
       - ".github/workflows/public-domain-live-activation-contract.yml"
       - "infrastructure/production/scripts/set-public-domain-live-sources.sh"
+      - "scripts/set-public-domain-live-catalogue-state.sql"
+      - "scripts/seed-public-domain-live-sources.sql"
       - "scripts/test-public-domain-live-activation.sh"
+      - "scripts/test-public-domain-live-rights-readiness.sh"
+      - "supabase/migrations/202608010002_approved_public_domain_live_inventory.sql"
 
 permissions:
   contents: read
@@ -34,5 +42,8 @@ jobs:
         run: |
           bash -n infrastructure/production/scripts/set-public-domain-live-sources.sh
           bash -n scripts/test-public-domain-live-activation.sh
+          bash -n scripts/test-public-domain-live-rights-readiness.sh
       - name: Run fail-closed activation contract
         run: bash scripts/test-public-domain-live-activation.sh
+      - name: Run approved rights readiness contract
+        run: bash scripts/test-public-domain-live-rights-readiness.sh
