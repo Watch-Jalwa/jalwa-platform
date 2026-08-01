@@ -225,9 +225,28 @@ export async function resolveLiveImage(sourceKey: string): Promise<ResolvedLiveI
   throw new Error("The official webcam image could not be resolved.");
 }
 
+async function checkOfficialLink(definition: LiveSourceDefinition) {
+  let { response } = await fetchAllowed(definition.officialSourceUrl, definition, "HEAD");
+  if (response.status === 405 || response.status === 501) {
+    ({ response } = await fetchAllowed(definition.officialSourceUrl, definition, "GET"));
+    await response.body?.cancel();
+  }
+  if (!response.ok) throw new Error(`Official source page returned HTTP ${response.status}.`);
+  return {
+    availability: "healthy" as const,
+    embedUrl: null,
+    message: "Official source page is available.",
+    sourceTimestamp: null,
+    etag: response.headers.get("etag"),
+    lastModified: response.headers.get("last-modified"),
+    contentHash: null,
+  };
+}
+
 export async function checkLiveSource(sourceKey: string) {
   const definition = getLiveSourceDefinition(sourceKey);
   if (!definition) throw new Error("Unknown approved live source.");
+  if (definition.adapter === "official_live_link") return checkOfficialLink(definition);
   if (definition.adapter === "official_live_embed") {
     if (definition.embedVideoId) {
       const oembed = `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${definition.embedVideoId}`)}&format=json`;
