@@ -5,39 +5,38 @@ Jalwa is a mobile-first Pakistani content platform for curated entertainment, le
 - **Primary market:** Pakistan
 - **Primary domain:** `watch-jalwa.com`
 - **Application model:** mobile-first responsive web application and installable PWA; native mobile apps and app-store distribution are out of current scope
-- **Architecture:** modular monolith with a Next.js web application, background worker, PostgreSQL/Supabase services and Cloudflare R2 media storage
+- **Architecture:** modular monolith with a Next.js web application, background worker and PostgreSQL/Supabase control plane; media can use the existing Cloudflare R2/FFmpeg path or the protected AWS S3/SQS/MediaConvert/CloudFront path
 - **Repository:** private monorepo
 
 ## Current status
 
-The repository-side product foundation is implemented and protected by automated release gates:
+Repository development for the controlled internal alpha is complete on `main` and protected by automated release gates.
 
-- catalogue, categories, search, content pages and official YouTube embeds;
-- rights evidence, source records, attribution, expiry and takedown controls;
-- Jalwa Studio content, moderation, support, operations, finance and Premium reporting areas;
-- Supabase authentication, profiles, watch history, account export and deletion workflows;
-- self-hosted media ingestion, FFmpeg processing, MP4/HLS playback and signed media access;
-- plans, prices, checkout orders, payment lifecycle normalization, entitlements and audited finance reports;
-- Ask Jalwa gateway, quotas, moderation and catalogue citations;
-- isolated staging and production infrastructure workflows using immutable commit-SHA images;
-- encrypted off-site backups, restore drills, transactional rollback and release-correlated diagnostics;
-- lint, strict type checking, unit/contract tests, migration tests, dependency audit, SBOM generation, container vulnerability checks, production image boot checks and Chromium desktop/mobile journeys.
+- Final audited release SHA: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`.
+- The connected Vercel frontend deployment is ready and reports that exact SHA through `/api/health` and the browser release marker.
+- Vercel remains a noindex frontend-preview environment until the transactional backend is deployed and connected.
+- The rights-first alpha source register contains 151 approved discovery lanes. Source approval permits metadata discovery; it never auto-approves an individual asset for publication.
+- The governed live-source implementation contains 46 user-facing entries backed by 52 source records. They remain disabled until the protected staging rights and activation process succeeds.
+- Database-enforced availability, source/content/asset kill switches, rights holds, invite-only tester grants and Studio alpha operations are implemented.
+- Self-hosted MP4/HLS, R2/FFmpeg rollback support, AWS MediaConvert infrastructure-as-code, private CloudFront delivery and signed playback are implemented but the owner-controlled AWS resources have not been applied.
+- Catalogue, authentication, Studio, worker, payments, finance reporting, AI, backups, rollback, observability and release acceptance are repository-complete but still require a deployed backend for end-to-end evidence.
 
-The latest frontend is built on Vercel. That is not evidence of a full transactional staging or production launch. Live staging and production still require the external environment values, provider accounts, DNS, infrastructure and acceptance evidence listed in [Current status and next-stage gates](docs/16-current-status-and-next-stage-gates.md).
+No additional speculative feature development is required before deployment. The next work is backend/infrastructure configuration, deployment, connection to Vercel, content/media acceptance and manual internal-alpha testing.
+
+See [Current status and next-stage gates](docs/16-current-status-and-next-stage-gates.md), [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md) and [Internal alpha content platform](docs/24-internal-alpha-content-platform.md).
 
 ## Next operating phase
 
-Repository development is ready to move into five controlled workstreams:
-
-1. configure the isolated staging environment and retain live acceptance evidence;
-2. implement and stage the approved NASA, NOAA and USGS public-domain live-source catalogue;
-3. onboard an initial rights-cleared catalogue through the governed Studio workflow;
-4. complete merchant/provider, pricing, refund and customer-support decisions;
-5. promote a validated staging release to production only after the production checklist is complete.
+1. Configure the protected GitHub `staging` environment and owner-controlled DigitalOcean, Supabase, Cloudflare/R2, AWS, DNS, SSH, SMTP, AI, observability and signing values.
+2. Bootstrap and deploy the isolated transactional backend from the exact green `main` SHA.
+3. Apply the AWS media plane only after reviewing the Terraform plan; retain R2/FFmpeg as the rollback path.
+4. Connect the Vercel frontend to the deployed backend and confirm health, readiness and release-SHA correlation.
+5. Install the approved source registers, harvest metadata candidates and approve at least 50 mixed items through item-level rights, media and editorial QA.
+6. Run kill-switch, queue/DLQ, HLS, mobile-browser, accessibility, backup, rollback and security acceptance.
+7. Enable invite-only internal alpha only through the protected exact-SHA workflow.
+8. Complete team manual testing and continue feature development from verified integration findings.
 
 The approved delivery model is mobile-first web/PWA only. Android and iOS native applications, Google Play distribution and Apple App Store distribution are not part of the current roadmap or release gates.
-
-See [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md) and [Initial public-domain live source integration](docs/19-public-domain-live-source-integration.md).
 
 ## Local development
 
@@ -73,11 +72,13 @@ apps/
   web/                         consumer PWA, Studio and server routes
   worker/                      ingestion, media processing and scheduled work
 supabase/migrations/           forward-only database migrations
+content/                       approved source registers and governed inputs
 infrastructure/
+  aws-media/                   private AWS video processing and delivery plane
   digitalocean/                Terraform host provisioning
   media-gateway/               Cloudflare media gateway
   production/                  Compose stack, deployment and acceptance scripts
-scripts/                       release, backup, fixture and validation utilities
+scripts/                       release, backup, fixture, harvesting and validation utilities
 docs/                          product, architecture, operations and handoff documents
 .github/                       CI/CD, Dependabot, templates and ownership rules
 ```
@@ -104,17 +105,29 @@ docs/                          product, architecture, operations and handoff doc
 18. [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md)
 19. [Repository readiness audit — 31 July 2026](docs/18-repository-audit-2026-07-31.md)
 20. [Initial public-domain live source integration](docs/19-public-domain-live-source-integration.md)
+21. [Public-domain live activation runbook](docs/20-public-domain-live-activation-runbook.md)
+22. [Approved public-domain live rights](docs/21-approved-public-domain-live-rights.md)
+23. [Institutional public-affairs live sources](docs/22-institutional-public-affairs-live-sources.md)
+24. [Open-government live expansion](docs/23-open-government-live-expansion.md)
+25. [Internal alpha content platform](docs/24-internal-alpha-content-platform.md)
+26. [Organization audit — 1 August 2026](docs/25-organization-audit-2026-08-01.md)
+
+## Open operational trackers
+
+- [#22](https://github.com/Watch-Jalwa/jalwa-platform/issues/22) — umbrella backend, staging, commerce and production activation.
+- [#52](https://github.com/Watch-Jalwa/jalwa-platform/issues/52) — 46-entry governed live-catalogue staging and activation.
+- [#59](https://github.com/Watch-Jalwa/jalwa-platform/issues/59) — internal-alpha content/media deployment and 50-item acceptance.
 
 ## Non-negotiable release rules
 
-- Never self-host media without approved distribution rights and retained evidence.
+- Never self-host media without approved item-level distribution rights and retained evidence.
 - Never download YouTube content; use official embeds only.
 - Never grant paid access from a browser return URL or screenshot alone.
 - Never store card details; use a hosted provider flow and signed server-side webhooks.
 - Never expose service-role, provider, deployment or media-signing secrets to the browser.
 - Never deploy mutable image tags.
 - Keep live streaming and web DRM disabled until contracted providers and browser acceptance are complete.
-- Treat Vercel previews as frontend evidence only, not full-stack release evidence.
+- Treat the current Vercel deployment as frontend evidence only until it is connected to the deployed transactional backend.
 - Production promotion requires a green `main` commit, staging acceptance, immutable artifacts, backup evidence and explicit approval.
 
 ## Contributing and security
