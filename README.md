@@ -20,7 +20,7 @@ Repository development for the controlled internal alpha is complete on `main` a
 - The governed live-source implementation contains 46 user-facing entries backed by 52 source records. They remain disabled until the protected staging rights and activation process succeeds.
 - Database-enforced availability, source/content/asset kill switches, rights holds, invite-only tester grants and Studio alpha operations are implemented.
 - Self-hosted MP4/HLS, R2/FFmpeg rollback support, AWS MediaConvert infrastructure-as-code, private CloudFront delivery and signed playback are implemented but owner-controlled infrastructure still requires deployment and acceptance.
-- Ask Jalwa has a provider-neutral adapter, versioned prompt registry, synthetic evaluation set, prompt-injection boundary, citations, quotas, moderation and prompt/model audit records.
+- Ask Jalwa has a provider-neutral adapter, versioned prompt registry, synthetic evaluation set, bounded request boundary, prompt-injection controls, citations, quotas, moderation, prompt/model audit records and a protected shared runtime state workflow.
 - Catalogue, authentication, Studio, worker, payments, finance reporting, AI, backups, rollback, observability and release acceptance are repository-complete but still require a deployed backend for end-to-end evidence.
 
 No additional product feature is required before deployment. The next work is backend/infrastructure configuration, deployment, connection to Vercel, content/media acceptance and manual internal-alpha testing.
@@ -35,9 +35,10 @@ See [Current status and next-stage gates](docs/16-current-status-and-next-stage-
 4. Connect the Vercel frontend to the deployed backend and confirm health, readiness and release-SHA correlation.
 5. Install the approved source registers, harvest metadata candidates and approve at least 50 mixed items through item-level rights, media and editorial QA.
 6. Complete the governed live-catalogue health/mobile checks and seven-day staging observation.
-7. Run kill-switch, queue/DLQ, HLS, mobile-browser, accessibility, AI-evaluation, backup, rollback and security acceptance.
-8. Enable invite-only internal alpha only through the protected exact-SHA workflow.
-9. Complete team manual testing and continue feature development from verified integration and tester findings.
+7. Enable Ask Jalwa through **Set AI state**, run exact-configuration evaluation, exercise the protected disable path and retain the evidence.
+8. Run source/content kill-switch, queue/DLQ, HLS, mobile-browser, accessibility, backup, rollback and security acceptance.
+9. Enable invite-only internal alpha only through the protected exact-SHA workflow.
+10. Complete team manual testing and continue feature development from verified integration and tester findings.
 
 The approved delivery model is mobile-first web/PWA only. Android and iOS native applications, Google Play distribution and Apple App Store distribution are not part of the current roadmap or release gates.
 
@@ -67,7 +68,7 @@ npm run test:backup-encryption
 npm run build
 ```
 
-`npm run test:ai` is required when prompts, models, providers, retrieval, moderation or tools change. Live AI behaviour changes also require exact-configuration staging evaluation evidence.
+`npm run test:ai` is required when prompts, models, providers, retrieval, moderation, runtime controls or tools change. Live AI behaviour changes also require exact-configuration staging evaluation evidence.
 
 The GitHub CI workflow additionally validates infrastructure, applies migrations against a clean PostgreSQL service, audits production dependencies, generates a CycloneDX SBOM, builds and scans production images, boots the production web image and runs browser journeys.
 
@@ -87,7 +88,7 @@ infrastructure/
   production/                  Compose stack, deployment and acceptance scripts
 scripts/                       release, backup, fixture, harvesting and validation utilities
 docs/                          product, architecture, operations and handoff documents
-.github/                       CI/CD, Dependabot, templates and ownership rules
+.github/                       CI/CD, protected controls, Dependabot, templates and ownership rules
 ```
 
 ## Documentation
@@ -135,6 +136,7 @@ docs/                          product, architecture, operations and handoff doc
 - Never expose service-role, provider, deployment or media-signing secrets to the browser.
 - Never deploy mutable image identifiers.
 - Treat retrieved AI context and tool output as untrusted data.
+- Keep non-local AI disabled until the shared runtime flag is enabled through the protected exact-SHA workflow.
 - Never promote an AI prompt/model/provider change without versioned prompts, relevant evaluations and staging evidence.
 - Keep live streaming and web DRM disabled until contracted providers and browser acceptance are complete.
 - Treat the current Vercel deployment as frontend evidence only until it is connected to the deployed transactional backend.
