@@ -1,4 +1,4 @@
-name: Public-domain live activation contract
+name: Approved live activation contract
 
 on:
   pull_request:
@@ -11,12 +11,16 @@ on:
       - "scripts/test-public-domain-live-activation.sh"
       - "scripts/test-public-domain-live-rights-readiness.sh"
       - "scripts/test-institutional-live-readiness.sh"
+      - "scripts/test-open-government-live-readiness.sh"
       - "supabase/migrations/202608010002_approved_public_domain_live_inventory.sql"
       - "supabase/migrations/202608010003_institutional_public_affairs_live_sources.sql"
+      - "supabase/migrations/202608010004_open_government_live_expansion.sql"
+      - "supabase/migrations/202608010005_approved_live_catalogue_manifest.sql"
       - "apps/web/lib/live-sources/**"
       - "apps/web/components/official-live-link-player.tsx"
       - "apps/web/app/live/page.tsx"
       - "apps/web/app/watch/[slug]/page.tsx"
+      - "apps/web/tests/*live-sources.test.mjs"
       - "scripts/public-domain-live-acceptance.mjs"
   push:
     branches:
@@ -31,19 +35,23 @@ on:
       - "scripts/test-public-domain-live-activation.sh"
       - "scripts/test-public-domain-live-rights-readiness.sh"
       - "scripts/test-institutional-live-readiness.sh"
+      - "scripts/test-open-government-live-readiness.sh"
       - "supabase/migrations/202608010002_approved_public_domain_live_inventory.sql"
       - "supabase/migrations/202608010003_institutional_public_affairs_live_sources.sql"
+      - "supabase/migrations/202608010004_open_government_live_expansion.sql"
+      - "supabase/migrations/202608010005_approved_live_catalogue_manifest.sql"
       - "apps/web/lib/live-sources/**"
       - "apps/web/components/official-live-link-player.tsx"
       - "apps/web/app/live/page.tsx"
       - "apps/web/app/watch/[slug]/page.tsx"
+      - "apps/web/tests/*live-sources.test.mjs"
       - "scripts/public-domain-live-acceptance.mjs"
 
 permissions:
   contents: read
 
 concurrency:
-  group: public-domain-live-activation-${{ github.workflow }}-${{ github.ref }}
+  group: approved-live-activation-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -58,9 +66,12 @@ jobs:
           bash -n scripts/test-public-domain-live-activation.sh
           bash -n scripts/test-public-domain-live-rights-readiness.sh
           bash -n scripts/test-institutional-live-readiness.sh
+          bash -n scripts/test-open-government-live-readiness.sh
       - name: Run fail-closed activation contract
         run: bash scripts/test-public-domain-live-activation.sh
       - name: Run approved rights readiness contract
         run: bash scripts/test-public-domain-live-rights-readiness.sh
       - name: Run institutional live readiness contract
         run: bash scripts/test-institutional-live-readiness.sh
+      - name: Run open-government live readiness contract
+        run: bash scripts/test-open-government-live-readiness.sh
