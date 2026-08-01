@@ -6,6 +6,14 @@ on:
       - main
     paths:
       - .github/workflows/cleanup-merged-branches.yml
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    paths:
+      - .github/workflows/cleanup-merged-branches.yml
   schedule:
     - cron: "17 3 * * 0"
   workflow_dispatch:
@@ -20,6 +28,7 @@ concurrency:
 jobs:
   cleanup:
     name: Delete safely merged branches
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
       contents: write
