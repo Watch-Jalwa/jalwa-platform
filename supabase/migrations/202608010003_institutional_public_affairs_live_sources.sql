@@ -246,8 +246,6 @@ on conflict(playback_source_id) do update set
   availability_reason='Approved official-source link is installed and awaiting controlled activation.',
   terms_review_due=false;
 
-commit;
-
 do $$
 declare
   v_items integer;
@@ -293,3 +291,5 @@ begin
   if v_rights <> 6 then raise exception 'Institutional link-only rights records are incomplete'; end if;
   if v_links <> 6 then raise exception 'Institutional sources must remain external-link only'; end if;
 end $$;
+
+commit;
