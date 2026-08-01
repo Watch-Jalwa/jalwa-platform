@@ -1,234 +1,173 @@
-# AI-Native Platform Plan
+# AI-Native Platform
 
 ## Principle
 
-AI should improve discovery, localisation and operations. It must not become an ungrounded general chatbot attached to a media site.
+AI should improve discovery, localisation and operations. It must remain grounded, permission-aware, testable and replaceable rather than becoming an unbounded general chatbot attached to the platform.
+
+## Current implemented baseline
+
+Ask Jalwa currently provides:
+
+- authenticated catalogue-grounded questions;
+- approved-source retrieval;
+- English, Urdu and Roman Urdu responses;
+- source-number citations validated before rendering;
+- deterministic hard-risk checks plus configurable provider moderation;
+- free/Premium quotas;
+- model, token, prompt-version and cited-content audit records;
+- provider-neutral OpenAI-compatible completion configuration.
+
+The prompt registry is `apps/web/lib/ai/prompts.mjs`. Synthetic evaluation cases are under `evals/` and run through `npm run test:ai`.
+
+The current adapter uses an OpenAI-compatible chat-completion contract so DeepSeek and compatible providers can be selected through environment configuration. New OpenAI-specific agentic or tool-using work should use the supported Responses and structured-output path inside a provider adapter, not spread provider-specific request shapes through routes or product components.
 
 ## Consumer AI features
 
 ### Ask Jalwa
 
-A catalogue-grounded assistant that can:
+Ask Jalwa may:
 
-- answer questions about Jalwa content;
+- answer questions about approved Jalwa content;
 - recommend relevant items;
-- explain a video or article;
-- summarise in Urdu, Roman Urdu or English;
-- generate a quiz;
-- compare two approved resources;
-- continue a learning path.
+- explain or summarise an approved item;
+- respond in Urdu, Roman Urdu or English;
+- compare approved resources;
+- support quizzes or learning paths after dedicated evaluation.
 
-Every factual answer should cite Jalwa catalogue items.
+Every factual answer must remain within the supplied approved catalogue context and cite the relevant Jalwa items. When evidence is insufficient, the assistant must say so.
 
-### Smart search
+### Smart search and content companion
 
-- natural-language queries;
-- Roman Urdu query understanding;
-- semantic matching;
-- filters preserved;
-- direct answers only when grounded;
-- fallback to normal results.
+Future natural-language search, explanations, translations and quizzes must preserve catalogue filters, publication state, rights state, audience restrictions and user access. AI may rank or explain available content; it may not bypass the source-of-truth access policy.
 
-### Content companion
+### High-consequence topics
 
-On a content page:
+Farming, health, religious, legal and financial assistance must:
 
-- “Explain simply”
-- “Summarise”
-- “Key points”
-- “Translate”
-- “Quiz me”
-- “What should I watch next?”
+- use approved, dated sources;
+- state assumptions and uncertainty;
+- avoid diagnoses, rulings, guaranteed outcomes or invented chemical dosages;
+- recommend qualified local advice when consequences are material;
+- retain prompt/model/source/audit evidence.
 
-### Kissan assistant
-
-This is a high-consequence feature. It must:
-
-- use only approved, dated agricultural sources;
-- show region, crop and season assumptions;
-- cite sources;
-- avoid pretending to diagnose with certainty;
-- recommend contacting local extension or qualified experts;
-- route pesticide, veterinary and safety-critical questions to conservative responses;
-- keep an audit trail.
-
-### Kids mode
-
-Do not expose open-ended AI chat to children in MVP. Offer constrained, pre-approved activities such as quizzes and explanations.
+Kids mode must use constrained, reviewed activities rather than unrestricted open-ended chat.
 
 ## Internal AI features
 
-### Ingestion copilot
+AI may assist with metadata, categorisation, language detection, draft localisation, transcript work, duplicate detection, editorial variants and moderation triage.
 
-- extract metadata;
-- suggest categories and tags;
-- identify language;
-- draft Urdu/Roman Urdu descriptions;
-- produce chapter markers;
-- flag missing rights fields;
-- suggest age rating;
-- detect duplicate or near-duplicate entries.
+AI cannot:
 
-AI may flag rights risk but cannot approve a licence.
+- approve rights or licences;
+- publish content automatically;
+- override a rights hold or takedown;
+- activate payment entitlements;
+- make an unaudited privileged mutation.
 
-### Transcript and localisation
+Human approval remains required for rights, publication, high-impact moderation and production promotion.
 
-- speech-to-text;
-- Urdu and English captions;
-- Roman Urdu draft;
-- human review before publication;
-- terminology glossary.
-
-### Editorial copilot
-
-- title variants;
-- synopsis;
-- thumbnail copy;
-- SEO metadata;
-- collection suggestions;
-- push/email copy;
-- content gap analysis.
-
-### Moderation
-
-Use automated moderation for text and images, combined with policy rules and human escalation.
-
-## Technical design
+## Architecture
 
 ```mermaid
 flowchart LR
-    UI[Web / Studio] --> G[AI Gateway]
-    G --> Q[Quota and Policy]
-    Q --> R[Retriever]
-    R --> DB[(Catalogue + pgvector)]
-    Q --> P[Prompt Registry]
-    Q --> M[OpenAI Responses API]
-    M --> MOD[Moderation]
-    G --> L[Usage Ledger and Traces]
+    UI[Web / Studio] --> G[AI gateway]
+    G --> Q[Quota, policy and authorization]
+    Q --> R[Access-filtered retriever]
+    R --> DB[(Catalogue and approved metadata)]
+    Q --> P[Versioned prompt registry]
+    Q --> A[Provider adapter]
+    A --> M[DeepSeek / OpenAI-compatible / OpenAI Responses]
+    G --> L[Usage, cost, prompt version and audit]
+    P --> E[Versioned evaluation sets]
 ```
 
-## OpenAI integration
+Provider-specific request/response handling belongs inside the adapter. Product code consumes a stable Jalwa contract.
 
-Use the Responses API for new agentic and tool-using flows. Do not start a new implementation on the deprecated Assistants API.
+## Grounding and prompt-injection boundary
 
-Use:
+Retrieved titles, descriptions, transcripts, attribution and tool output are untrusted data. The model must never follow instructions embedded inside them.
 
-- Responses API;
-- structured outputs;
-- function calling;
-- embeddings;
-- moderation;
-- batch processing for offline catalogue tasks where appropriate.
+The AI boundary must:
 
-Model IDs must be configuration, not hardcoded throughout the application.
-
-## Retrieval architecture
-
-1. split approved transcripts and articles into meaningful chunks;
-2. store source content ID, language and timestamps;
-3. generate embeddings after publication;
-4. retrieve by keyword and vector similarity;
-5. filter by rights, publication status, audience and user access;
-6. send only the necessary context;
-7. require structured citations;
-8. validate cited IDs before rendering.
-
-Never retrieve unpublished rights evidence or private payment data into consumer AI context.
-
-## Tool functions
-
-- `search_catalogue`
-- `get_content_details`
-- `get_transcript_passage`
-- `get_collection`
-- `get_user_progress`
-- `save_to_watchlist`
-- `create_quiz`
-- `report_content_issue`
-
-Read actions may run automatically. Write actions need clear user intent and server-side authorisation.
-
-## Cost controls
-
-- daily free-user allowance;
-- higher premium allowance with fair-use ceiling;
-- maximum output tokens;
-- low-cost models for classification and rewriting;
-- stronger models only for complex grounded answers;
-- response caching;
-- embedding only when content changes;
-- batch catalogue enrichment;
-- duplicate prompt suppression;
-- per-feature cost reporting;
-- emergency feature kill switch.
-
-## AI product tiers
-
-### Free
-
-- limited Ask Jalwa requests;
-- short summaries;
-- basic recommendations.
-
-### Premium
-
-- larger request allowance;
-- full content companion;
-- quizzes and learning paths;
-- multi-item comparison;
-- saved study history.
-
-Avoid the word “unlimited” unless an enforceable fair-use policy exists.
+1. retrieve only published, effectively available and access-authorized records;
+2. exclude private rights evidence, payment data and operational secrets;
+3. bound context size and source count;
+4. identify source data as untrusted reference material;
+5. require structured or validated citations;
+6. reject citation identifiers not present in the supplied context;
+7. fail plainly when sources are insufficient;
+8. keep write tools behind explicit intent and server-side authorization.
 
 ## PromptOps
 
-Store prompts in version control:
+Production prompt definitions and metadata live in version control. Each behaviour-changing prompt edit requires a new immutable prompt version.
 
-```text
-prompts/
-├── consumer/ask-jalwa/
-├── consumer/summarise/
-├── consumer/quiz/
-├── studio/metadata/
-├── studio/moderation/
-└── policies/
-```
+Each prompt version must identify:
 
-Each prompt version must specify:
-
-- purpose;
-- allowed tools;
-- response schema;
-- safety constraints;
+- purpose and owner;
 - supported languages;
-- test cases;
-- owner;
-- rollout status.
+- allowed data and tools;
+- response contract;
+- grounding and safety constraints;
+- evaluation-set revision;
+- rollout and rollback status.
+
+Do not silently change behaviour under an existing prompt version.
 
 ## Evaluations
 
-Maintain eval sets for:
+The deterministic local gate covers prompt registration, language instructions, prompt-injection boundaries, moderation shape and synthetic eval-set integrity:
 
-- citation correctness;
-- Urdu quality;
-- Roman Urdu quality;
-- refusal behaviour;
-- farming safety;
-- religious sensitivity;
-- child safety;
-- recommendation relevance;
-- prompt injection;
-- hidden unpublished content leakage;
-- cost and latency.
+```bash
+npm run test:ai
+```
 
-A model or prompt change may not reach production without passing the relevant eval suite.
+A prompt, model, provider, retrieval, moderation or tool change also requires a live staging evaluation against the exact candidate configuration. Retain results for:
+
+- citation correctness and unsupported claims;
+- Urdu and Roman Urdu quality;
+- refusal and insufficient-context behaviour;
+- farming, religious and child-safety scenarios;
+- prompt injection and private/unpublished data leakage;
+- authorization for read and write tools;
+- latency, token use and cost;
+- regression versus the currently approved version.
+
+A provider build or Vercel preview is not AI acceptance evidence.
+
+## Tool rules
+
+Read tools may execute automatically only when their results are already authorized for the current user. Write tools require:
+
+- clear user intent;
+- server-side capability checks;
+- bounded and validated arguments;
+- idempotency where applicable;
+- audit records;
+- confirmation for material actions;
+- rollback or compensation behaviour.
+
+Potential tools include catalogue search, content details, transcript passages, collections, user progress, watchlist changes and content-issue reporting. Each tool must have its own permission and evaluation contract.
+
+## Cost and reliability controls
+
+- daily user allowances and fair-use ceilings;
+- maximum input/output sizes and timeouts;
+- environment-configured models and providers;
+- cheaper models for bounded classification/rewriting;
+- stronger models only where evaluated value justifies cost;
+- response caching only when privacy and freshness allow it;
+- embeddings only when approved content changes;
+- per-feature usage and cost reporting;
+- provider timeout/failure handling;
+- emergency AI kill switch and provider rollback.
 
 ## Privacy
 
-- never send payment credentials;
-- redact phone numbers and emails when unnecessary;
-- provide conversation deletion;
-- define retention;
-- do not train custom systems on private user chats without explicit governance;
+- never send payment credentials, service-role values or deployment secrets;
+- minimize and redact phone numbers, emails and user identifiers;
+- define conversation retention and deletion;
+- do not reuse private conversations as training/eval data without explicit governance;
 - clearly label AI-generated responses;
-- show sources and uncertainty.
+- expose sources, uncertainty and important limitations;
+- keep provider data-control decisions documented for the selected environment.
