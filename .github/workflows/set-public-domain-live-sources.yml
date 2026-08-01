@@ -69,6 +69,9 @@ jobs:
           git merge-base --is-ancestor "$RELEASE_SHA" origin/main || { echo 'Release SHA is not on main.' >&2; exit 1; }
           [[ "$DESIRED_STATE" == true || "$DESIRED_STATE" == false ]]
           test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          [[ "$HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo 'Staging host contains unsupported characters.' >&2; exit 1; }
+          [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || { echo 'Staging domain contains unsupported characters.' >&2; exit 1; }
+          [[ "$USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || { echo 'Staging user contains unsupported characters.' >&2; exit 1; }
           test -n "$APPROVAL_REFERENCE" && [[ ${#APPROVAL_REFERENCE} -le 500 ]]
           [[ "$APPROVAL_REFERENCE" != *$'\n'* ]]
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -114,6 +117,7 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
             "/opt/jalwa/scripts/set-public-domain-live-sources.sh false '$RELEASE_SHA' '$DOMAIN' staging"
+          gh variable set STAGING_EXPECT_PUBLIC_DOMAIN_LIVE_SOURCES --env staging --body false
       - name: Persist staging expectation
         if: success()
         run: gh variable set STAGING_EXPECT_PUBLIC_DOMAIN_LIVE_SOURCES --env staging --body "$DESIRED_STATE"
@@ -188,6 +192,9 @@ jobs:
           git merge-base --is-ancestor "$RELEASE_SHA" origin/main || { echo 'Release SHA is not on main.' >&2; exit 1; }
           [[ "$DESIRED_STATE" == true || "$DESIRED_STATE" == false ]]
           test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          [[ "$HOST" =~ ^[A-Za-z0-9.-]+$ ]] || { echo 'Production host contains unsupported characters.' >&2; exit 1; }
+          [[ "$DOMAIN" =~ ^[A-Za-z0-9.-]+$ ]] || { echo 'Production domain contains unsupported characters.' >&2; exit 1; }
+          [[ "$USER" =~ ^[a-z_][a-z0-9_-]*$ ]] || { echo 'Production user contains unsupported characters.' >&2; exit 1; }
           test -n "$APPROVAL_REFERENCE" && [[ ${#APPROVAL_REFERENCE} -le 500 ]]
           [[ "$APPROVAL_REFERENCE" != *$'\n'* ]]
           if [[ "$DESIRED_STATE" == true ]]; then
