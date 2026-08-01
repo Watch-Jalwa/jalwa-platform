@@ -39,6 +39,11 @@ body:
     attributes:
       label: Content-rights and editorial impact
   - type: textarea
+    id: ai
+    attributes:
+      label: AI prompt, model, provider, retrieval, tools and evaluation impact
+      description: Include grounding, prompt-injection, safety, privacy, latency, cost and rollback implications when relevant.
+  - type: textarea
     id: operations
     attributes:
       label: Analytics, observability and operations
@@ -55,3 +60,4 @@ body:
         - label: Urdu and RTL behaviour considered
         - label: Accessibility considered
         - label: Failure and rollback behaviour considered
+        - label: AI grounding, safety, leakage, eval and cost implications considered where relevant
