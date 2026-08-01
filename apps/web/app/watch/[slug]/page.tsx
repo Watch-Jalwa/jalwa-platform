@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { CommentsSection } from "@/components/comments-section";
 import { DrmPlayer } from "@/components/drm-player";
 import { OfficialLiveEmbedPlayer } from "@/components/official-live-embed-player";
+import { OfficialLiveLinkPlayer } from "@/components/official-live-link-player";
 import { PublicDomainLiveImagePlayer } from "@/components/public-domain-live-image-player";
 import { RecommendationRail } from "@/components/recommendation-rail";
 import { ResilientYouTubePlayer } from "@/components/resilient-youtube-player";
@@ -35,6 +36,13 @@ export default async function WatchPage({ params }: { params: Params }) {
       sourceKey={item.playback.sourceKey!}
       title={item.title}
     />;
+  } else if (liveSource && item.playback?.deliveryAdapter === "official_live_link") {
+    player = <OfficialLiveLinkPlayer
+      attribution={attribution}
+      availability={item.playback.availability}
+      checkedAt={item.playback.checkedAt}
+      officialSourceUrl={officialSource}
+    />;
   } else if (liveSource && item.playback?.deliveryAdapter === "public_domain_live_image") {
     player = <PublicDomainLiveImagePlayer
       attribution={attribution}
@@ -61,7 +69,7 @@ export default async function WatchPage({ params }: { params: Params }) {
       {item.titleUrdu ? <p className="urdu watch-urdu">{item.titleUrdu}</p> : null}
       {item.description ? <p>{item.description}</p> : null}
       {item.attribution ? <p className="attribution">{item.attribution}</p> : null}
-      {liveSource ? <p className="live-non-endorsement">This source is presented for public information. The source agency does not sponsor or endorse Jalwa or its advertisers.</p> : null}
+      {liveSource ? <p className="live-non-endorsement">This source is presented for public information. The source institution does not sponsor or endorse Jalwa or its advertisers.</p> : null}
       <div className="watch-actions">
         <Link className="button button-secondary" href="/history">Watch history</Link>
         {item.sourceUrl ? <Link className="button button-secondary" href={item.sourceUrl} rel="noreferrer" target="_blank">View original source ↗</Link> : null}
