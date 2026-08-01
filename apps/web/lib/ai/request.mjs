@@ -6,6 +6,10 @@ export class AiRequestBodyError extends Error {
   }
 }
 
+export function isAiEnabled(value = process.env.AI_ENABLED) {
+  return String(value ?? "true").trim().toLowerCase() === "true";
+}
+
 export async function readAiRequestBody(request, maxBytes = 16_384) {
   if (!(request instanceof Request)) {
     throw new TypeError("request must be a Request");
