@@ -1,199 +1,243 @@
 # Content, Commerce and Deployment Handoff
 
-This is the operating plan after repository readiness. It keeps content acquisition, merchant/provider work and deployment evidence separate so one workstream cannot silently authorize another.
+This is the current handoff after repository and frontend readiness. It separates backend deployment, media infrastructure, governed content onboarding, internal-alpha acceptance and later commerce activation so one workstream cannot silently authorize another.
 
-## Workstream 1 — Activate isolated staging
+## Current release
 
-### Inputs
+- `main`: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`
+- Vercel deployment: `dpl_8aJR63X2r7gJQy6XWkqs3b4m1uju`
+- Vercel state: READY
+- Current Vercel mode: noindex frontend preview until transactional backend values are connected
+- Repository implementation: complete
+- Transactional backend deployment: pending
+- Internal-alpha activation: disabled
+- Governed live catalogue: installed in code/database migrations but disabled
 
-- DigitalOcean account and restricted administrator CIDR;
-- Cloudflare account, zone and isolated R2 buckets;
-- staging domain;
+No additional feature development should begin before backend deployment and manual integration testing. Development resumes from reproduced defects and approved follow-up scope.
+
+## Workstream 1 — Configure isolated staging
+
+### Required owner inputs
+
+- DigitalOcean account, region and restricted administrator CIDR;
+- staging domain and DNS control;
 - SSH keypair and independently verified Ed25519 host fingerprint;
-- generated self-hosted Supabase secrets;
+- GHCR deployment credentials;
+- generated self-hosted Supabase/PostgreSQL secrets;
+- Cloudflare account, isolated R2 buckets and media-signing values;
 - SMTP, AI, observability and application-operation secrets;
-- GHCR deploy credentials;
-- age backup identity.
+- age backup identity;
+- staging mock-payment secret;
+- internal tester IDs and named operations/rights/incident owners.
 
-### Execution
+### Required AWS inputs when the managed media path is selected
 
-1. configure the GitHub `staging` environment;
-2. run **Bootstrap staging** if infrastructure is absent;
-3. verify host, DNS and SSH identity out of band;
-4. run **Deploy staging** from a green `main` commit;
-5. run automatic infrastructure acceptance;
-6. retain manifests, health evidence, encrypted backups and restore-drill output.
+- AWS account and region;
+- environment-scoped GitHub OIDC role;
+- encrypted Terraform state backend and locking;
+- staging media domain and certificate/DNS control;
+- CloudFront signing key pair;
+- media-control and Supabase callback secrets;
+- budget destination and monthly limit;
+- KMS/log-retention policy.
 
 ### Exit evidence
 
-- exact deployed commit SHA;
-- healthy web, worker, proxy, database, Auth and REST services;
-- migrations recorded as applied;
-- no stuck background jobs;
-- staging noindex and production analytics isolation;
-- successful encrypted backup and restore drill;
-- desktop/mobile browser acceptance artifact.
+- protected GitHub `staging` environment contains only dedicated staging values;
+- all required values are non-example and independently verified;
+- no production secret or bucket is reused;
+- named deployment approver and stop-activation owner are recorded.
 
-## Workstream 2 — Onboard the first content pilot
+## Workstream 2 — Deploy the transactional backend
 
-Start with a controlled pilot, not a 150-item bulk import. Target 20–30 items across three programmes:
+1. Run **Bootstrap staging** when infrastructure is absent.
+2. Verify the host address and SSH fingerprint outside the workflow.
+3. Run **Deploy staging** from the exact green `main` SHA selected for acceptance.
+4. Verify web, worker, proxy, PostgreSQL, Auth and REST health.
+5. Verify migration inventory and background-job readiness.
+6. Retain deployment manifest and exact readiness SHA.
+7. Verify pre-migration and post-deployment encrypted backups.
+8. Run and retain the restore drill.
+9. Exercise the tested transactional rollback path.
+10. Run zero-content staging browser acceptance.
 
-- 8–10 official embeds from approved Pakistani or globally relevant channels;
-- 8–10 public-domain or commercially reusable open-license items with original-source evidence;
-- 4–10 Jalwa-owned cards, shorts, explainers or articles.
+The deployment is incomplete when the frontend is reachable but the worker, database, Auth, REST, backups or readiness evidence are missing.
 
-Recommended first programmes:
+## Workstream 3 — Select and validate the media backend
 
-- **Deen:** official lecture embeds, Quran text integration and original reviewed cards;
-- **Kissan:** original Urdu explainers using reviewed facts and licensed visuals;
-- **Rozgar/Tech:** official tutorials plus original scam-awareness and skills content.
+### Safe first option
 
-### Source approval record
+Use the existing rollback path:
 
-Create one content-source issue for every source programme. Record:
+```text
+MEDIA_BACKEND=r2
+TRANSCODE_BACKEND=ffmpeg
+```
 
-- rights-holder/publisher and official URL;
-- proposed delivery mode;
-- licence or written permission;
-- territory, duration and commercial scope;
-- editing, subtitle and thumbnail permissions;
-- attribution requirements;
-- expiry/review date;
-- takedown contact and internal owner;
-- editorial, age, medical, religious or agricultural review needs;
-- availability/reliability risk.
+This is acceptable for the first staging integration cycle when R2 credentials and worker compute are ready.
 
-### Item-level publication record
+### Managed AWS option
+
+1. Run **Apply AWS media plane** with `apply=false`.
+2. Review the exact Terraform plan and cost boundary.
+3. Apply through the protected staging environment.
+4. Verify private S3 access, SQS/DLQ, MediaConvert, CloudFront OAC, signed cookies, alarms and budgets.
+5. Run **Set media backend** using `backend=aws`.
+6. Verify upload, processing, completion callback, HLS playback and rollback to R2.
+
+Do not create long-lived AWS keys on the application host. Use the implemented OIDC/HMAC/signing boundaries.
+
+## Workstream 4 — Connect the Vercel frontend
+
+After the backend is healthy:
+
+1. configure the Vercel staging/production environment variables for the selected backend URL and public keys;
+2. keep service-role, database, media-control and signing secrets server-side only;
+3. redeploy the frontend;
+4. verify `/api/health` and browser `data-release` show the exact Vercel deployment SHA;
+5. verify backend readiness and application release evidence point to the intended release family;
+6. confirm the preview banner/fallback catalogue no longer hides a missing backend connection;
+7. keep noindex and internal-alpha restrictions active.
+
+## Workstream 5 — Install governed source records
+
+### Alpha source register
+
+Install the 151 approved discovery lanes from `content/alpha-approved-sources.json`.
+
+- Source-level approval permits metadata discovery only.
+- It does not authorize an individual file for download, adaptation, monetisation or publication.
+- Unsupported adapters remain installed but skipped.
+- Every candidate retains source revision, original URL and rights metadata.
+
+### Live-source inventory
+
+Install the 52 governed source records representing 46 user-facing live entries.
+
+- Keep every source disabled and unpublished at installation.
+- Preserve official-embed, secured-current-image and official-link-only delivery boundaries.
+- Do not restream, record or automatically upgrade link-only sources.
+
+## Workstream 6 — Build the first 50-item internal-alpha catalogue
+
+Use metadata harvesting to create candidates, then approve only items that pass the complete item-level workflow.
+
+Recommended mix:
+
+- 30 short-form items;
+- 10 medium-form items;
+- 5 long-form items;
+- 5 audio/story or provider-linked items.
 
 Every item must retain:
 
-- canonical source URL;
+- canonical source URL and source-lane revision;
 - creator/publisher;
-- delivery/hosting mode;
-- licence identifier and licence URL or contract reference;
-- evidence snapshot/version and review date;
-- exact attribution text;
-- territory and expiry;
-- monetisation compatibility;
-- review owner and takedown owner;
-- publication status and audit trail.
+- exact licence and licence URL or public-domain basis;
+- evidence snapshot/hash and review date;
+- attribution and modification notice;
+- territory, monetisation and expiry decisions;
+- third-party music, performer, privacy and trademark review;
+- media checksum and processing outputs;
+- editorial, rights and takedown owners;
+- explicit availability state and audit history.
 
-### Delivery rules
+No metadata import may publish automatically. Stock libraries remain production ingredients, not unchanged catalogue programmes.
 
-- YouTube and similar platforms: official embed only; no download, mirroring or premium paywall by default.
-- Open-license media: verify the original item, not only an aggregator result.
-- Public domain: verify the applicable jurisdiction and all embedded third-party elements.
-- Jalwa original: retain contributor, music, performer, location and source-material clearances.
-- Institutional/government material: do not assume public access equals commercial reuse permission.
+## Workstream 7 — Internal-alpha acceptance
 
-### Pilot acceptance
+### Platform journeys
 
-- at least one published item per selected programme;
-- complete rights evidence report;
-- Urdu/Roman Urdu metadata and thumbnails reviewed;
-- mobile playback and embed availability checked;
-- takedown/unpublish path rehearsed;
-- staging acceptance rerun with minimum published content `1` or higher;
-- no item published automatically from an import.
+- signup, verification, login, session renewal and password reset;
+- profiles, devices, tester grant and tester revocation;
+- Studio access and capability denial;
+- candidate review, content promotion and publication;
+- upload, processing, retry and DLQ recovery;
+- search, feeds, collections, Shorts and watch pages;
+- HLS adaptation and MP4 fallback;
+- captions, keyboard, reduced-motion and low-data behavior;
+- account export/deletion and protected diagnostics.
 
-## Workstream 3 — Commerce and Premium readiness
+### Rights and takedown journeys
 
-The repository contains payment and entitlement infrastructure, but live commerce requires business and provider inputs.
+- source disable removes all child content from discovery and blocks new playback;
+- item disable affects only that item;
+- rights hold cancels/blocks processing and playback;
+- rights expiry fails closed;
+- urgent manifest/poster invalidation is exercised;
+- restore requires current rights approval and explicit child restoration;
+- attribution and evidence remain available to operators.
 
-### Business decisions
+### Infrastructure journeys
 
-- legal merchant entity and settlement account;
-- monthly and optional annual price;
-- tax treatment and invoice/receipt requirements;
-- refund, cancellation, failed-payment and grace-period policy;
-- customer support ownership and response targets;
-- finance reconciliation owner;
-- Premium benefit definition;
-- whether any content is exclusive, early-access or ad-reduced.
+- raw storage is private;
+- signed CloudFront/R2 playback succeeds and expires as designed;
+- queue retries and DLQ replay work;
+- MediaConvert or FFmpeg failure is visible and recoverable;
+- backup and restore drill pass;
+- rollback returns to the previous media/backend state;
+- monitoring, budget and incident alerts reach the named owners.
 
-Do not put officially embedded third-party content behind the Premium gate unless explicit rights and platform terms allow it.
+### Device acceptance
 
-### Provider selection
+- Android Chrome;
+- iPhone Safari;
+- desktop Chrome/Chromium;
+- 360–390px mobile layouts;
+- constrained network and interrupted playback;
+- PWA installation and service-worker behavior.
 
-Evaluate Pakistan-compatible hosted checkout providers against:
+## Workstream 8 — Activate invite-only internal alpha
 
-- onboarding eligibility and settlement timing;
-- cards, bank, wallet and mobile payment coverage;
-- hosted checkout quality on low-end Android browsers;
-- signed webhooks and replay identifiers;
-- refunds, partial refunds, disputes and reconciliation exports;
-- sandbox fidelity;
-- support and incident handling;
-- pricing and reserve requirements;
-- data residency and privacy terms.
+Use **Set internal alpha state** only after all preceding evidence exists.
 
-### Provider acceptance
+Enablement must verify:
 
-Using staging/sandbox first, retain evidence for:
+- exact deployed `main` SHA;
+- healthy backend and release correlation;
+- all required source approvals are current;
+- at least 50 published, playable and explicitly available items;
+- no rights holds or expired evidence;
+- at least one active tester grant;
+- retained acceptance artifacts and named sign-off.
 
-- checkout creation and hosted redirect;
-- signed success and failure;
-- duplicate delivery and identical replay;
-- conflicting replay rejection;
-- delayed success;
-- partial and full refund;
-- reversal/dispute;
-- entitlement activation, expiry and revocation;
-- receipt/support visibility;
-- finance summary, ledger, reconciliation and CSV export agreement with provider records.
+Failed activation must roll back to disabled/invite-only. Do not enable through direct database edits or ad-hoc environment changes.
 
-Production mock payments must remain disabled.
+## Workstream 9 — Team manual testing and development restart
 
-## Workstream 4 — Production deployment
+The project manager should return:
 
-### Required production inputs
+- staging URL;
+- backend and frontend deployed SHAs;
+- infrastructure/workflow run references;
+- 50-item inventory and rights report;
+- device/browser test results;
+- security, backup, rollback and takedown results;
+- known issues with reproduction steps and severity;
+- signed alpha go/no-go decision.
 
-- production DigitalOcean host and restricted CIDRs;
-- production domain/DNS and pinned SSH identity;
-- dedicated production Supabase, R2, SMTP, AI, observability and application secrets;
-- GHCR pull credentials;
-- active payment provider credentials;
-- age backup identity and remote retention policy;
-- named incident, support, finance, rights and stop-launch owners.
+After that handoff:
 
-### Promotion sequence
+1. fix verified integration defects;
+2. stabilize alpha operations and analytics;
+3. prioritize the next product phase from actual tester evidence;
+4. avoid reopening historical implementation PRs.
 
-1. select an exact green `main` commit already proven in isolated staging;
-2. freeze launch-critical content and configuration;
-3. run the manual production workflow;
-4. verify immutable images, deployment manifest, SBOM/provenance and exact readiness SHA;
-5. verify migrations, services, worker queues and backups;
-6. run protected host and browser acceptance;
-7. conduct one controlled live merchant transaction and reconciliation check;
-8. monitor launch KPIs and error/payment events;
-9. roll forward or execute the tested transactional rollback if a stop condition is reached.
+## Commerce and public production remain separate
 
-### Stop-launch conditions
+Internal alpha does not activate live customer billing or constitute a public launch.
 
-- duplicate charging or entitlement without verified payment;
-- authentication/authorization bypass;
-- exposed private media or secrets;
-- broad playback or account outage;
-- incorrect finance totals or missing reconciliation evidence;
-- serious rights/takedown complaint without immediate containment;
-- backup/restore failure;
-- readiness SHA mismatch;
-- unresolved fixed critical/high shipped vulnerability;
-- AI disclosure of private or unpublished data.
+Before commerce or general production:
 
-## Product delivery boundary
+- confirm merchant entity, settlement, pricing, tax/receipt and refund/cancellation policy;
+- select and onboard a Pakistan-compatible hosted checkout provider;
+- test signed success, failure, duplicate, conflict, refund, dispute and reconciliation paths;
+- approve legal/support/finance ownership;
+- complete production infrastructure, content and incident acceptance;
+- promote only an exact release already proven in staging.
 
-The approved product is a mobile-first responsive web application and installable PWA. Native Android/iOS applications, Google Play distribution and Apple App Store distribution are out of scope for this operating plan.
+## Open trackers
 
-The web/PWA workstream must still provide strong mobile-browser support, installability, responsive navigation, low-data behaviour, playback, hosted checkout and acceptance on representative Android and iOS browsers. Native packaging, store accounts, store payment policies, signing and store review are not launch tasks.
-
-## Recommended immediate order
-
-1. load staging environment values;
-2. bootstrap/deploy isolated staging and retain evidence;
-3. approve three initial content programmes;
-4. create content-source issues and onboard the 20–30 item pilot;
-5. complete merchant/provider selection and sandbox integration;
-6. run full staging customer, content and finance acceptance;
-7. prepare production accounts, policies and owners;
-8. promote a proven release.
+- #22 — umbrella backend, commerce and production activation.
+- #52 — governed 46-entry live-catalogue activation.
+- #59 — internal-alpha content/media deployment and 50-item acceptance.

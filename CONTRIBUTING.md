@@ -11,6 +11,15 @@ Jalwa is a private, pre-launch product with security, payment, privacy and conte
 
 Do not commit directly to `main` for normal work.
 
+## Branch lifecycle
+
+- Keep feature, fix, chore, documentation and agent branches short-lived.
+- Delete a branch after its work is merged unless it is an intentional environment, release, hotfix or backup branch.
+- The `Cleanup merged branches` workflow may delete only branches fully merged into `main`, without an open pull request, and outside the protected retention patterns.
+- `backup/*` branches are retained unless an owner explicitly approves removal.
+- Unmerged branches are never deleted by the automated cleanup workflow.
+- Do not use old merged branches as the base for new work; start from the current green `main`.
+
 ## Local setup
 
 Use the versions declared by the repository.
