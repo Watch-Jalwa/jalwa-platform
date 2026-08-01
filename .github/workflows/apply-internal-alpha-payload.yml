@@ -7,6 +7,12 @@ on:
     paths:
       - ".github/internal-alpha-xz.part-*"
       - ".github/workflows/apply-internal-alpha-payload.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - ".github/internal-alpha-xz.part-*"
+      - ".github/workflows/apply-internal-alpha-payload.yml"
 
 permissions:
   contents: write
@@ -17,6 +23,7 @@ concurrency:
 
 jobs:
   apply:
+    if: github.event_name == 'push' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
     steps:
       - name: Check out implementation branch
