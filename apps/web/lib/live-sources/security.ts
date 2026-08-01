@@ -226,19 +226,33 @@ export async function resolveLiveImage(sourceKey: string): Promise<ResolvedLiveI
 }
 
 async function checkOfficialLink(definition: LiveSourceDefinition) {
-  let { response } = await fetchAllowed(definition.officialSourceUrl, definition, "HEAD");
-  if (response.status === 405 || response.status === 501) {
-    ({ response } = await fetchAllowed(definition.officialSourceUrl, definition, "GET"));
-    await response.body?.cancel();
+  const head = await fetchAllowed(definition.officialSourceUrl, definition, "HEAD");
+  if (head.response.ok) {
+    await head.response.body?.cancel();
+    return {
+      availability: "healthy" as const,
+      embedUrl: null,
+      message: "Official source page is available.",
+      sourceTimestamp: null,
+      etag: head.response.headers.get("etag"),
+      lastModified: head.response.headers.get("last-modified"),
+      contentHash: null,
+    };
   }
-  if (!response.ok) throw new Error(`Official source page returned HTTP ${response.status}.`);
+
+  await head.response.body?.cancel();
+  const get = await fetchAllowed(definition.officialSourceUrl, definition, "GET");
+  if (!get.response.ok) throw new Error(`Official source page returned HTTP ${get.response.status}.`);
+  const contentType = get.response.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase() ?? "";
+  if (contentType && !contentType.includes("html")) throw new Error("Official source page did not return HTML.");
+  await readBounded(get.response, HTML_LIMIT_BYTES);
   return {
     availability: "healthy" as const,
     embedUrl: null,
     message: "Official source page is available.",
     sourceTimestamp: null,
-    etag: response.headers.get("etag"),
-    lastModified: response.headers.get("last-modified"),
+    etag: get.response.headers.get("etag"),
+    lastModified: get.response.headers.get("last-modified"),
     contentHash: null,
   };
 }
