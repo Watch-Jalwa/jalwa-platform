@@ -1,4 +1,4 @@
-name: Set public-domain live sources
+name: Set approved live sources
 
 on:
   workflow_dispatch:
@@ -11,7 +11,7 @@ on:
           - staging
           - production
       enabled:
-        description: Desired public-domain live-source state
+        description: Desired approved live-source state
         required: true
         type: choice
         default: "false"
@@ -33,7 +33,7 @@ permissions:
   issues: write
 
 concurrency:
-  group: jalwa-${{ inputs.target_environment }}-public-domain-live-sources
+  group: jalwa-${{ inputs.target_environment }}-approved-live-sources
   cancel-in-progress: false
 
 jobs:
@@ -168,13 +168,15 @@ jobs:
           - State: \`$DESIRED_STATE\`
           - Release: \`$RELEASE_SHA\`
           - Environment: \`$TARGET_ENV\`
-          - Rights review recorded: \`2026-08-01T09:51:00Z\`
+          - Earliest rights review recorded: \`2026-08-01T09:51:00Z\`
           - Next mandatory terms review: \`2026-10-30T09:51:00Z\`
+          - Underlying approved items: 52
+          - User-facing inventory: 46
           - Approval/evidence reference: $APPROVAL_REFERENCE
           - Actor: \`${{ github.actor }}\`
           - Workflow evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-          $([[ "$DESIRED_STATE" == true ]] && echo 'All 15 underlying items, seven top-level live items and two collections were database-published and enabled before source-health and mobile acceptance.' || echo 'The global flag, source configurations, content items and collections are fail-closed.')
+          $([[ "$DESIRED_STATE" == true ]] && echo 'All 52 underlying records, 44 direct entries and two collections were database-published and enabled before source-health and mobile acceptance.' || echo 'The global flag, source configurations, content items and collections are fail-closed.')
           EOF
           gh issue comment 52 --repo "$GITHUB_REPOSITORY" --body-file /tmp/issue-comment.md
 
@@ -188,12 +190,13 @@ jobs:
         if: success()
         run: |
           {
-            echo '### Approved public-domain live catalogue state'
+            echo '### Approved live catalogue state'
             echo "- Environment: $TARGET_ENV"
             echo "- Enabled: $DESIRED_STATE"
             echo "- Release: $RELEASE_SHA"
-            echo '- Underlying approved items: 15'
-            echo '- User-facing inventory: seven individual live items and two collections'
+            echo '- Underlying approved items: 52'
+            echo '- User-facing inventory: 46'
+            echo '- Delivery split: 23 secured current images, 22 official links, 7 official embeds'
             echo '- Rights review expires: 2026-10-30T09:51:00Z'
             if [[ "$DESIRED_STATE" == true ]]; then
               echo '- Database publication, provider-aware health and 390×844 reduced-motion browser acceptance passed'
