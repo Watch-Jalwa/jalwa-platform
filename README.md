@@ -13,29 +13,31 @@ Jalwa is a mobile-first Pakistani content platform for curated entertainment, le
 Repository development for the controlled internal alpha is complete on `main` and protected by automated release gates.
 
 - Internal-alpha application baseline: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430` (PRs #60–#62).
-- Organization audit and maintenance are recorded through PRs #63–#66. The current deployed frontend SHA is intentionally not hard-coded here; `/api/health` and the browser `data-release` marker are the release sources of truth.
+- Organization audit and maintenance are recorded through PRs #63–#67. The current deployed frontend SHA is intentionally not hard-coded here; `/api/health` and the browser `data-release` marker are the release sources of truth.
 - The connected Vercel frontend deployment is ready and reports its exact deployment SHA through both release surfaces.
 - Vercel remains a noindex frontend-preview environment until the transactional backend is deployed and connected.
 - The rights-first alpha source register contains 151 approved discovery lanes. Source approval permits metadata discovery; it never auto-approves an individual asset for publication.
 - The governed live-source implementation contains 46 user-facing entries backed by 52 source records. They remain disabled until the protected staging rights and activation process succeeds.
 - Database-enforced availability, source/content/asset kill switches, rights holds, invite-only tester grants and Studio alpha operations are implemented.
-- Self-hosted MP4/HLS, R2/FFmpeg rollback support, AWS MediaConvert infrastructure-as-code, private CloudFront delivery and signed playback are implemented but the owner-controlled AWS resources have not been applied.
+- Self-hosted MP4/HLS, R2/FFmpeg rollback support, AWS MediaConvert infrastructure-as-code, private CloudFront delivery and signed playback are implemented but owner-controlled infrastructure still requires deployment and acceptance.
+- Ask Jalwa has a provider-neutral adapter, versioned prompt registry, synthetic evaluation set, prompt-injection boundary, citations, quotas, moderation and prompt/model audit records.
 - Catalogue, authentication, Studio, worker, payments, finance reporting, AI, backups, rollback, observability and release acceptance are repository-complete but still require a deployed backend for end-to-end evidence.
 
-No additional speculative feature development is required before deployment. The next work is backend/infrastructure configuration, deployment, connection to Vercel, content/media acceptance and manual internal-alpha testing.
+No additional product feature is required before deployment. The next work is backend/infrastructure configuration, deployment, connection to Vercel, content/media acceptance and manual internal-alpha testing.
 
-See [Current status and next-stage gates](docs/16-current-status-and-next-stage-gates.md), [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md) and [Internal alpha content platform](docs/24-internal-alpha-content-platform.md).
+See [Current status and next-stage gates](docs/16-current-status-and-next-stage-gates.md), [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md), [Internal alpha content platform](docs/24-internal-alpha-content-platform.md) and [AI-native development readiness](docs/26-ai-native-development-readiness.md).
 
 ## Next operating phase
 
-1. Configure the protected GitHub `staging` environment and owner-controlled DigitalOcean, Supabase, Cloudflare/R2, AWS, DNS, SSH, SMTP, AI, observability and signing values.
+1. Configure the protected GitHub `staging` environment and owner-controlled DigitalOcean, Supabase, Cloudflare/R2, optional AWS, DNS, SSH, SMTP, AI, observability and signing values.
 2. Bootstrap and deploy the isolated transactional backend from the exact green `main` SHA.
-3. Apply the AWS media plane only after reviewing the Terraform plan; retain R2/FFmpeg as the rollback path.
+3. Select and prove R2/FFmpeg or review and apply the AWS media plane.
 4. Connect the Vercel frontend to the deployed backend and confirm health, readiness and release-SHA correlation.
 5. Install the approved source registers, harvest metadata candidates and approve at least 50 mixed items through item-level rights, media and editorial QA.
-6. Run kill-switch, queue/DLQ, HLS, mobile-browser, accessibility, backup, rollback and security acceptance.
-7. Enable invite-only internal alpha only through the protected exact-SHA workflow.
-8. Complete team manual testing and continue feature development from verified integration findings.
+6. Complete the governed live-catalogue health/mobile checks and seven-day staging observation.
+7. Run kill-switch, queue/DLQ, HLS, mobile-browser, accessibility, AI-evaluation, backup, rollback and security acceptance.
+8. Enable invite-only internal alpha only through the protected exact-SHA workflow.
+9. Complete team manual testing and continue feature development from verified integration and tester findings.
 
 The approved delivery model is mobile-first web/PWA only. Android and iOS native applications, Google Play distribution and Apple App Store distribution are not part of the current roadmap or release gates.
 
@@ -59,10 +61,13 @@ Required validation before opening a pull request:
 npm run lint
 npm run typecheck
 npm test
+npm run test:ai
 npm run test:release
 npm run test:backup-encryption
 npm run build
 ```
+
+`npm run test:ai` is required when prompts, models, providers, retrieval, moderation or tools change. Live AI behaviour changes also require exact-configuration staging evaluation evidence.
 
 The GitHub CI workflow additionally validates infrastructure, applies migrations against a clean PostgreSQL service, audits production dependencies, generates a CycloneDX SBOM, builds and scans production images, boots the production web image and runs browser journeys.
 
@@ -70,8 +75,9 @@ The GitHub CI workflow additionally validates infrastructure, applies migrations
 
 ```text
 apps/
-  web/                         consumer PWA, Studio and server routes
+  web/                         consumer PWA, Studio, server routes and AI adapter/prompt registry
   worker/                      ingestion, media processing and scheduled work
+evals/                         synthetic, versioned AI evaluation cases
 supabase/migrations/           forward-only database migrations
 content/                       approved source registers and governed inputs
 infrastructure/
@@ -112,6 +118,7 @@ docs/                          product, architecture, operations and handoff doc
 24. [Open-government live expansion](docs/23-open-government-live-expansion.md)
 25. [Internal alpha content platform](docs/24-internal-alpha-content-platform.md)
 26. [Organization audit — 1 August 2026](docs/25-organization-audit-2026-08-01.md)
+27. [AI-native development readiness — 2 August 2026](docs/26-ai-native-development-readiness.md)
 
 ## Open operational trackers
 
@@ -126,7 +133,9 @@ docs/                          product, architecture, operations and handoff doc
 - Never grant paid access from a browser return URL or screenshot alone.
 - Never store card details; use a hosted provider flow and signed server-side webhooks.
 - Never expose service-role, provider, deployment or media-signing secrets to the browser.
-- Never deploy mutable image tags.
+- Never deploy mutable image identifiers.
+- Treat retrieved AI context and tool output as untrusted data.
+- Never promote an AI prompt/model/provider change without versioned prompts, relevant evaluations and staging evidence.
 - Keep live streaming and web DRM disabled until contracted providers and browser acceptance are complete.
 - Treat the current Vercel deployment as frontend evidence only until it is connected to the deployed transactional backend.
 - Production promotion requires a green `main` commit, staging acceptance, immutable artifacts, backup evidence and explicit approval.
