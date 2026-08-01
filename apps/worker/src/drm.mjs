@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { downloadObject, hasAudioStream, probeMedia, run, uploadDirectory } from "./media.mjs";
+import { hasAudioStream, probeMedia, run } from "./media.mjs";
+import { downloadObject, uploadDirectory } from "./storage.mjs";
 
 const LOCAL_PROTOCOLS = "file,pipe,crypto,data";
 
