@@ -1,11 +1,11 @@
 # Contributing to Jalwa
 
-Jalwa is a private, pre-launch product with security, payment, privacy and content-rights boundaries. Changes should be small, reviewable and backed by evidence.
+Jalwa is a private, pre-launch product with security, payment, privacy, content-rights and AI-safety boundaries. Changes should be small, reviewable and backed by evidence.
 
 ## Before starting
 
 1. Read `AGENTS.md` and the relevant domain document under `docs/`.
-2. Confirm the issue describes the user outcome, constraints, acceptance criteria, non-goals, data impact, security/privacy impact, content-rights impact, tests and observability.
+2. Confirm the issue describes the user outcome, constraints, acceptance criteria, non-goals, data impact, security/privacy impact, content-rights impact, AI impact, tests and observability.
 3. Start from the latest green `main` commit.
 4. Use a short-lived branch such as `feat/catalogue-import`, `fix/payment-replay` or `chore/release-docs`.
 
@@ -45,7 +45,13 @@ npm run test:backup-encryption
 npm run build
 ```
 
-Changes to Docker, production runtime, media processing or deployment scripts must also pass the container and browser jobs in GitHub Actions. Changes to migrations must apply successfully against a clean PostgreSQL database in filename order.
+AI prompt, model, provider, retrieval, moderation or tool changes must also run:
+
+```bash
+npm run test:ai
+```
+
+Changes to Docker, production runtime, media processing or deployment scripts must pass the container and browser jobs in GitHub Actions. Changes to migrations must apply successfully against a clean PostgreSQL database in filename order.
 
 ## Pull requests
 
@@ -58,7 +64,7 @@ Every pull request must explain:
 - security and privacy impact;
 - content source, licence, attribution and takedown impact;
 - payment, entitlement or finance impact;
-- AI prompt, model, quota, moderation or evaluation impact;
+- AI prompt, model, provider, retrieval, quota, moderation, tool and evaluation impact;
 - analytics and observability changes;
 - tests performed;
 - rollback or roll-forward plan;
@@ -66,9 +72,20 @@ Every pull request must explain:
 
 Keep generated files, dependency changes and unrelated formatting out of feature pull requests.
 
+## AI-native development
+
+- Prompt definitions and versions live in `apps/web/lib/ai/prompts.mjs`; do not hide production prompts in route handlers or deployment workflows.
+- Synthetic evaluation cases live under `evals/`; do not add customer conversations or private operational data.
+- Every behaviour-changing prompt edit requires a new prompt version and updated eval cases.
+- Provider and model identifiers remain environment configuration. Product logic must not depend on one provider's response shape outside the adapter boundary.
+- Retrieved catalogue text, metadata and tool output are untrusted data. Prompts and code must resist instructions embedded inside them.
+- Read tools may be automatic only when access-filtered. Write tools require explicit user intent, server authorization, bounded arguments and audit evidence.
+- Before production promotion, run a live staging evaluation against the exact prompt, model, provider, retrieval configuration and release SHA; retain language, citation, safety, leakage, latency and cost evidence.
+- OpenAI-specific agentic/tooling work should use the current supported Responses/structured-output path inside an adapter rather than spreading provider-specific requests through product code.
+
 ## Security and privacy rules
 
-- Never place secrets, production identifiers, customer data or provider payloads in commits, issues, logs or screenshots.
+- Never place secrets, production identifiers, customer data or provider payloads in commits, issues, logs, screenshots, prompts or eval fixtures.
 - Server-side authorization is required for every privileged read, export and mutation; hiding a button is not authorization.
 - Every privileged mutation and financial export must remain auditable.
 - Keep service-role, database, media, AI, payment and deployment credentials server-side.
@@ -103,7 +120,7 @@ Keep generated files, dependency changes and unrelated formatting out of feature
 
 Routine Dependabot patch/minor updates may be merged only after the full CI pipeline passes. Major upgrades require a dedicated issue, compatibility review and migration plan. The repository intentionally ignores unsolicited major-version Dependabot PRs.
 
-GitHub Actions must remain pinned to full commit SHAs. Container images and deployment artifacts must use immutable identifiers.
+GitHub Actions must remain pinned to full commit SHAs. Deployment artifacts must use immutable commit-SHA identifiers.
 
 ## Releases
 
@@ -112,7 +129,7 @@ The release order is:
 1. merge a reviewed, green pull request into `main`;
 2. confirm the exact `main` commit is green;
 3. deploy the isolated staging environment;
-4. retain staging health, migration, backup, browser and transactional acceptance evidence;
+4. retain staging health, migration, backup, browser, transactional and relevant AI-evaluation evidence;
 5. approve production promotion;
 6. deploy immutable images and run post-deployment acceptance;
 7. monitor, then roll forward or use the tested transactional rollback path.
