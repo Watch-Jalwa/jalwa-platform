@@ -91,6 +91,7 @@ jobs:
             completed_by_git=false
             completed_by_merged_pr=false
             completed_by_superseded_pr=false
+            completed_by_test_marker=false
 
             if git merge-base --is-ancestor "origin/${branch}" origin/main; then
               completed_by_git=true
@@ -116,7 +117,15 @@ jobs:
               completed_by_superseded_pr=true
             fi
 
-            if [[ "$completed_by_git" != true && "$completed_by_merged_pr" != true && "$completed_by_superseded_pr" != true ]]; then
+            if [[ "$branch" == agent/*-test ]]; then
+              merge_base="$(git merge-base origin/main "origin/${branch}")"
+              mapfile -t unique_files < <(git diff --name-only "$merge_base..origin/${branch}")
+              if [[ "${#unique_files[@]}" == 1 && "${unique_files[0]}" == "tmp-do-not-merge.txt" ]]; then
+                completed_by_test_marker=true
+              fi
+            fi
+
+            if [[ "$completed_by_git" != true && "$completed_by_merged_pr" != true && "$completed_by_superseded_pr" != true && "$completed_by_test_marker" != true ]]; then
               skipped+=("$branch (unmerged or unexplained head)")
               continue
             fi
