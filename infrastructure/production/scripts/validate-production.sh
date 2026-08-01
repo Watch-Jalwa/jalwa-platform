@@ -101,7 +101,8 @@ if grep -n -E 'stream_key|srt_passphrase|content_key[[:space:]]+text' supabase/m
 fi
 
 require_match 'R2_INCOMING_BUCKET' apps/web/lib/media/storage.ts 'Incoming R2 bucket is not configured in the web upload path.'
-require_match 'bucket("processed")' apps/worker/src/media.mjs 'Processed output bucket is not used by the media worker.'
+require_match 'R2_PROCESSED_BUCKET' apps/worker/src/storage.mjs 'Processed R2 bucket is not configured in the media storage adapter.'
+require_match 'uploadDirectory(output, prefix)' apps/worker/src/media.mjs 'Processed media output is not uploaded by the media worker.'
 require_match 'downloadObject(asset.storage_key, source, "incoming")' apps/worker/src/media.mjs 'Media worker does not read uploaded sources from the incoming bucket.'
 require_match 'protocol_whitelist' apps/worker/src/media.mjs 'Media protocol isolation is missing.'
 require_match 'WORKER_HEARTBEAT_PATH' infrastructure/production/docker-compose.yml 'Worker heartbeat health check is missing.'

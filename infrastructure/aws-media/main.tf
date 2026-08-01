@@ -227,8 +227,8 @@ resource "aws_cloudfront_response_headers_policy" "media" {
 
   cors_config {
     access_control_allow_credentials = true
-    access_control_max_age_sec        = 900
-    origin_override                   = true
+    access_control_max_age_sec       = 900
+    origin_override                  = true
 
     access_control_allow_headers { items = ["*"] }
     access_control_allow_methods { items = ["GET", "HEAD", "OPTIONS"] }
@@ -280,13 +280,13 @@ resource "aws_cloudfront_distribution" "media" {
   }
 
   default_cache_behavior {
-    target_origin_id       = "processed-s3"
-    viewer_protocol_policy = "redirect-to-https"
-    allowed_methods        = ["GET", "HEAD", "OPTIONS"]
-    cached_methods         = ["GET", "HEAD", "OPTIONS"]
-    compress               = true
-    cache_policy_id        = aws_cloudfront_cache_policy.media.id
-    trusted_key_groups       = [aws_cloudfront_key_group.media.id]
+    target_origin_id           = "processed-s3"
+    viewer_protocol_policy     = "redirect-to-https"
+    allowed_methods            = ["GET", "HEAD", "OPTIONS"]
+    cached_methods             = ["GET", "HEAD", "OPTIONS"]
+    compress                   = true
+    cache_policy_id            = aws_cloudfront_cache_policy.media.id
+    trusted_key_groups         = [aws_cloudfront_key_group.media.id]
     response_headers_policy_id = aws_cloudfront_response_headers_policy.media.id
   }
 
@@ -619,11 +619,11 @@ resource "aws_lambda_function" "submit_mediaconvert" {
 
   environment {
     variables = {
-      INCOMING_BUCKET       = aws_s3_bucket.incoming.bucket
-      PROCESSED_BUCKET      = aws_s3_bucket.processed.bucket
+      INCOMING_BUCKET        = aws_s3_bucket.incoming.bucket
+      PROCESSED_BUCKET       = aws_s3_bucket.processed.bucket
       MEDIACONVERT_QUEUE_ARN = aws_media_convert_queue.alpha.arn
       MEDIACONVERT_ROLE_ARN  = aws_iam_role.mediaconvert.arn
-      SUPABASE_SECRET_ARN     = aws_secretsmanager_secret.supabase.arn
+      SUPABASE_SECRET_ARN    = aws_secretsmanager_secret.supabase.arn
     }
   }
 
@@ -670,19 +670,19 @@ resource "aws_cloudwatch_log_group" "control_media" {
 resource "aws_lambda_function" "control_media" {
   function_name                  = "${local.prefix}-control-media"
   reserved_concurrent_executions = 10
-  role             = aws_iam_role.media_lambda.arn
-  handler          = "control-media.handler"
-  runtime          = "nodejs22.x"
-  filename         = data.archive_file.control_media.output_path
-  source_code_hash = data.archive_file.control_media.output_base64sha256
-  timeout          = 30
-  memory_size      = 256
+  role                           = aws_iam_role.media_lambda.arn
+  handler                        = "control-media.handler"
+  runtime                        = "nodejs22.x"
+  filename                       = data.archive_file.control_media.output_path
+  source_code_hash               = data.archive_file.control_media.output_base64sha256
+  timeout                        = 30
+  memory_size                    = 256
 
   environment {
     variables = {
-      INCOMING_BUCKET   = aws_s3_bucket.incoming.bucket
-      PROCESSED_BUCKET  = aws_s3_bucket.processed.bucket
-      KMS_KEY_ARN       = aws_kms_key.media.arn
+      INCOMING_BUCKET    = aws_s3_bucket.incoming.bucket
+      PROCESSED_BUCKET   = aws_s3_bucket.processed.bucket
+      KMS_KEY_ARN        = aws_kms_key.media.arn
       CONTROL_SECRET_ARN = aws_secretsmanager_secret.media_control.arn
       MAX_UPLOAD_BYTES   = "10737418240"
       DISTRIBUTION_ID    = aws_cloudfront_distribution.media.id
@@ -707,10 +707,10 @@ resource "aws_lambda_permission" "control_media_url" {
 }
 
 resource "aws_lambda_permission" "control_media_invoke" {
-  statement_id            = "AllowInvokeViaFunctionUrlOnly"
-  action                  = "lambda:InvokeFunction"
-  function_name           = aws_lambda_function.control_media.function_name
-  principal               = "*"
+  statement_id             = "AllowInvokeViaFunctionUrlOnly"
+  action                   = "lambda:InvokeFunction"
+  function_name            = aws_lambda_function.control_media.function_name
+  principal                = "*"
   invoked_via_function_url = true
 }
 
@@ -768,7 +768,7 @@ resource "aws_cloudwatch_event_rule" "mediaconvert_status" {
   name        = "${local.prefix}-mediaconvert-status"
   description = "Complete or fail Jalwa database media jobs from MediaConvert status."
   event_pattern = jsonencode({
-    source      = ["aws.mediaconvert"]
+    source        = ["aws.mediaconvert"]
     "detail-type" = ["MediaConvert Job State Change"]
     detail = {
       status = ["COMPLETE", "ERROR"]
@@ -816,8 +816,8 @@ resource "aws_cloudwatch_metric_alarm" "lambda_errors" {
 
 data "aws_iam_policy_document" "media_kms" {
   statement {
-    sid     = "EnableAccountPermissions"
-    actions = ["kms:*"]
+    sid       = "EnableAccountPermissions"
+    actions   = ["kms:*"]
     resources = ["*"]
     principals {
       type        = "AWS"

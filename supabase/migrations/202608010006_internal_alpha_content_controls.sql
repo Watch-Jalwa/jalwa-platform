@@ -831,7 +831,7 @@ begin
     raise exception 'unsupported source-item hosting mode';
   end if;
 
-  select i, s into v_item, v_source
+  select i.* into v_item
   from public.source_items i
   join public.source_accounts s on s.id = i.source_account_id
   where i.id = p_source_item_id
@@ -842,11 +842,15 @@ begin
     and s.copyright_approved
     and s.approved_for_discovery
     and (s.next_review_at is null or s.next_review_at > now())
-  for update of i;
+  for update of i, s;
 
   if v_item.id is null then
     raise exception 'approved unimported source item not found';
   end if;
+
+  select s.* into v_source
+  from public.source_accounts s
+  where s.id = v_item.source_account_id;
 
   if p_hosting_mode = 'self_host_open' then
     if lower(coalesce(v_item.media_type, '')) not in ('video', 'animation') then
