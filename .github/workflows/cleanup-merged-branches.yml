@@ -28,7 +28,7 @@ concurrency:
 
 jobs:
   cleanup:
-    name: Delete safely merged branches
+    name: Delete safely completed branches
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     permissions:
@@ -40,7 +40,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Delete safely merged branches
+      - name: Delete safely completed branches
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         shell: bash
@@ -88,11 +88,12 @@ jobs:
             fi
 
             branch_sha="$(git rev-parse "origin/${branch}")"
-            merged_by_git=false
-            merged_by_pr=false
+            completed_by_git=false
+            completed_by_merged_pr=false
+            completed_by_superseded_pr=false
 
             if git merge-base --is-ancestor "origin/${branch}" origin/main; then
-              merged_by_git=true
+              completed_by_git=true
             fi
 
             closed_prs="$(
@@ -106,11 +107,17 @@ jobs:
             if jq --exit-status --arg sha "$branch_sha" \
               'any(.[]; .merged_at != null and .base.ref == "main" and .head.sha == $sha)' \
               <<<"$closed_prs" >/dev/null; then
-              merged_by_pr=true
+              completed_by_merged_pr=true
             fi
 
-            if [[ "$merged_by_git" != true && "$merged_by_pr" != true ]]; then
-              skipped+=("$branch (unmerged head)")
+            if jq --exit-status --arg sha "$branch_sha" \
+              'any(.[]; .merged_at == null and .head.sha == $sha and ((.body // "") | test("^Superseded by"; "i")))' \
+              <<<"$closed_prs" >/dev/null; then
+              completed_by_superseded_pr=true
+            fi
+
+            if [[ "$completed_by_git" != true && "$completed_by_merged_pr" != true && "$completed_by_superseded_pr" != true ]]; then
+              skipped+=("$branch (unmerged or unexplained head)")
               continue
             fi
 
@@ -125,7 +132,7 @@ jobs:
           done
 
           {
-            echo '## Merged branch cleanup'
+            echo '## Completed branch cleanup'
             echo
             echo "Deleted branches: ${#deleted[@]}"
             if (( ${#deleted[@]} > 0 )); then
