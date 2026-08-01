@@ -13,9 +13,11 @@ Ask Jalwa currently provides:
 - English, Urdu and Roman Urdu responses;
 - source-number citations validated before rendering;
 - deterministic hard-risk checks plus configurable provider moderation;
+- bounded request bodies, output limits and provider timeouts;
 - free/Premium quotas;
 - model, token, prompt-version and cited-content audit records;
-- provider-neutral OpenAI-compatible completion configuration.
+- provider-neutral OpenAI-compatible completion configuration;
+- an environment override plus a shared database runtime flag controlled by a protected exact-SHA workflow.
 
 The prompt registry is `apps/web/lib/ai/prompts.mjs`. Synthetic evaluation cases are under `evals/` and run through `npm run test:ai`.
 
@@ -71,7 +73,8 @@ Human approval remains required for rights, publication, high-impact moderation 
 ```mermaid
 flowchart LR
     UI[Web / Studio] --> G[AI gateway]
-    G --> Q[Quota, policy and authorization]
+    G --> F[Environment and shared runtime flags]
+    F --> Q[Quota, policy and authorization]
     Q --> R[Access-filtered retriever]
     R --> DB[(Catalogue and approved metadata)]
     Q --> P[Versioned prompt registry]
@@ -89,14 +92,29 @@ Retrieved titles, descriptions, transcripts, attribution and tool output are unt
 
 The AI boundary must:
 
-1. retrieve only published, effectively available and access-authorized records;
-2. exclude private rights evidence, payment data and operational secrets;
-3. bound context size and source count;
-4. identify source data as untrusted reference material;
-5. require structured or validated citations;
-6. reject citation identifiers not present in the supplied context;
-7. fail plainly when sources are insufficient;
-8. keep write tools behind explicit intent and server-side authorization.
+1. reject oversized or malformed requests before quota, database or provider work;
+2. retrieve only published, effectively available and access-authorized records;
+3. exclude private rights evidence, payment data and operational secrets;
+4. bound context size and source count;
+5. identify source data as untrusted reference material;
+6. require structured or validated citations;
+7. reject citation identifiers not present in the supplied context;
+8. fail plainly when sources are insufficient;
+9. keep write tools behind explicit intent and server-side authorization.
+
+## Runtime control
+
+Non-local environments fail closed unless the shared `ai_enabled` runtime flag is true. The protected **Set AI state** workflow:
+
+- requires the protected staging or production environment;
+- verifies an exact deployed `main` SHA;
+- uses pinned SSH host identity;
+- updates the shared PostgreSQL runtime flag transactionally;
+- records an immutable audit event and issue #22 evidence;
+- verifies the public disabled or sign-in-required boundary after the change;
+- requires issue #22 acceptance evidence before production enablement.
+
+The local `AI_ENABLED` environment flag remains an immediate process-level override. It cannot force AI on when the shared non-local database flag is disabled.
 
 ## PromptOps
 
@@ -116,7 +134,7 @@ Do not silently change behaviour under an existing prompt version.
 
 ## Evaluations
 
-The deterministic local gate covers prompt registration, language instructions, prompt-injection boundaries, moderation shape and synthetic eval-set integrity:
+The deterministic local gate covers prompt registration, language instructions, prompt-injection boundaries, request limits, runtime-control contracts, moderation shape and synthetic eval-set integrity:
 
 ```bash
 npm run test:ai
@@ -152,15 +170,16 @@ Potential tools include catalogue search, content details, transcript passages, 
 ## Cost and reliability controls
 
 - daily user allowances and fair-use ceilings;
-- maximum input/output sizes and timeouts;
+- maximum request, context and output sizes;
+- provider timeouts and response-shape validation;
 - environment-configured models and providers;
 - cheaper models for bounded classification/rewriting;
 - stronger models only where evaluated value justifies cost;
 - response caching only when privacy and freshness allow it;
 - embeddings only when approved content changes;
 - per-feature usage and cost reporting;
-- provider timeout/failure handling;
-- emergency AI kill switch and provider rollback.
+- provider timeout/failure handling without logging provider response bodies;
+- protected shared AI kill switch and provider rollback.
 
 ## Privacy
 
