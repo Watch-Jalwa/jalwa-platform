@@ -16,7 +16,8 @@ Do not commit directly to `main` for normal work.
 - Keep feature, fix, chore, documentation and agent branches short-lived.
 - Delete a branch after its work is merged unless it is an intentional environment, release, hotfix or backup branch.
 - The `Cleanup merged branches` workflow may delete branches whose current head is fully merged into `main`, exactly matches a merged pull request to `main`, or exactly matches a closed pull request explicitly documented as superseded by replacement work.
-- The workflow never deletes a branch with an open pull request or an unexplained unmerged head.
+- A branch matching `agent/*-test` may also be removed when its only unique file is the explicit `tmp-do-not-merge.txt` test marker.
+- The workflow never deletes a branch with an open pull request or an otherwise unexplained unmerged head.
 - `backup/*` branches are retained unless an owner explicitly approves removal.
 - Do not use old merged or superseded branches as the base for new work; start from the current green `main`.
 
