@@ -46,6 +46,7 @@ jobs:
           fi
           tar -xJf /tmp/internal-alpha.tar.xz -C .
           rm -f .github/internal-alpha-completion.part-* .github/internal-alpha-xz.part-*
+          sed -i 's/[[:space:]]\+$//' docs/24-internal-alpha-content-platform.md
           test -f infrastructure/aws-media/versions.tf
           test -f scripts/harvest-alpha-open-content.mjs
           test -f docs/24-internal-alpha-content-platform.md
