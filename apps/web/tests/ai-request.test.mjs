@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { AiRequestBodyError, readAiRequestBody } from "../lib/ai/request.mjs";
+import { AiRequestBodyError, isAiEnabled, readAiRequestBody } from "../lib/ai/request.mjs";
 
 async function expectBodyError(request, maxBytes, status) {
   await assert.rejects(
@@ -8,6 +8,14 @@ async function expectBodyError(request, maxBytes, status) {
     (error) => error instanceof AiRequestBodyError && error.status === status,
   );
 }
+
+test("AI runtime state defaults on and requires an explicit true value", () => {
+  assert.equal(isAiEnabled(undefined), true);
+  assert.equal(isAiEnabled("true"), true);
+  assert.equal(isAiEnabled(" TRUE "), true);
+  assert.equal(isAiEnabled("false"), false);
+  assert.equal(isAiEnabled("1"), false);
+});
 
 test("reads a bounded JSON object", async () => {
   const request = new Request("https://example.test/api/ai/query", {
