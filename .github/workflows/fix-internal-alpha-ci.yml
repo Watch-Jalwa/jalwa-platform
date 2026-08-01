@@ -44,66 +44,60 @@ jobs:
 
           migration = Path('supabase/migrations/202608010006_internal_alpha_content_controls.sql')
           text = migration.read_text()
-          old = '''  select i, s into v_item, v_source
-          from public.source_items i
-          join public.source_accounts s on s.id = i.source_account_id
-          where i.id = p_source_item_id
-            and i.rights_state = 'validated'
-            and i.ingestion_status = 'approved'
-            and i.content_id is null
-            and s.is_enabled
-            and s.copyright_approved
-            and s.approved_for_discovery
-            and (s.next_review_at is null or s.next_review_at > now())
-          for update of i;
 
-          if v_item.id is null then
-          '''
-          new = '''  select i.* into v_item
-          from public.source_items i
-          join public.source_accounts s on s.id = i.source_account_id
-          where i.id = p_source_item_id
-            and i.rights_state = 'validated'
-            and i.ingestion_status = 'approved'
-            and i.content_id is null
-            and s.is_enabled
-            and s.copyright_approved
-            and s.approved_for_discovery
-            and (s.next_review_at is null or s.next_review_at > now())
-          for update of i, s;
+          old_select = "  select i, s into v_item, v_source\n"
+          new_select = "  select i.* into v_item\n"
+          if text.count(old_select) != 1:
+              raise SystemExit('Expected source-item select exactly once')
+          text = text.replace(old_select, new_select, 1)
 
-          if v_item.id is null then
-          '''
-          if text.count(old) != 1:
-              raise SystemExit('Expected source-item promotion query exactly once')
-          text = text.replace(old, new)
-          anchor = '''  if v_item.id is null then
-            raise exception 'approved unimported source item not found';
-          end if;
+          old_lock = (
+              "    and s.approved_for_discovery\n"
+              "    and (s.next_review_at is null or s.next_review_at > now())\n"
+              "  for update of i;\n\n"
+              "  if v_item.id is null then\n"
+          )
+          new_lock = (
+              "    and s.approved_for_discovery\n"
+              "    and (s.next_review_at is null or s.next_review_at > now())\n"
+              "  for update of i, s;\n\n"
+              "  if v_item.id is null then\n"
+          )
+          if text.count(old_lock) != 1:
+              raise SystemExit('Expected source-item lock sequence exactly once')
+          text = text.replace(old_lock, new_lock, 1)
 
-          if p_hosting_mode = 'self_host_open' then
-          '''
-          replacement = '''  if v_item.id is null then
-            raise exception 'approved unimported source item not found';
-          end if;
-
-          select s.* into v_source
-          from public.source_accounts s
-          where s.id = v_item.source_account_id;
-
-          if p_hosting_mode = 'self_host_open' then
-          '''
+          anchor = (
+              "  if v_item.id is null then\n"
+              "    raise exception 'approved unimported source item not found';\n"
+              "  end if;\n\n"
+              "  if p_hosting_mode = 'self_host_open' then\n"
+          )
+          replacement = (
+              "  if v_item.id is null then\n"
+              "    raise exception 'approved unimported source item not found';\n"
+              "  end if;\n\n"
+              "  select s.* into v_source\n"
+              "  from public.source_accounts s\n"
+              "  where s.id = v_item.source_account_id;\n\n"
+              "  if p_hosting_mode = 'self_host_open' then\n"
+          )
           if text.count(anchor) != 1:
               raise SystemExit('Expected source lookup anchor exactly once')
-          migration.write_text(text.replace(anchor, replacement))
+          migration.write_text(text.replace(anchor, replacement, 1))
 
           validator = Path('infrastructure/production/scripts/validate-production.sh')
           text = validator.read_text()
           old = "require_match 'bucket(\"processed\")' apps/worker/src/media.mjs 'Processed output bucket is not used by the media worker.'"
-          new = "require_match 'R2_PROCESSED_BUCKET' apps/worker/src/storage.mjs 'Processed R2 bucket is not configured in the media storage adapter.'\nrequire_match 'uploadDirectory(output, prefix)' apps/worker/src/media.mjs 'Processed media output is not uploaded by the media worker.'"
+          new = (
+              "require_match 'R2_PROCESSED_BUCKET' apps/worker/src/storage.mjs "
+              "'Processed R2 bucket is not configured in the media storage adapter.'\n"
+              "require_match 'uploadDirectory(output, prefix)' apps/worker/src/media.mjs "
+              "'Processed media output is not uploaded by the media worker.'"
+          )
           if text.count(old) != 1:
               raise SystemExit('Expected legacy processed-bucket contract exactly once')
-          validator.write_text(text.replace(old, new))
+          validator.write_text(text.replace(old, new, 1))
           PY
           terraform fmt -recursive infrastructure/aws-media
           terraform fmt -check -recursive infrastructure/aws-media
