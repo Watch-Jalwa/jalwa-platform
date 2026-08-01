@@ -19,7 +19,7 @@ export default async function StudioLayout({ children }: { children: React.React
           <Link href="/studio">Overview</Link>
           <Link href="/studio/content">Content</Link>
           <Link href="/studio/content/new">Add content</Link>
-          {canOperateMedia ? <><Link href="/studio/live">Live operations</Link><Link href="/studio/drm">Protected media</Link></> : null}
+          {canOperateMedia ? <><Link href="/studio/alpha">Internal alpha</Link><Link href="/studio/live">Live operations</Link><Link href="/studio/drm">Protected media</Link></> : null}
           {canModerate ? <Link href="/studio/moderation">Moderation</Link> : null}
           <Link href="/studio/operations">Operations</Link>
           {canViewSupport ? <Link href="/studio/support">Support</Link> : null}
