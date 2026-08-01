@@ -3,7 +3,7 @@
 **Audit date:** 1 August 2026  
 **Repository:** `Watch-Jalwa/jalwa-platform`  
 **Primary branch:** `main`  
-**Audited release SHA:** `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`
+**Internal-alpha application baseline:** `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`
 
 This document is the operational source of truth. Earlier roadmap documents explain product intent; this document distinguishes implemented repository capability, deployed frontend evidence and the owner-controlled work still required for a transactional internal alpha.
 
@@ -11,7 +11,7 @@ This document is the operational source of truth. Earlier roadmap documents expl
 
 The repository implementation required for a controlled internal alpha is complete and fully validated. The transactional backend and AWS media resources have not yet been deployed or activated.
 
-- The Vercel frontend deployment is ready and reports the audited SHA through `/api/health` and the root page release marker.
+- The connected Vercel frontend is ready. Its current exact release identity must be read from `/api/health` and the root page `data-release` marker rather than copied into mutable documentation.
 - The Vercel environment is intentionally noindex and still operates as a frontend preview when backend values are absent.
 - Supabase/PostgreSQL remains the catalogue, rights, identity, workflow and audit control plane.
 - The existing R2/FFmpeg media path remains available as a rollback option.
@@ -25,12 +25,11 @@ No additional speculative feature development is required before deployment. Fur
 
 | Evidence | Result |
 |---|---|
-| Final `main` SHA | `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430` |
+| Internal-alpha application baseline | `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430` (PRs #60–#62) |
 | Internal-alpha implementation | PR #60, merge SHA `ffe439ce1481f690f305fae3f681b7550c2b697e` |
-| Vercel health SHA correction | PR #61 |
-| Browser release-marker correction | PR #62 |
-| Vercel production deployment | `dpl_8aJR63X2r7gJQy6XWkqs3b4m1uju`, READY |
-| Public health response | HTTP 200, `status: ready`, exact audited SHA |
+| Release-health and browser markers | PRs #61–#62 |
+| Organization audit and maintenance | PRs #63–#66 |
+| Current frontend release identity | `/api/health` and root `data-release`; both must equal the selected deployed SHA |
 | Full repository CI | migrations, privileges, audit, SBOM, lint, TypeScript, tests, build, containers, vulnerability policy and browser journeys passed |
 | AWS infrastructure contract | Lambda syntax, Terraform format/init/validate passed |
 
@@ -126,7 +125,7 @@ Do not reuse production values in staging. Staging must remain independently rev
 1. Configure the protected staging environment and owner-controlled accounts.
 2. Run **Bootstrap staging** when the host and DNS do not exist.
 3. Verify host address and Ed25519 fingerprint independently.
-4. Run **Deploy staging** from the audited or a newer fully green `main` SHA.
+4. Run **Deploy staging** from an exact fully green `main` SHA selected for acceptance.
 5. Confirm readiness reports that exact SHA and all core services are healthy.
 6. Retain pre-migration/post-deployment encrypted backups and restore-drill evidence.
 7. Review and apply the AWS media Terraform plan through the protected workflow, or explicitly select R2/FFmpeg for the first acceptance cycle.
@@ -143,9 +142,9 @@ Do not reuse production values in staging. Staging must remain independently rev
 
 Only these issues should remain open during the deployment wait state:
 
-- **#22 — Complete live staging, content, commerce and production activation:** umbrella backend and launch tracker.
+- **#22 — Deploy, test and activate the Jalwa transactional platform:** umbrella backend and launch tracker.
 - **#52 — Activate the approved 46-entry live catalogue:** source-specific rights, staging observation and controlled activation.
-- **#59 — Internal-alpha content/media deployment:** AWS/R2 selection, 50-item acceptance and invite-only activation.
+- **#59 — Deploy and accept the internal-alpha content and media platform:** AWS/R2 selection, 50-item acceptance and invite-only activation.
 
 New issues should be created only for a concrete deployment blocker, integration defect or manually reproduced acceptance failure. Do not reopen completed implementation PRs to track missing credentials.
 
