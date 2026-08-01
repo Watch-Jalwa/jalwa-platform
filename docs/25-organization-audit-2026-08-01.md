@@ -39,7 +39,7 @@ The organization is in a safe development pause while the project team deploys a
 - PR #63 synchronized the operating documentation, governance and issue trackers and introduced guarded branch maintenance.
 - PR #64 scheduled completed-branch cleanup.
 - PR #65 fixed authenticated private-repository ref discovery.
-- PR #66 added guarded same-repository execution, squash-merge recognition, explicit supersession recognition and synthetic-ref filtering.
+- PR #66 added guarded same-repository execution, squash-merge recognition, explicit supersession recognition, synthetic-ref filtering and verified do-not-merge test-marker cleanup.
 
 Every audit-maintenance change was required to pass the same repository pipeline as product code before merge.
 
@@ -119,16 +119,17 @@ The audit updates those sources without rewriting historical planning or prior d
 
 At the start of the audit the repository contained 49 non-`main` branches. Temporary audit work raised the peak inventory to 53 total branches.
 
-The guarded cleanup removed 47 completed or explicitly superseded branches from that peak inventory. Immediately before the final cleanup PR is merged, six branches remain:
+The guarded cleanup removed 48 completed, explicitly superseded or verified do-not-merge test branches from that peak inventory. Immediately before the final cleanup PR is merged, five branches remain:
 
 - `main`;
 - `backup/pre-mvp-main`, retained intentionally;
-- `chore/run-merged-branch-cleanup`, retained while its pull request is open and eligible for deletion after merge;
+- `chore/run-merged-branch-cleanup`, retained while its pull request is open and eligible for deletion on the pull-request close event;
 - `agent/browser-launch-acceptance`;
-- `agent/internal-alpha-content-platform-test`;
 - `agent/security-boundary`.
 
-The last three agent branches have unexplained unmerged heads and no current open PR. They are deliberately retained rather than deleted without evidence. They must not be used as the base for new work; any later owner decision to remove them should first record their purpose or confirm that their unique commits are unnecessary.
+The two remaining agent branches have substantive unique historical commits and no pull-request record that explicitly authorizes their deletion. They are deliberately retained rather than guessed away. Both are far behind the current `main` and must not be used as the base for new work. Any later owner decision to remove them should first confirm that their unique commits are unnecessary or record where their replacement work landed.
+
+The disposable `agent/internal-alpha-content-platform-test` branch was removed only after verification showed that its sole unique change was the explicit `tmp-do-not-merge.txt` marker.
 
 ### Cleanup policy
 
@@ -136,14 +137,15 @@ The protected maintenance workflow may delete a branch only when it has no open 
 
 - its current head is a Git ancestor of `main`;
 - its current head exactly matches the head SHA of a merged pull request to `main`;
-- its current head exactly matches a closed pull request whose body explicitly begins with `Superseded by`, documenting replacement work.
+- its current head exactly matches a closed pull request whose body explicitly begins with `Superseded by`, documenting replacement work;
+- it matches `agent/*-test` and its only unique file is `tmp-do-not-merge.txt`.
 
 The workflow deliberately retains:
 
 - `backup/*`;
 - conventional environment, release and hotfix branches;
 - every branch with an open pull request;
-- every unexplained unmerged head.
+- every otherwise unexplained unmerged head.
 
 It runs when its definition changes in a same-repository pull request, when that pull request closes, on relevant `main` pushes, weekly and by manual dispatch. Fork pull requests cannot execute its write job.
 
