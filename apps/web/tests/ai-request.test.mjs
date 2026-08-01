@@ -10,11 +10,18 @@ async function expectBodyError(request, maxBytes, status) {
 }
 
 test("AI runtime state defaults on and requires an explicit true value", () => {
-  assert.equal(isAiEnabled(undefined), true);
-  assert.equal(isAiEnabled("true"), true);
-  assert.equal(isAiEnabled(" TRUE "), true);
-  assert.equal(isAiEnabled("false"), false);
-  assert.equal(isAiEnabled("1"), false);
+  const previous = process.env.AI_ENABLED;
+  try {
+    delete process.env.AI_ENABLED;
+    assert.equal(isAiEnabled(), true);
+    assert.equal(isAiEnabled("true"), true);
+    assert.equal(isAiEnabled(" TRUE "), true);
+    assert.equal(isAiEnabled("false"), false);
+    assert.equal(isAiEnabled("1"), false);
+  } finally {
+    if (previous === undefined) delete process.env.AI_ENABLED;
+    else process.env.AI_ENABLED = previous;
+  }
 });
 
 test("reads a bounded JSON object", async () => {
