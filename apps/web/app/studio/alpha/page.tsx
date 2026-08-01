@@ -64,7 +64,7 @@ export default async function InternalAlphaPage({ searchParams }: { searchParams
   const inviteOnly = flagMap.get("internal_alpha_invite_only") !== false;
   const enabledSources = (sources ?? []).filter((row) => row.is_enabled).length;
   const enabledItems = (items ?? []).filter((row) => row.is_available).length;
-  const activeGrants = (grants ?? []).filter((row) => row.enabled && (!row.expires_at || new Date(row.expires_at).getTime() > Date.now())).length;
+  const activeGrants = (grants ?? []).filter((row) => row.enabled).length;
 
   return (
     <div className="studio-page">
@@ -83,7 +83,7 @@ export default async function InternalAlphaPage({ searchParams }: { searchParams
         <article className="operation-card"><strong>{inviteOnly ? "Invite only" : "Authenticated"}</strong><span>Access mode</span></article>
         <article className="operation-card"><strong>{enabledSources}/{sources?.length ?? 0}</strong><span>Enabled sources</span></article>
         <article className="operation-card"><strong>{enabledItems}/{items?.length ?? 0}</strong><span>Available recent items</span></article>
-        <article className="operation-card"><strong>{activeGrants}</strong><span>Active tester grants</span></article>
+        <article className="operation-card"><strong>{activeGrants}</strong><span>Enabled tester grants</span></article>
       </div>
 
       <section className="account-card">
