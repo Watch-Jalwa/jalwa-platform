@@ -1,0 +1,50 @@
+name: AWS media infrastructure contract
+
+on:
+  pull_request:
+    paths:
+      - "infrastructure/aws-media/**"
+      - ".github/workflows/apply-aws-media.yml"
+      - ".github/workflows/aws-media-terraform-contract.yml"
+      - ".github/workflows/set-media-backend.yml"
+      - "apps/worker/src/storage.mjs"
+      - "apps/worker/src/media.mjs"
+      - "apps/web/lib/media/storage.ts"
+  push:
+    branches:
+      - main
+      - "agent/**"
+    paths:
+      - "infrastructure/aws-media/**"
+      - ".github/workflows/apply-aws-media.yml"
+      - ".github/workflows/aws-media-terraform-contract.yml"
+      - ".github/workflows/set-media-backend.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: aws-media-contract-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: 1.13.5
+          terraform_wrapper: false
+      - name: Validate Lambda syntax
+        run: |
+          node --check infrastructure/aws-media/lambda/control-media.mjs
+          node --check infrastructure/aws-media/lambda/submit-mediaconvert.mjs
+          node --check infrastructure/aws-media/lambda/complete-mediaconvert.mjs
+      - name: Validate Terraform
+        working-directory: infrastructure/aws-media
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false
+          terraform validate
