@@ -59,5 +59,6 @@ declare module "@/lib/ai/request.mjs" {
   export class AiRequestBodyError extends Error {
     status: number;
   }
+  export function isAiEnabled(value?: string): boolean;
   export function readAiRequestBody(request: Request, maxBytes?: number): Promise<Record<string, unknown>>;
 }
