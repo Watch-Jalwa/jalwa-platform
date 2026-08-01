@@ -1,0 +1,101 @@
+name: Harvest approved alpha content metadata
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact 40-character main commit SHA
+        required: true
+        type: string
+      source_id:
+        description: Optional approved source ID, such as WM-001
+        required: false
+        type: string
+      candidate_limit:
+        description: Maximum metadata candidates, 1 to 50000
+        required: true
+        default: "1000"
+        type: string
+      import_to_staging:
+        description: Import metadata candidates into the staging review queue
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-alpha-metadata-harvest
+  cancel-in-progress: false
+
+jobs:
+  harvest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    environment:
+      name: staging
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      SOURCE_ID: ${{ inputs.source_id }}
+      CANDIDATE_LIMIT: ${{ inputs.candidate_limit }}
+      IMPORT_TO_STAGING: ${{ inputs.import_to_staging }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.STAGING_SUPABASE_URL }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+      SMITHSONIAN_API_KEY: ${{ secrets.SMITHSONIAN_API_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Validate protected request
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          [[ "$CANDIDATE_LIMIT" =~ ^[0-9]+$ ]]
+          test "$CANDIDATE_LIMIT" -ge 1
+          test "$CANDIDATE_LIMIT" -le 50000
+          if test -n "$SOURCE_ID"; then [[ "$SOURCE_ID" =~ ^[A-Z]{2}-[0-9]{3}$ ]]; fi
+          if [[ "$IMPORT_TO_STAGING" == true ]]; then
+            test -n "$NEXT_PUBLIC_SUPABASE_URL"
+            test -n "$SUPABASE_SERVICE_ROLE_KEY"
+          fi
+
+      - name: Harvest metadata without downloading media
+        run: |
+          set -euo pipefail
+          args=(--limit "$CANDIDATE_LIMIT" --out artifacts/alpha-source-candidates.jsonl)
+          if test -n "$SOURCE_ID"; then args+=(--source "$SOURCE_ID"); fi
+          if [[ "$IMPORT_TO_STAGING" == true ]]; then args+=(--import); fi
+          node scripts/harvest-alpha-open-content.mjs "${args[@]}"
+          wc -l artifacts/alpha-source-candidates.jsonl
+
+      - name: Upload immutable candidate artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: alpha-source-candidates-${{ github.run_id }}
+          path: artifacts/alpha-source-candidates.jsonl
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Summarize
+        run: |
+          count=$(wc -l < artifacts/alpha-source-candidates.jsonl)
+          {
+            echo '### Rights-first alpha metadata harvest'
+            echo "- Release: $RELEASE_SHA"
+            echo "- Source filter: ${SOURCE_ID:-all implemented adapters}"
+            echo "- Candidate rows: $count"
+            echo "- Imported to staging review queue: $IMPORT_TO_STAGING"
+            echo '- Media was not downloaded or published.'
+            echo '- Every candidate still requires item-level rights review and governed draft promotion.'
+          } >> "$GITHUB_STEP_SUMMARY"

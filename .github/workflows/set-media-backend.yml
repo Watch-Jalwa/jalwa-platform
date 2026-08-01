@@ -1,0 +1,199 @@
+name: Set media backend
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Protected environment
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      backend:
+        description: Media storage and transcoding backend
+        required: true
+        type: choice
+        default: r2
+        options:
+          - r2
+          - aws
+      release_sha:
+        description: Exact deployed 40-character main commit SHA
+        required: true
+        type: string
+      approval_reference:
+        description: Issue #59 rollout or rollback evidence
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: jalwa-${{ inputs.target_environment }}-media-backend
+  cancel-in-progress: false
+
+jobs:
+  change-backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment:
+      name: ${{ inputs.target_environment }}
+      url: ${{ inputs.target_environment == 'staging' && format('https://{0}', vars.STAGING_DOMAIN) || format('https://{0}', vars.PRODUCTION_DOMAIN) }}
+    env:
+      TARGET_ENV: ${{ inputs.target_environment }}
+      BACKEND: ${{ inputs.backend }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
+      HOST: ${{ inputs.target_environment == 'staging' && vars.STAGING_HOST || vars.PRODUCTION_HOST }}
+      USER: ${{ inputs.target_environment == 'staging' && (vars.STAGING_USER || 'jalwa') || (vars.PRODUCTION_USER || 'jalwa') }}
+      DOMAIN: ${{ inputs.target_environment == 'staging' && vars.STAGING_DOMAIN || vars.PRODUCTION_DOMAIN }}
+      SSH_KEY: ${{ inputs.target_environment == 'staging' && secrets.STAGING_SSH_KEY || secrets.PRODUCTION_SSH_KEY }}
+      KNOWN_HOSTS: ${{ inputs.target_environment == 'staging' && vars.STAGING_SSH_KNOWN_HOSTS || vars.PRODUCTION_SSH_KNOWN_HOSTS }}
+      AWS_REGION: ${{ vars.AWS_MEDIA_REGION }}
+      AWS_MEDIA_CONTROL_URL: ${{ vars.AWS_MEDIA_CONTROL_URL }}
+      AWS_MEDIA_CDN_URL: ${{ vars.AWS_MEDIA_CDN_URL }}
+      AWS_MEDIA_KEY_PAIR_ID: ${{ vars.AWS_MEDIA_CLOUDFRONT_KEY_PAIR_ID }}
+      AWS_MEDIA_COOKIE_DOMAIN: ${{ vars.AWS_MEDIA_COOKIE_DOMAIN }}
+      AWS_MEDIA_INCOMING_BUCKET: ${{ vars.AWS_MEDIA_INCOMING_BUCKET }}
+      AWS_MEDIA_PROCESSED_BUCKET: ${{ vars.AWS_MEDIA_PROCESSED_BUCKET }}
+      AWS_MEDIA_CONTROL_SECRET: ${{ secrets.AWS_MEDIA_CONTROL_SECRET }}
+      AWS_MEDIA_PRIVATE_KEY_BASE64: ${{ secrets.AWS_MEDIA_CLOUDFRONT_PRIVATE_KEY_BASE64 }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Validate request
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$TARGET_ENV" == staging || "$TARGET_ENV" == production ]]
+          [[ "$BACKEND" == r2 || "$BACKEND" == aws ]]
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          test -n "$APPROVAL_REFERENCE" && [[ ${#APPROVAL_REFERENCE} -le 500 ]]
+          [[ "$APPROVAL_REFERENCE" != *$'\n'* ]]
+          if [[ "$BACKEND" == aws ]]; then
+            required=(AWS_REGION AWS_MEDIA_CONTROL_URL AWS_MEDIA_CDN_URL AWS_MEDIA_KEY_PAIR_ID AWS_MEDIA_COOKIE_DOMAIN AWS_MEDIA_INCOMING_BUCKET AWS_MEDIA_PROCESSED_BUCKET AWS_MEDIA_CONTROL_SECRET AWS_MEDIA_PRIVATE_KEY_BASE64)
+            for name in "${required[@]}"; do test -n "${!name:-}" || { echo "Missing AWS media value $name" >&2; exit 1; }; done
+            [[ "$AWS_MEDIA_CONTROL_URL" == https://* ]]
+            [[ "$AWS_MEDIA_CDN_URL" == https://* ]]
+            test ${#AWS_MEDIA_CONTROL_SECRET} -ge 32
+            printf '%s' "$AWS_MEDIA_PRIVATE_KEY_BASE64" | base64 --decode | openssl pkey -check -noout >/dev/null
+          fi
+
+      - name: Configure pinned SSH identity
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Verify deployed release
+        run: |
+          set -euo pipefail
+          health="$(curl --fail --silent --show-error --max-time 20 "https://$DOMAIN/api/health")"
+          test "$(jq -r '.version // empty' <<<"$health")" = "$RELEASE_SHA"
+
+      - name: Prepare backend overlay
+        run: |
+          set -euo pipefail
+          umask 077
+          if [[ "$BACKEND" == aws ]]; then
+            cat > /tmp/.env.media <<EOF
+          MEDIA_BACKEND=aws
+          TRANSCODE_BACKEND=mediaconvert
+          AWS_REGION=$AWS_REGION
+          AWS_MEDIA_CONTROL_URL=$AWS_MEDIA_CONTROL_URL
+          AWS_MEDIA_CONTROL_SECRET=$AWS_MEDIA_CONTROL_SECRET
+          AWS_MEDIA_CDN_URL=$AWS_MEDIA_CDN_URL
+          AWS_MEDIA_INCOMING_BUCKET=$AWS_MEDIA_INCOMING_BUCKET
+          AWS_MEDIA_PROCESSED_BUCKET=$AWS_MEDIA_PROCESSED_BUCKET
+          CLOUDFRONT_KEY_PAIR_ID=$AWS_MEDIA_KEY_PAIR_ID
+          CLOUDFRONT_PRIVATE_KEY_BASE64=$AWS_MEDIA_PRIVATE_KEY_BASE64
+          CLOUDFRONT_COOKIE_DOMAIN=$AWS_MEDIA_COOKIE_DOMAIN
+          MEDIA_PLAYBACK_TTL_SECONDS=300
+          SOURCE_DOWNLOAD_MAX_BYTES=1073741824
+          SOURCE_DOWNLOAD_MAX_REDIRECTS=3
+          EOF
+          else
+            cat > /tmp/.env.media <<EOF
+          MEDIA_BACKEND=r2
+          TRANSCODE_BACKEND=ffmpeg
+          MEDIA_PLAYBACK_TTL_SECONDS=300
+          SOURCE_DOWNLOAD_MAX_BYTES=1073741824
+          SOURCE_DOWNLOAD_MAX_REDIRECTS=3
+          EOF
+          fi
+          chmod 600 /tmp/.env.media
+
+      - name: Apply backend transactionally
+        id: apply
+        run: |
+          set -euo pipefail
+          echo "attempted=true" >> "$GITHUB_OUTPUT"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'if test -f /opt/jalwa/.env.media; then cp /opt/jalwa/.env.media /opt/jalwa/.env.media.previous; else rm -f /opt/jalwa/.env.media.previous; fi'
+          scp -i ~/.ssh/jalwa /tmp/.env.media "$USER@$HOST:/opt/jalwa/.env.media.next"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" '
+            set -euo pipefail
+            install -m 600 /opt/jalwa/.env.media.next /opt/jalwa/.env.media
+            rm -f /opt/jalwa/.env.media.next
+            cd /opt/jalwa
+            docker compose --env-file .env.production -f docker-compose.yml up -d --force-recreate web worker
+          '
+
+      - name: Verify backend and release
+        run: |
+          set -euo pipefail
+          health="$(curl --fail --silent --show-error --max-time 30 --retry 8 --retry-delay 5 "https://$DOMAIN/api/health")"
+          test "$(jq -r '.version // empty' <<<"$health")" = "$RELEASE_SHA"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" "grep -qx 'MEDIA_BACKEND=$BACKEND' /opt/jalwa/.env.media"
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" 'docker compose --env-file /opt/jalwa/.env.production -f /opt/jalwa/docker-compose.yml ps --status running web worker'
+
+      - name: Roll back failed change
+        if: failure() && steps.apply.outputs.attempted == 'true'
+        run: |
+          set +e
+          ssh -i ~/.ssh/jalwa "$USER@$HOST" '
+            if test -f /opt/jalwa/.env.media.previous; then
+              install -m 600 /opt/jalwa/.env.media.previous /opt/jalwa/.env.media
+            else
+              rm -f /opt/jalwa/.env.media
+            fi
+            cd /opt/jalwa
+            docker compose --env-file .env.production -f docker-compose.yml up -d --force-recreate web worker
+          '
+
+      - name: Record successful change
+        if: success()
+        run: |
+          gh issue comment 59 --repo "$GITHUB_REPOSITORY" --body \
+            "Media backend updated: environment \`$TARGET_ENV\`, backend \`$BACKEND\`, release \`$RELEASE_SHA\`. Exact-SHA health and running web/worker services were verified. Evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}. Approval reference: $APPROVAL_REFERENCE"
+
+      - name: Record failure
+        if: failure()
+        run: |
+          gh issue comment 59 --repo "$GITHUB_REPOSITORY" --body \
+            "Media backend change failed for \`$TARGET_ENV\` at release \`$RELEASE_SHA\`. The previous overlay was restored where available. Evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+
+      - name: Summarize
+        if: success()
+        run: |
+          {
+            echo '### Media backend'
+            echo "- Environment: $TARGET_ENV"
+            echo "- Backend: $BACKEND"
+            echo "- Release: $RELEASE_SHA"
+            echo '- Runtime overlay: /opt/jalwa/.env.media'
+            echo '- Exact release and running services verified.'
+          } >> "$GITHUB_STEP_SUMMARY"

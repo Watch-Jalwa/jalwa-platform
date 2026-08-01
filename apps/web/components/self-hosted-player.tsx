@@ -22,8 +22,14 @@ export function SelfHostedPlayer({ contentId, title, poster }: { contentId: stri
       }
       const video = videoRef.current;
       if (!video) return;
+      const credentialed = data.delivery === "cloudfront";
+      if (credentialed) video.crossOrigin = "use-credentials";
       if (data.format === "hls" && Hls.isSupported()) {
-        hls = new Hls({ enableWorker: true, lowLatencyMode: false });
+        hls = new Hls({
+          enableWorker: true,
+          lowLatencyMode: false,
+          ...(credentialed ? { xhrSetup: (xhr: XMLHttpRequest) => { xhr.withCredentials = true; } } : {}),
+        });
         hls.loadSource(data.url);
         hls.attachMedia(video);
         hls.on(Hls.Events.ERROR, (_, detail) => { if (detail.fatal) setError({ message: "Playback interrupted. Please retry." }); });

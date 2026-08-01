@@ -1,9 +1,7 @@
-import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
-import { basename, dirname, join, relative } from "node:path";
-import { pipeline } from "node:stream/promises";
+import { mkdir, rm } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { spawn } from "node:child_process";
-import { GetObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { downloadObject, mediaBackend, uploadDirectory, uploadJsonMarker } from "./storage.mjs";
 
 const LOCAL_PROTOCOLS = "file,pipe,crypto,data";
 const DEFAULT_PROCESS_TIMEOUT_MS = 2 * 60 * 60 * 1000;
@@ -13,19 +11,70 @@ function inputArgs(input) {
 }
 
 export function buildShortArgs(input, output) {
-  return ["-y", ...inputArgs(input), "-vf", "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2", "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", output];
+  return [
+    "-y",
+    ...inputArgs(input),
+    "-vf",
+    "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "23",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-movflags",
+    "+faststart",
+    output,
+  ];
 }
 
 export function buildHlsArgs(input, outputDir) {
-  return ["-y", ...inputArgs(input),
-    "-filter_complex", "[0:v]split=3[v1][v2][v3];[v1]scale=-2:360[v1out];[v2]scale=-2:480[v2out];[v3]scale=-2:720[v3out]",
-    "-map", "[v1out]", "-map", "0:a?", "-map", "[v2out]", "-map", "0:a?", "-map", "[v3out]", "-map", "0:a?",
-    "-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-c:a", "aac", "-b:a", "128k",
-    "-f", "hls", "-hls_time", "6", "-hls_playlist_type", "vod", "-hls_flags", "independent_segments",
-    "-master_pl_name", "master.m3u8",
-    "-var_stream_map", "v:0,a:0,name:360p v:1,a:1,name:480p v:2,a:2,name:720p",
-    "-hls_segment_filename", join(outputDir, "%v", "segment-%05d.ts"),
-    join(outputDir, "%v", "index.m3u8")
+  return [
+    "-y",
+    ...inputArgs(input),
+    "-filter_complex",
+    "[0:v]split=3[v1][v2][v3];[v1]scale=-2:360[v1out];[v2]scale=-2:480[v2out];[v3]scale=-2:720[v3out]",
+    "-map",
+    "[v1out]",
+    "-map",
+    "0:a?",
+    "-map",
+    "[v2out]",
+    "-map",
+    "0:a?",
+    "-map",
+    "[v3out]",
+    "-map",
+    "0:a?",
+    "-c:v",
+    "libx264",
+    "-preset",
+    "veryfast",
+    "-crf",
+    "23",
+    "-c:a",
+    "aac",
+    "-b:a",
+    "128k",
+    "-f",
+    "hls",
+    "-hls_time",
+    "6",
+    "-hls_playlist_type",
+    "vod",
+    "-hls_flags",
+    "independent_segments",
+    "-master_pl_name",
+    "master.m3u8",
+    "-var_stream_map",
+    "v:0,a:0,name:360p v:1,a:1,name:480p v:2,a:2,name:720p",
+    "-hls_segment_filename",
+    join(outputDir, "%v", "segment-%05d.ts"),
+    join(outputDir, "%v", "index.m3u8"),
   ];
 }
 
@@ -36,7 +85,10 @@ function processTimeout() {
 
 export function run(command, args, timeoutMs = processTimeout()) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, HOME: "/tmp" } });
+    const child = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, HOME: "/tmp" },
+    });
     let stderr = "";
     let settled = false;
     const timer = setTimeout(() => {
@@ -56,14 +108,19 @@ export function run(command, args, timeoutMs = processTimeout()) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      code === 0 ? resolve() : reject(new Error(`${basename(command)} exited ${code}: ${stderr.slice(-2000)}`));
+      code === 0
+        ? resolve()
+        : reject(new Error(`${basename(command)} exited ${code}: ${stderr.slice(-2000)}`));
     });
   });
 }
 
 export function capture(command, args, timeoutMs = 60_000) {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, HOME: "/tmp" } });
+    const child = spawn(command, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, HOME: "/tmp" },
+    });
     let stdout = "";
     let stderr = "";
     let settled = false;
@@ -85,100 +142,135 @@ export function capture(command, args, timeoutMs = 60_000) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      code === 0 ? resolve(stdout.trim()) : reject(new Error(`${basename(command)} exited ${code}: ${stderr.slice(-2000)}`));
+      code === 0
+        ? resolve(stdout.trim())
+        : reject(new Error(`${basename(command)} exited ${code}: ${stderr.slice(-2000)}`));
     });
   });
 }
 
 function ffprobeArgs(input, entries, format = "json") {
-  return ["-v", "error", "-protocol_whitelist", LOCAL_PROTOCOLS, "-show_entries", entries, "-of", format, input];
+  return [
+    "-v",
+    "error",
+    "-protocol_whitelist",
+    LOCAL_PROTOCOLS,
+    "-show_entries",
+    entries,
+    "-of",
+    format,
+    input,
+  ];
 }
 
 export async function probeMedia(input) {
-  const raw = await capture(process.env.FFPROBE_PATH ?? "ffprobe", ffprobeArgs(input, "format=duration,format_name:stream=codec_type,codec_name,width,height"));
+  const raw = await capture(
+    process.env.FFPROBE_PATH ?? "ffprobe",
+    ffprobeArgs(input, "format=duration,format_name:stream=codec_type,codec_name,width,height"),
+  );
   const parsed = JSON.parse(raw || "{}");
   const result = parsed && typeof parsed === "object" ? parsed : {};
   const duration = Number(result.format?.duration ?? 0);
   const streams = Array.isArray(result.streams) ? result.streams : [];
   if (!streams.some((stream) => stream?.codec_type === "video")) throw new Error("Uploaded media contains no video stream.");
   if (streams.length > 32) throw new Error("Uploaded media contains too many streams.");
-  if (Number.isFinite(duration) && duration > Number(process.env.MEDIA_MAX_DURATION_SECONDS ?? 43_200)) throw new Error("Uploaded media exceeds the maximum duration.");
-  return { durationSeconds: Number.isFinite(duration) ? duration : null, streamCount: streams.length };
+  if (Number.isFinite(duration) && duration > Number(process.env.MEDIA_MAX_DURATION_SECONDS ?? 43_200)) {
+    throw new Error("Uploaded media exceeds the maximum duration.");
+  }
+  return {
+    durationSeconds: Number.isFinite(duration) ? duration : null,
+    streamCount: streams.length,
+  };
 }
 
 export async function hasAudioStream(input) {
-  const result = await capture(process.env.FFPROBE_PATH ?? "ffprobe", ["-v", "error", "-protocol_whitelist", LOCAL_PROTOCOLS, "-select_streams", "a:0", "-show_entries", "stream=index", "-of", "csv=p=0", input]);
+  const result = await capture(process.env.FFPROBE_PATH ?? "ffprobe", [
+    "-v",
+    "error",
+    "-protocol_whitelist",
+    LOCAL_PROTOCOLS,
+    "-select_streams",
+    "a:0",
+    "-show_entries",
+    "stream=index",
+    "-of",
+    "csv=p=0",
+    input,
+  ]);
   return Boolean(result);
 }
 
-function bucket(kind) {
-  const value = kind === "incoming"
-    ? process.env.R2_INCOMING_BUCKET ?? process.env.R2_BUCKET
-    : process.env.R2_PROCESSED_BUCKET ?? process.env.R2_BUCKET;
-  if (!value) throw new Error(`R2 ${kind} media bucket is not configured.`);
-  return value;
-}
-
-function r2Client() {
-  if (!process.env.R2_ACCOUNT_ID || !process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_KEY) throw new Error("R2 credentials are not configured.");
-  return new S3Client({ region: "auto", endpoint: process.env.R2_ENDPOINT ?? `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`, credentials: { accessKeyId: process.env.R2_ACCESS_KEY_ID, secretAccessKey: process.env.R2_SECRET_ACCESS_KEY } });
-}
-
-export async function downloadObject(key, target, kind = "incoming") {
-  const response = await r2Client().send(new GetObjectCommand({ Bucket: bucket(kind), Key: key }));
-  if (!response.Body) throw new Error("R2 object has no body");
-  await mkdir(dirname(target), { recursive: true });
-  await pipeline(response.Body, createWriteStream(target));
-}
-
-async function walk(directory) {
-  const entries = await readdir(directory, { withFileTypes: true });
-  const paths = [];
-  for (const entry of entries) {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory()) paths.push(...await walk(path)); else paths.push(path);
+async function assertJobStillAllowed(supabase, jobId, contentId) {
+  const [{ data: jobState, error: jobError }, { data: allowed, error: allowedError }] = await Promise.all([
+    supabase.from("media_jobs").select("cancel_requested,cancellation_reason").eq("id", jobId).single(),
+    supabase.rpc("is_content_processing_allowed", { p_content_id: contentId }),
+  ]);
+  if (jobError) throw jobError;
+  if (allowedError) throw allowedError;
+  if (jobState?.cancel_requested) {
+    throw new Error(jobState.cancellation_reason || "Media processing was cancelled.");
   }
-  return paths;
+  if (!allowed) throw new Error("Media processing is blocked by rights, source or content state.");
 }
 
-function contentType(path) {
-  if (path.endsWith(".m3u8")) return "application/vnd.apple.mpegurl";
-  if (path.endsWith(".mpd")) return "application/dash+xml";
-  if (path.endsWith(".m4s")) return "video/iso.segment";
-  if (path.endsWith(".ts")) return "video/mp2t";
-  if (path.endsWith(".mp4")) return "video/mp4";
-  if (path.endsWith(".vtt")) return "text/vtt";
-  return "application/octet-stream";
+function transcodeBackend() {
+  return (process.env.TRANSCODE_BACKEND ?? "ffmpeg").trim().toLowerCase();
 }
 
-export async function uploadDirectory(directory, prefix) {
-  const uploaded = [];
-  for (const path of await walk(directory)) {
-    const key = `${prefix}${relative(directory, path).replaceAll("\\", "/")}`;
-    const info = await stat(path);
-    await r2Client().send(new PutObjectCommand({ Bucket: bucket("processed"), Key: key, Body: createReadStream(path), ContentLength: info.size, ContentType: contentType(path) }));
-    uploaded.push(key);
-  }
-  return uploaded;
+async function dispatchMediaConvertJob({ supabase, job, asset }) {
+  if (mediaBackend() !== "aws") throw new Error("MediaConvert requires MEDIA_BACKEND=aws.");
+  await assertJobStillAllowed(supabase, job.id, asset.content_id);
+  const markerKey = `jobs/${job.id}.json`;
+  const { error } = await supabase.from("media_jobs").update({
+    status: "processing",
+    locked_at: null,
+    locked_by: null,
+    error_message: null,
+    output: { provider: "mediaconvert", markerKey, state: "dispatching" },
+  }).eq("id", job.id);
+  if (error) throw error;
+  await uploadJsonMarker(markerKey, {
+    schemaVersion: 1,
+    jobId: job.id,
+    jobType: job.job_type,
+    assetId: asset.id,
+    contentId: asset.content_id,
+    sourceKey: asset.storage_key,
+    requestedAt: new Date().toISOString(),
+  });
+  return { provider: "mediaconvert", deferred: true, markerKey };
 }
 
 export async function processMediaJob({ supabase, job }) {
-  const { data: asset, error } = await supabase.from("media_assets").select("id,content_id,storage_key,metadata").eq("id", job.media_asset_id).single();
+  const { data: asset, error } = await supabase.from("media_assets")
+    .select("id,content_id,storage_key,metadata")
+    .eq("id", job.media_asset_id)
+    .single();
   if (error || !asset) throw error ?? new Error("Source asset missing");
+
+  if (transcodeBackend() === "mediaconvert") {
+    return dispatchMediaConvertJob({ supabase, job, asset });
+  }
+  if (transcodeBackend() !== "ffmpeg") throw new Error("Unsupported transcode backend.");
+
   const root = join(process.env.MEDIA_TEMP_DIR ?? "/tmp/jalwa-media", job.id);
   const source = join(root, "source");
   const output = join(root, "output");
   await mkdir(output, { recursive: true });
+
   try {
+    await assertJobStillAllowed(supabase, job.id, asset.content_id);
     await downloadObject(asset.storage_key, source, "incoming");
     const probe = await probeMedia(source);
     const ffmpeg = process.env.FFMPEG_PATH ?? "ffmpeg";
     let format;
     let mediaPath;
     let uploaded;
+
     if (job.job_type === "short_mp4") {
       const target = join(output, "short-720.mp4");
       await run(ffmpeg, buildShortArgs(source, target));
+      await assertJobStillAllowed(supabase, job.id, asset.content_id);
       const prefix = `processed/${asset.content_id}/${asset.id}/`;
       uploaded = await uploadDirectory(output, prefix);
       mediaPath = `${prefix}short-720.mp4`;
@@ -186,15 +278,60 @@ export async function processMediaJob({ supabase, job }) {
     } else {
       for (const name of ["360p", "480p", "720p"]) await mkdir(join(output, name), { recursive: true });
       await run(ffmpeg, buildHlsArgs(source, output));
+      await assertJobStillAllowed(supabase, job.id, asset.content_id);
       const prefix = `processed/${asset.content_id}/${asset.id}/`;
       uploaded = await uploadDirectory(output, prefix);
       mediaPath = `${prefix}master.m3u8`;
       format = "hls";
     }
-    await supabase.from("media_assets").update({ status: "ready", duration_seconds: probe.durationSeconds ? Math.round(probe.durationSeconds) : null, metadata: { ...asset.metadata, probe, outputs: uploaded } }).eq("id", asset.id);
-    await supabase.from("playback_sources").update({ is_primary: false }).eq("content_id", asset.content_id);
-    await supabase.from("playback_sources").insert({ content_id: asset.content_id, provider: "original", media_asset_id: asset.id, media_url: mediaPath, format, is_primary: true, status: "active" });
-    await supabase.from("media_jobs").update({ status: "completed", completed_at: new Date().toISOString(), locked_at: null, locked_by: null, error_message: null, output: { mediaPath, format, uploaded, probe } }).eq("id", job.id);
+
+    await assertJobStillAllowed(supabase, job.id, asset.content_id);
+    const { error: assetUpdateError } = await supabase.from("media_assets").update({
+      status: "ready",
+      is_available: false,
+      duration_seconds: probe.durationSeconds ? Math.round(probe.durationSeconds) : null,
+      metadata: {
+        ...asset.metadata,
+        probe,
+        outputs: uploaded,
+        mediaBackend: mediaBackend(),
+      },
+    }).eq("id", asset.id);
+    if (assetUpdateError) throw assetUpdateError;
+
+    await supabase.from("playback_sources").update({
+      is_primary: false,
+      is_available: false,
+    }).eq("content_id", asset.content_id);
+
+    const { error: playbackError } = await supabase.from("playback_sources").insert({
+      content_id: asset.content_id,
+      provider: "original",
+      media_asset_id: asset.id,
+      media_url: mediaPath,
+      format,
+      is_primary: true,
+      is_available: false,
+      status: "active",
+    });
+    if (playbackError) throw playbackError;
+
+    const { error: jobUpdateError } = await supabase.from("media_jobs").update({
+      status: "completed",
+      completed_at: new Date().toISOString(),
+      locked_at: null,
+      locked_by: null,
+      error_message: null,
+      output: {
+        mediaPath,
+        format,
+        uploaded,
+        probe,
+        mediaBackend: mediaBackend(),
+      },
+    }).eq("id", job.id);
+    if (jobUpdateError) throw jobUpdateError;
+    return { provider: "ffmpeg", deferred: false, mediaPath, format };
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -1,0 +1,191 @@
+name: Apply AWS media plane
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Protected environment
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      release_sha:
+        description: Exact 40-character main commit SHA
+        required: true
+        type: string
+      apply:
+        description: Apply the reviewed Terraform plan
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+  actions: write
+
+concurrency:
+  group: jalwa-${{ inputs.target_environment }}-aws-media
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: ${{ inputs.target_environment }}
+    env:
+      TARGET_ENV: ${{ inputs.target_environment }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      AWS_REGION: ${{ vars.AWS_MEDIA_REGION }}
+      AWS_ROLE_ARN: ${{ vars.AWS_MEDIA_DEPLOY_ROLE_ARN }}
+      STATE_BUCKET: ${{ vars.AWS_MEDIA_TF_STATE_BUCKET }}
+      STATE_LOCK_TABLE: ${{ vars.AWS_MEDIA_TF_STATE_LOCK_TABLE }}
+      MEDIA_DOMAIN: ${{ vars.AWS_MEDIA_DOMAIN }}
+      ACM_CERTIFICATE_ARN: ${{ vars.AWS_MEDIA_ACM_CERTIFICATE_ARN }}
+      CLOUDFRONT_PUBLIC_KEY_PEM: ${{ vars.AWS_MEDIA_CLOUDFRONT_PUBLIC_KEY_PEM }}
+      BUDGET_LIMIT_USD: ${{ vars.AWS_MEDIA_BUDGET_USD || '100' }}
+      BUDGET_ALERT_EMAILS_JSON: ${{ vars.AWS_MEDIA_BUDGET_ALERT_EMAILS_JSON || '[]' }}
+      UPLOAD_ALLOWED_ORIGINS_JSON: ${{ vars.AWS_MEDIA_UPLOAD_ALLOWED_ORIGINS_JSON || '[]' }}
+      APP_DOMAIN: ${{ inputs.target_environment == 'staging' && vars.STAGING_DOMAIN || vars.PRODUCTION_DOMAIN }}
+      MEDIA_CONTROL_SECRET: ${{ secrets.AWS_MEDIA_CONTROL_SECRET }}
+      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_SERVICE_ROLE_KEY }}
+      CLOUDFRONT_PRIVATE_KEY_BASE64: ${{ secrets.AWS_MEDIA_CLOUDFRONT_PRIVATE_KEY_BASE64 }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Validate request
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main
+          [[ "$TARGET_ENV" == staging || "$TARGET_ENV" == production ]]
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          test -n "$AWS_REGION"
+          test -n "$AWS_ROLE_ARN"
+          test -n "$STATE_BUCKET"
+          test -n "$STATE_LOCK_TABLE"
+          test -n "$MEDIA_DOMAIN" && test -n "$ACM_CERTIFICATE_ARN" && test -n "$CLOUDFRONT_PUBLIC_KEY_PEM"
+          test -n "$APP_DOMAIN"
+          jq -e 'type == "array"' <<<"$BUDGET_ALERT_EMAILS_JSON" >/dev/null
+          jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and startswith("https://"))' <<<"$UPLOAD_ALLOWED_ORIGINS_JSON" >/dev/null
+          if [[ '${{ inputs.apply }}' == 'true' ]]; then
+            test ${#MEDIA_CONTROL_SECRET} -ge 32
+            test -n "$SUPABASE_SERVICE_ROLE_KEY"
+            test -n "$CLOUDFRONT_PRIVATE_KEY_BASE64"
+            printf '%s' "$CLOUDFRONT_PRIVATE_KEY_BASE64" | base64 --decode > /tmp/cloudfront-private.pem
+            chmod 600 /tmp/cloudfront-private.pem
+            openssl pkey -in /tmp/cloudfront-private.pem -pubout > /tmp/cloudfront-derived.pub
+            printf '%s\n' "$CLOUDFRONT_PUBLIC_KEY_PEM" > /tmp/cloudfront-configured.pub
+            openssl pkey -pubin -in /tmp/cloudfront-configured.pub -pubout > /tmp/cloudfront-configured-normalized.pub
+            diff -u /tmp/cloudfront-configured-normalized.pub /tmp/cloudfront-derived.pub
+          fi
+
+      - name: Configure AWS credentials through OIDC
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
+          role-session-name: jalwa-${{ github.run_id }}
+          allowed-account-ids: ${{ vars.AWS_ACCOUNT_ID }}
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: 1.13.5
+          terraform_wrapper: false
+
+      - name: Create reviewed variables
+        working-directory: infrastructure/aws-media
+        run: |
+          set -euo pipefail
+          jq -n \
+            --arg environment "$TARGET_ENV" \
+            --arg aws_region "$AWS_REGION" \
+            --arg media_domain "$MEDIA_DOMAIN" \
+            --arg acm_certificate_arn "$ACM_CERTIFICATE_ARN" \
+            --arg cloudfront_public_key_pem "$CLOUDFRONT_PUBLIC_KEY_PEM" \
+            --argjson budget_limit_usd "$BUDGET_LIMIT_USD" \
+            --argjson budget_alert_emails "$BUDGET_ALERT_EMAILS_JSON" \
+            --argjson upload_allowed_origins "$UPLOAD_ALLOWED_ORIGINS_JSON" \
+            '{
+              environment: $environment,
+              aws_region: $aws_region,
+              media_domain: $media_domain,
+              acm_certificate_arn: $acm_certificate_arn,
+              cloudfront_public_key_pem: $cloudfront_public_key_pem,
+              budget_limit_usd: $budget_limit_usd,
+              budget_alert_emails: $budget_alert_emails,
+              upload_allowed_origins: $upload_allowed_origins
+            }' > jalwa.auto.tfvars.json
+
+      - name: Initialize Terraform
+        working-directory: infrastructure/aws-media
+        run: |
+          terraform init -input=false \
+            -backend-config="bucket=$STATE_BUCKET" \
+            -backend-config="key=jalwa/$TARGET_ENV/aws-media.tfstate" \
+            -backend-config="region=$AWS_REGION" \
+            -backend-config="dynamodb_table=$STATE_LOCK_TABLE" \
+            -backend-config="encrypt=true"
+
+      - name: Validate Terraform
+        working-directory: infrastructure/aws-media
+        run: |
+          terraform fmt -check -recursive
+          terraform validate
+
+      - name: Plan exact release
+        working-directory: infrastructure/aws-media
+        run: terraform plan -input=false -lock-timeout=5m -out=tfplan
+
+      - name: Apply reviewed plan
+        if: inputs.apply
+        working-directory: infrastructure/aws-media
+        run: terraform apply -input=false -auto-approve tfplan
+
+      - name: Populate protected AWS callback secrets
+        if: inputs.apply
+        working-directory: infrastructure/aws-media
+        run: |
+          set -euo pipefail
+          control_secret_arn="$(terraform output -raw media_control_secret_arn)"
+          callback_secret_arn="$(terraform output -raw supabase_callback_secret_arn)"
+          aws secretsmanager put-secret-value --secret-id "$control_secret_arn" --secret-string "$MEDIA_CONTROL_SECRET" >/dev/null
+          callback_payload="$(jq -nc --arg url "https://api.$APP_DOMAIN" --arg serviceRoleKey "$SUPABASE_SERVICE_ROLE_KEY" '{url:$url,serviceRoleKey:$serviceRoleKey}')"
+          aws secretsmanager put-secret-value --secret-id "$callback_secret_arn" --secret-string "$callback_payload" >/dev/null
+
+      - name: Publish runtime variables to the protected environment
+        if: inputs.apply
+        working-directory: infrastructure/aws-media
+        run: |
+          set -euo pipefail
+          gh variable set AWS_MEDIA_REGION --repo "$GITHUB_REPOSITORY" --env "$TARGET_ENV" --body "$AWS_REGION"
+          gh variable set AWS_MEDIA_CONTROL_URL --repo "$GITHUB_REPOSITORY" --env "$TARGET_ENV" --body "$(terraform output -raw media_control_url)"
+          gh variable set AWS_MEDIA_CDN_URL --repo "$GITHUB_REPOSITORY" --env "$TARGET_ENV" --body "https://$MEDIA_DOMAIN"
+          gh variable set AWS_MEDIA_CLOUDFRONT_KEY_PAIR_ID --repo "$GITHUB_REPOSITORY" --env "$TARGET_ENV" --body "$(terraform output -raw cloudfront_key_pair_id)"
+          gh variable set AWS_MEDIA_COOKIE_DOMAIN --repo "$GITHUB_REPOSITORY" --env "$TARGET_ENV" --body ".$APP_DOMAIN"
+          gh variable set AWS_MEDIA_INCOMING_BUCKET --repo "$GITHUB_REPOSITORY" --env "$TARGET_ENV" --body "$(terraform output -raw incoming_bucket)"
+          gh variable set AWS_MEDIA_PROCESSED_BUCKET --repo "$GITHUB_REPOSITORY" --env "$TARGET_ENV" --body "$(terraform output -raw processed_bucket)"
+
+      - name: Summarize
+        working-directory: infrastructure/aws-media
+        run: |
+          {
+            echo '### AWS media plane'
+            echo "- Environment: $TARGET_ENV"
+            echo "- Release: $RELEASE_SHA"
+            echo "- Applied: ${{ inputs.apply }}"
+            if [[ '${{ inputs.apply }}' == 'true' ]]; then
+              echo '```json'
+              terraform output -json
+              echo '```'
+            else
+              echo '- A protected, exact-SHA Terraform plan completed without applying.'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
