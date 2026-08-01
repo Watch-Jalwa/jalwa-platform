@@ -110,8 +110,8 @@ test("worker errors are release-correlated and redact direct identifiers", async
 
 test("worker captures handled job failures and fatal process failures", async () => {
   const source = await readFile(paths.worker, "utf8");
-  assert.match(source, /reportWorkerError\(error, \{ workerId, mechanism: "media_job"/);
-  assert.match(source, /reportWorkerError\(error, \{ workerId, mechanism: "drm_packaging_job"/);
+  assert.match(source, /reportWorkerError\(error,\s*\{\s*workerId,\s*mechanism:\s*"media_job"/);
+  assert.match(source, /reportWorkerError\(error,\s*\{\s*workerId,\s*mechanism:\s*"drm_packaging_job"/);
   assert.match(source, /process\.once\("uncaughtException"/);
   assert.match(source, /process\.once\("unhandledRejection"/);
   assert.match(source, /mechanism: "worker_tick"/);
