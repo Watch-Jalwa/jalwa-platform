@@ -102,7 +102,7 @@ export async function POST(request: Request) {
       p_answer: answer.answer,
       p_cited_content_ids: sources.map((source) => source.id),
       p_model_key: answer.model,
-      p_prompt_version: "ask-jalwa-v1",
+      p_prompt_version: answer.promptVersion,
       p_input_tokens: tokenValue(usage?.input_tokens),
       p_output_tokens: tokenValue(usage?.output_tokens),
     });
