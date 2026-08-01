@@ -9,7 +9,7 @@ This audit covers the complete GitHub organization available to the connected ap
 - Repository: `Watch-Jalwa/jalwa-platform`
 - Visibility: private
 - Default branch: `main`
-- Audited release: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`
+- Application release audited at the start of cleanup: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`
 
 No second repository or hidden sample repository was omitted from the connected organization scope.
 
@@ -17,22 +17,31 @@ No second repository or hidden sample repository was omitted from the connected 
 
 The organization is in a safe development pause while the project team deploys and manually tests the transactional backend.
 
-- No open pull requests remain.
+- No open pull requests remain after the audit-maintenance pull request is merged.
 - Three open issues remain, each tied to a real deployment or activation boundary.
-- Repository CI, database migrations, production builds, container security policy and browser journeys passed on the final implementation and release-correlation changes.
-- The Vercel frontend deployment is ready and reports the exact audited SHA.
+- Repository CI, database migrations, production builds, container security policy and browser journeys passed on the final implementation and audit-maintenance changes.
+- The Vercel frontend deployment is ready and reports its exact deployed SHA.
 - Internal alpha and governed live-source activation remain fail-closed.
 - No further speculative feature development is required before backend deployment.
 
 ## Repository and release audit
 
-### Final implementation lineage
+### Application implementation lineage
 
 - PR #60 implemented the internal-alpha content platform.
 - PR #61 fixed exact Vercel release reporting in health checks.
 - PR #62 aligned the browser release marker with Vercel release identity.
-- Final `main` SHA: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`.
-- Vercel deployment: `dpl_8aJR63X2r7gJQy6XWkqs3b4m1uju`, READY.
+- Application release audited before organization cleanup: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`.
+- Vercel deployment at that point: `dpl_8aJR63X2r7gJQy6XWkqs3b4m1uju`, READY.
+
+### Audit and cleanup lineage
+
+- PR #63 synchronized the operating documentation, governance and issue trackers and introduced guarded branch maintenance.
+- PR #64 scheduled completed-branch cleanup.
+- PR #65 fixed authenticated private-repository ref discovery.
+- PR #66 added guarded same-repository execution, squash-merge recognition, explicit supersession recognition and synthetic-ref filtering.
+
+Every audit-maintenance change was required to pass the same repository pipeline as product code before merge.
 
 ### Validation evidence
 
@@ -54,7 +63,7 @@ The final changes passed:
 
 ## Pull-request audit
 
-- Open PRs: 0.
+- Open PRs after cleanup: 0.
 - Merged implementation PRs include complete product, security, deployment, media, rights, payment, finance, observability and acceptance work.
 - Superseded PRs are closed and identify their replacement where relevant.
 - Major Dependabot proposals were closed rather than merged without compatibility work.
@@ -66,15 +75,15 @@ No abandoned open PR requires review or closure.
 
 ### Issues that should remain open
 
-#### #22 — Complete live staging, content, commerce and production activation
+#### #22 — Deploy, test and activate the Jalwa transactional platform
 
-Umbrella tracker for owner-controlled backend deployment, staging evidence, commerce/provider activation and eventual production promotion.
+Umbrella tracker for owner-controlled backend deployment, Vercel connection, staging evidence, commerce/provider activation and eventual production promotion.
 
 #### #52 — Activate the approved 46-entry live catalogue
 
 Tracker for item/source evidence, staging observation and protected activation of the governed live inventory.
 
-#### #59 — Internal-alpha content/media deployment and acceptance
+#### #59 — Deploy and accept the internal-alpha content and media platform
 
 Tracker for media-backend selection, AWS/R2 deployment, 50-item rights/media/editorial acceptance and invite-only activation.
 
@@ -102,30 +111,41 @@ No duplicate open feature issue or completed implementation issue remains open.
 - `docs/17-content-commerce-and-deployment-handoff.md` still instructed the team to begin a generic 20–30 item pilot instead of deploying the completed backend and proving the first 50 alpha items.
 - The internal-alpha documentation did not include the final merged and Vercel release evidence.
 - The repository lacked a current organization-wide audit record after the alpha implementation.
+- Issue #59 still read as an unstarted engineering plan even though its repository implementation was merged.
 
-The audit PR updates those sources without rewriting historical planning or prior dated audit evidence.
+The audit updates those sources without rewriting historical planning or prior dated evidence.
 
 ## Branch audit
 
-At the start of this audit the repository contained 49 non-`main` branches, largely created by completed or superseded PR work.
+At the start of the audit the repository contained 49 non-`main` branches. Temporary audit work raised the peak inventory to 53 total branches.
+
+The guarded cleanup removed 47 completed or explicitly superseded branches from that peak inventory. Immediately before the final cleanup PR is merged, six branches remain:
+
+- `main`;
+- `backup/pre-mvp-main`, retained intentionally;
+- `chore/run-merged-branch-cleanup`, retained while its pull request is open and eligible for deletion after merge;
+- `agent/browser-launch-acceptance`;
+- `agent/internal-alpha-content-platform-test`;
+- `agent/security-boundary`.
+
+The last three agent branches have unexplained unmerged heads and no current open PR. They are deliberately retained rather than deleted without evidence. They must not be used as the base for new work; any later owner decision to remove them should first record their purpose or confirm that their unique commits are unnecessary.
 
 ### Cleanup policy
 
-A new protected maintenance workflow deletes only branches that:
+The protected maintenance workflow may delete a branch only when it has no open pull request, does not match a protected retention pattern and one of these is true:
 
-- are fully merged into `main`;
-- are not `main` or another conventional long-lived environment/release branch;
-- do not match `backup/*`;
-- do not have an open pull request.
+- its current head is a Git ancestor of `main`;
+- its current head exactly matches the head SHA of a merged pull request to `main`;
+- its current head exactly matches a closed pull request whose body explicitly begins with `Superseded by`, documenting replacement work.
 
 The workflow deliberately retains:
 
-- `backup/pre-mvp-main`;
-- any branch with unmerged commits;
-- any branch associated with an open pull request;
-- conventional environment, release and hotfix branch names.
+- `backup/*`;
+- conventional environment, release and hotfix branches;
+- every branch with an open pull request;
+- every unexplained unmerged head.
 
-This removes safe merged debris without destroying unmerged evidence or intentional backup history.
+It runs when its definition changes in a same-repository pull request, when that pull request closes, on relevant `main` pushes, weekly and by manual dispatch. Fork pull requests cannot execute its write job.
 
 ## Security and secrets audit
 
@@ -134,6 +154,7 @@ This removes safe merged debris without destroying unmerged evidence or intentio
 - Service-role, media-control, signing, AWS, Cloudflare, database and payment secrets remain server-side/protected-environment values.
 - Vercel remains noindex and is not described as a full transactional launch.
 - Internal-alpha and live-source flags remain disabled until protected workflows succeed.
+- Branch cleanup uses only the job-scoped GitHub token with top-level read-only permissions and job-scoped `contents: write` plus `pull-requests: read`.
 
 ## Rights and content audit
 
