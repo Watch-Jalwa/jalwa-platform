@@ -6,10 +6,10 @@ select set_config('jalwa.public_domain_live_desired_state', :'desired_state', fa
 do $$
 begin
   if current_setting('jalwa.deployment_environment', true) not in ('staging','production') then
-    raise exception 'Public-domain live catalogue state may change only in staging or production';
+    raise exception 'Approved live catalogue state may change only in staging or production';
   end if;
   if current_setting('jalwa.public_domain_live_desired_state', true) not in ('true','false') then
-    raise exception 'Desired public-domain live catalogue state must be true or false';
+    raise exception 'Desired approved live catalogue state must be true or false';
   end if;
 end $$;
 
@@ -35,7 +35,13 @@ insert into approved_live_state_inventory values
 ('usgs-river-pequest','usgs-river-pequest'),
 ('usgs-river-delaware-belvidere','usgs-river-delaware-belvidere'),
 ('usgs-lake-hopatcong','usgs-lake-hopatcong'),
-('usgs-river-rancocas','usgs-river-rancocas');
+('usgs-river-rancocas','usgs-river-rancocas'),
+('european-parliament-plenary','european-parliament-plenary'),
+('european-parliament-committee-rooms','european-parliament-committee-rooms'),
+('un-web-tv','un-web-tv'),
+('un-general-assembly','un-general-assembly'),
+('un-security-council','un-security-council'),
+('un-human-rights-council','un-human-rights-council');
 
 do $$
 declare
@@ -56,8 +62,8 @@ begin
           and (r.expires_at is null or r.expires_at > now())
       );
 
-    if v_ready <> 15 then
-      raise exception 'All 15 approved underlying live items require current rights and configuration before enablement; found %', v_ready;
+    if v_ready <> 21 then
+      raise exception 'All 21 approved underlying live items require current rights and configuration before enablement; found %', v_ready;
     end if;
 
     update public.live_source_configs l
@@ -116,8 +122,8 @@ begin
   where slug in ('usgs-mauna-loa-live','usgs-rivers-lakes-live')
     and ((v_desired and status='published') or (not v_desired and status='draft'));
 
-  if v_configs <> 15 then raise exception 'Live source configuration state update was incomplete'; end if;
-  if v_content <> 15 then raise exception 'Live content publication state update was incomplete'; end if;
+  if v_configs <> 21 then raise exception 'Live source configuration state update was incomplete'; end if;
+  if v_content <> 21 then raise exception 'Live content publication state update was incomplete'; end if;
   if v_collections <> 2 then raise exception 'Live collection state update was incomplete'; end if;
 end $$;
 
@@ -126,7 +132,8 @@ commit;
 select jsonb_build_object(
   'environment',current_setting('jalwa.deployment_environment', true),
   'enabled',current_setting('jalwa.public_domain_live_desired_state', true)::boolean,
+  'user_facing_entries',15,
   'source_configs',(select count(*) from public.live_source_configs l join approved_live_state_inventory i on i.source_key=l.source_key),
   'content_items',(select count(*) from public.content_items c join approved_live_state_inventory i on i.slug=c.slug),
   'collections',(select count(*) from public.collections where slug in ('usgs-mauna-loa-live','usgs-rivers-lakes-live'))
-) as public_domain_live_catalogue_state;
+) as approved_live_catalogue_state;
