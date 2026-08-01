@@ -2,16 +2,17 @@
 
 This is the current handoff after repository and frontend readiness. It separates backend deployment, media infrastructure, governed content onboarding, internal-alpha acceptance and later commerce activation so one workstream cannot silently authorize another.
 
-## Current release
+## Release identity
 
-- `main`: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`
-- Vercel deployment: `dpl_8aJR63X2r7gJQy6XWkqs3b4m1uju`
-- Vercel state: READY
-- Current Vercel mode: noindex frontend preview until transactional backend values are connected
-- Repository implementation: complete
-- Transactional backend deployment: pending
-- Internal-alpha activation: disabled
-- Governed live catalogue: installed in code/database migrations but disabled
+- Internal-alpha application baseline: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430` (PRs #60–#62).
+- Organization audit and maintenance: PRs #63–#66.
+- Current frontend release: read the exact SHA from `/api/health` and the browser `data-release` marker; both must match.
+- Vercel state: READY.
+- Current Vercel mode: noindex frontend preview until transactional backend values are connected.
+- Repository implementation: complete.
+- Transactional backend deployment: pending.
+- Internal-alpha activation: disabled.
+- Governed live catalogue: installed in code/database migrations but disabled.
 
 No additional feature development should begin before backend deployment and manual integration testing. Development resumes from reproduced defects and approved follow-up scope.
 
