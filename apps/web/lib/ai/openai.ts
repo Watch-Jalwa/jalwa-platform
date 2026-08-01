@@ -70,8 +70,7 @@ async function chatCompletion(input: {
     signal: AbortSignal.timeout(Number(process.env.AI_REQUEST_TIMEOUT_MS ?? 30000)),
   });
   if (!response.ok) {
-    const detail = await response.text();
-    throw new Error(`${config.provider} completion failed: ${response.status} ${detail.slice(0, 200)}`);
+    throw new Error(`${config.provider} completion failed with HTTP ${response.status}`);
   }
   const payload = await response.json() as Record<string, unknown>;
   return { config, payload, text: extractChatCompletionText(payload) };
@@ -86,7 +85,7 @@ async function openAiModeration(question: string) {
     body: JSON.stringify({ model: process.env.OPENAI_MODERATION_MODEL ?? "omni-moderation-latest", input: question }),
     signal: AbortSignal.timeout(12000),
   });
-  if (!response.ok) throw new Error(`Moderation failed: ${response.status}`);
+  if (!response.ok) throw new Error(`Moderation failed with HTTP ${response.status}`);
   const payload = await response.json() as { results?: Array<{ flagged?: boolean }> };
   return Boolean(payload.results?.[0]?.flagged);
 }
