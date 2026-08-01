@@ -1,4 +1,4 @@
-export type LiveDeliveryAdapter = "official_live_embed" | "public_domain_live_image";
+export type LiveDeliveryAdapter = "official_live_embed" | "public_domain_live_image" | "official_live_link";
 export type LiveAvailability = "healthy" | "degraded" | "off_air" | "unavailable";
 
 export type LiveSourceDefinition = {
@@ -7,7 +7,7 @@ export type LiveSourceDefinition = {
   title: string;
   titleUrdu?: string;
   description: string;
-  provider: "nasa" | "noaa" | "usgs";
+  provider: "nasa" | "noaa" | "usgs" | "european_parliament" | "un_web_tv";
   adapter: LiveDeliveryAdapter;
   officialSourceUrl: string;
   termsUrl: string;
@@ -29,6 +29,12 @@ const USGS_IMAGE_HOSTS = [
   "apps.usgs.gov",
   "usgs-nims-images.s3.amazonaws.com",
 ] as const;
+const EUROPEAN_PARLIAMENT_HOSTS = [
+  "multimedia.europarl.europa.eu",
+  "www.europarl.europa.eu",
+  "europarl.europa.eu",
+] as const;
+const UNITED_NATIONS_HOSTS = ["webtv.un.org", "media.un.org", "www.un.org", "un.org"] as const;
 
 export const LIVE_SOURCE_REGISTRY = {
   "nasa-space-station-views": {
@@ -274,6 +280,102 @@ export const LIVE_SOURCE_REGISTRY = {
     freshnessThresholdSeconds: 3600,
     collection: "usgs-rivers-lakes-live",
   },
+  "european-parliament-plenary": {
+    key: "european-parliament-plenary",
+    slug: "european-parliament-plenary",
+    title: "European Parliament Plenary",
+    titleUrdu: "یورپی پارلیمنٹ پلینری",
+    description: "Official European Parliament plenary streaming agenda and multilingual coverage.",
+    provider: "european_parliament",
+    adapter: "official_live_link",
+    officialSourceUrl: "https://multimedia.europarl.europa.eu/en/webstreaming",
+    termsUrl: "https://www.europarl.europa.eu/legal-notice/en",
+    attribution: "© European Union, 2026 – Source: European Parliament. The European Parliament does not endorse Jalwa.",
+    allowedHosts: EUROPEAN_PARLIAMENT_HOSTS,
+    refreshIntervalSeconds: 900,
+    freshnessThresholdSeconds: 86400,
+    offAirAllowed: true,
+  },
+  "european-parliament-committee-rooms": {
+    key: "european-parliament-committee-rooms",
+    slug: "european-parliament-committee-rooms",
+    title: "European Parliament Committee Rooms",
+    titleUrdu: "یورپی پارلیمنٹ کمیٹی رومز",
+    description: "Official schedule for public European Parliament committee meetings and simultaneous room streams.",
+    provider: "european_parliament",
+    adapter: "official_live_link",
+    officialSourceUrl: "https://www.europarl.europa.eu/committees/en/meetings/webstreaming",
+    termsUrl: "https://www.europarl.europa.eu/legal-notice/en",
+    attribution: "© European Union, 2026 – Source: European Parliament. The European Parliament does not endorse Jalwa.",
+    allowedHosts: EUROPEAN_PARLIAMENT_HOSTS,
+    refreshIntervalSeconds: 900,
+    freshnessThresholdSeconds: 86400,
+    offAirAllowed: true,
+  },
+  "un-web-tv": {
+    key: "un-web-tv",
+    slug: "un-web-tv",
+    title: "UN Web TV",
+    titleUrdu: "اقوام متحدہ ویب ٹی وی",
+    description: "Official United Nations live schedule and on-demand meeting coverage.",
+    provider: "un_web_tv",
+    adapter: "official_live_link",
+    officialSourceUrl: "https://webtv.un.org/en",
+    termsUrl: "https://webtv.un.org/en/copyright_use",
+    attribution: "Source: United Nations Web TV. The United Nations does not endorse Jalwa.",
+    allowedHosts: UNITED_NATIONS_HOSTS,
+    refreshIntervalSeconds: 900,
+    freshnessThresholdSeconds: 86400,
+    offAirAllowed: true,
+  },
+  "un-general-assembly": {
+    key: "un-general-assembly",
+    slug: "un-general-assembly",
+    title: "UN General Assembly",
+    titleUrdu: "اقوام متحدہ جنرل اسمبلی",
+    description: "Official United Nations General Assembly meeting coverage and live schedule.",
+    provider: "un_web_tv",
+    adapter: "official_live_link",
+    officialSourceUrl: "https://webtv.un.org/en/search/categories/meetings-events/general-assembly",
+    termsUrl: "https://webtv.un.org/en/copyright_use",
+    attribution: "Source: United Nations Web TV. The United Nations does not endorse Jalwa.",
+    allowedHosts: UNITED_NATIONS_HOSTS,
+    refreshIntervalSeconds: 900,
+    freshnessThresholdSeconds: 86400,
+    offAirAllowed: true,
+  },
+  "un-security-council": {
+    key: "un-security-council",
+    slug: "un-security-council",
+    title: "UN Security Council",
+    titleUrdu: "اقوام متحدہ سلامتی کونسل",
+    description: "Official United Nations Security Council meeting coverage and live schedule.",
+    provider: "un_web_tv",
+    adapter: "official_live_link",
+    officialSourceUrl: "https://webtv.un.org/en/search/categories/meetings-events/security-council",
+    termsUrl: "https://webtv.un.org/en/copyright_use",
+    attribution: "Source: United Nations Web TV. The United Nations does not endorse Jalwa.",
+    allowedHosts: UNITED_NATIONS_HOSTS,
+    refreshIntervalSeconds: 900,
+    freshnessThresholdSeconds: 86400,
+    offAirAllowed: true,
+  },
+  "un-human-rights-council": {
+    key: "un-human-rights-council",
+    slug: "un-human-rights-council",
+    title: "UN Human Rights Council",
+    titleUrdu: "اقوام متحدہ انسانی حقوق کونسل",
+    description: "Official United Nations Human Rights Council meeting coverage and live schedule.",
+    provider: "un_web_tv",
+    adapter: "official_live_link",
+    officialSourceUrl: "https://webtv.un.org/en/search/categories/meetings-events/human-rights-council",
+    termsUrl: "https://webtv.un.org/en/copyright_use",
+    attribution: "Source: United Nations Web TV. The United Nations does not endorse Jalwa.",
+    allowedHosts: UNITED_NATIONS_HOSTS,
+    refreshIntervalSeconds: 900,
+    freshnessThresholdSeconds: 86400,
+    offAirAllowed: true,
+  },
 } as const satisfies Record<string, LiveSourceDefinition>;
 
 export type LiveSourceKey = keyof typeof LIVE_SOURCE_REGISTRY;
@@ -286,6 +388,12 @@ export const TOP_LEVEL_LIVE_SOURCE_KEYS = [
   "usgs-kilauea-v1",
   "usgs-kilauea-v2",
   "usgs-kilauea-v3",
+  "european-parliament-plenary",
+  "european-parliament-committee-rooms",
+  "un-web-tv",
+  "un-general-assembly",
+  "un-security-council",
+  "un-human-rights-council",
 ] as const satisfies readonly LiveSourceKey[];
 
 export const LIVE_COLLECTIONS = [
