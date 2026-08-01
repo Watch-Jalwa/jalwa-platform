@@ -5,6 +5,11 @@ import {
   parseModerationDecision,
   sanitizeSourceCitations,
 } from "@/lib/ai/grounding.mjs";
+import {
+  ASK_JALWA_PROMPT_VERSION,
+  MODERATION_SYSTEM_PROMPT,
+  buildAskJalwaSystemPrompt,
+} from "@/lib/ai/prompts.mjs";
 
 export type GroundedSource = {
   id: string;
@@ -78,7 +83,7 @@ async function openAiModeration(question: string) {
   const response = await fetch("https://api.openai.com/v1/moderations", {
     method: "POST",
     headers: headers(apiKey),
-    body: JSON.stringify({ model: "omni-moderation-latest", input: question }),
+    body: JSON.stringify({ model: process.env.OPENAI_MODERATION_MODEL ?? "omni-moderation-latest", input: question }),
     signal: AbortSignal.timeout(12000),
   });
   if (!response.ok) throw new Error(`Moderation failed: ${response.status}`);
@@ -97,10 +102,7 @@ export async function moderateQuestion(question: string) {
     maxTokens: 100,
     json: true,
     messages: [
-      {
-        role: "system",
-        content: "Classify a user request for a family-safe Pakistani content portal. Return JSON only: {\"blocked\":boolean}. Block actionable instructions for self-harm, sexual exploitation of minors, explosives or weapons, serious violent wrongdoing, or evading law enforcement. Do not block prevention, reporting, historical, religious, agricultural, health, or educational discussion merely because it mentions a sensitive topic.",
-      },
+      { role: "system", content: MODERATION_SYSTEM_PROMPT },
       { role: "user", content: JSON.stringify({ request: question }) },
     ],
   });
@@ -114,25 +116,12 @@ export async function createGroundedAnswer(input: {
   language: "en" | "ur" | "roman_ur";
   sources: GroundedSource[];
 }) {
-  const languageInstruction = input.language === "ur"
-    ? "Answer in clear Urdu script."
-    : input.language === "roman_ur"
-      ? "Answer in natural Roman Urdu."
-      : "Answer in clear English.";
   const sourceContext = buildSourceContext(input.sources);
   const result = await chatCompletion({
     messages: [
       {
         role: "system",
-        content: [
-          "You are Ask Jalwa, a Pakistan-focused content discovery assistant.",
-          "Use only the approved Jalwa sources supplied in the request.",
-          "Never invent facts, titles, links, religious rulings, medical diagnoses, pesticide instructions, or financial guarantees.",
-          "When the sources are insufficient, say so plainly and recommend a relevant Jalwa category instead.",
-          "Cite factual claims using source numbers like [1] or [2].",
-          "For farming, health, religious, legal, or financial topics, state important limitations and encourage qualified local advice.",
-          languageInstruction,
-        ].join(" "),
+        content: buildAskJalwaSystemPrompt(input.language),
       },
       {
         role: "user",
@@ -146,6 +135,7 @@ export async function createGroundedAnswer(input: {
   return {
     answer,
     model: `${result.config.provider}:${String(result.payload.model ?? result.config.model)}`,
+    promptVersion: ASK_JALWA_PROMPT_VERSION,
     usage: {
       input_tokens: usage?.input_tokens ?? usage?.prompt_tokens ?? 0,
       output_tokens: usage?.output_tokens ?? usage?.completion_tokens ?? 0,
