@@ -12,6 +12,7 @@ on:
       - synchronize
       - reopened
       - ready_for_review
+      - closed
     paths:
       - .github/workflows/cleanup-merged-branches.yml
   schedule:
@@ -53,8 +54,7 @@ jobs:
           owner="${GITHUB_REPOSITORY%%/*}"
 
           mapfile -t remote_branches < <(
-            git branch --remotes --format='%(refname:short)' \
-              | sed 's#^origin/##' \
+            git for-each-ref --format='%(refname:strip=3)' refs/remotes/origin/ \
               | grep -v '^HEAD$' \
               | sort -u
           )
