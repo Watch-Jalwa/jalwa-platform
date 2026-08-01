@@ -1,171 +1,176 @@
 # Current Status and Next-Stage Gates
 
-**Audit date:** 31 July 2026  
+**Audit date:** 1 August 2026  
 **Repository:** `Watch-Jalwa/jalwa-platform`  
-**Primary branch:** `main`
+**Primary branch:** `main`  
+**Audited release SHA:** `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430`
 
-This document is the current operational source of truth. Earlier roadmap documents explain the intended product; this document distinguishes implemented repository capability from live-environment evidence.
+This document is the operational source of truth. Earlier roadmap documents explain product intent; this document distinguishes implemented repository capability, deployed frontend evidence and the owner-controlled work still required for a transactional internal alpha.
 
 ## Executive status
 
-The repository-side application and release system are mature enough to begin controlled content onboarding and isolated staging activation. The codebase is not yet a live commercial service.
+The repository implementation required for a controlled internal alpha is complete and fully validated. The transactional backend and AWS media resources have not yet been deployed or activated.
 
-- Frontend builds are available through Vercel.
-- The full transactional stack is designed to run on isolated DigitalOcean infrastructure with self-hosted Supabase services, Cloudflare R2 and the media gateway.
-- Staging and production workflows are intentionally manual and fail closed when required values are absent.
-- Production billing, live streaming and web DRM remain disabled until their provider and acceptance gates are complete.
-- The approved delivery model is mobile-first responsive web/PWA only; native Android/iOS apps and app-store distribution are out of current scope.
-- The only enduring launch tracker should be the live activation issue; completed implementation issues should remain closed.
+- The Vercel frontend deployment is ready and reports the audited SHA through `/api/health` and the root page release marker.
+- The Vercel environment is intentionally noindex and still operates as a frontend preview when backend values are absent.
+- Supabase/PostgreSQL remains the catalogue, rights, identity, workflow and audit control plane.
+- The existing R2/FFmpeg media path remains available as a rollback option.
+- The AWS S3/SQS/MediaConvert/CloudFront media plane is implemented as Terraform and protected workflows but has not been applied with owner credentials.
+- Invite-only internal-alpha access, source/content/asset availability controls, rights holds and emergency disablement are implemented but remain disabled until protected activation succeeds.
+- The approved delivery model remains mobile-first responsive web/PWA only.
+
+No additional speculative feature development is required before deployment. Further code changes should be driven by actual backend integration and manual acceptance findings.
+
+## Audited release evidence
+
+| Evidence | Result |
+|---|---|
+| Final `main` SHA | `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430` |
+| Internal-alpha implementation | PR #60, merge SHA `ffe439ce1481f690f305fae3f681b7550c2b697e` |
+| Vercel health SHA correction | PR #61 |
+| Browser release-marker correction | PR #62 |
+| Vercel production deployment | `dpl_8aJR63X2r7gJQy6XWkqs3b4m1uju`, READY |
+| Public health response | HTTP 200, `status: ready`, exact audited SHA |
+| Full repository CI | migrations, privileges, audit, SBOM, lint, TypeScript, tests, build, containers, vulnerability policy and browser journeys passed |
+| AWS infrastructure contract | Lambda syntax, Terraform format/init/validate passed |
 
 ## Implemented repository capabilities
 
-### Consumer product
+### Consumer and Studio
 
-- responsive PWA shell and mobile navigation;
-- Urdu/RTL-ready layout foundation;
-- catalogue, categories, search, home rows and content pages;
-- official YouTube embed playback;
-- self-hosted MP4 and HLS playback with signed access;
-- Shorts feed, watch history, profiles, devices, notifications and offline/PWA surfaces;
-- legal and support pages.
+- responsive PWA shell, Urdu/RTL foundation and mobile navigation;
+- catalogue, categories, search, watch pages, Shorts and official embeds;
+- self-hosted MP4/HLS player and signed playback-session boundary;
+- Studio content, rights, moderation, support, finance, operations and internal-alpha workspaces;
+- explicit unavailable, rights-hold and processing states;
+- tester grants, source toggles, candidate review and emergency alpha controls.
 
-### Studio and content governance
+### Rights-first content system
 
-- draft creation and official YouTube URL import;
-- governed batch catalogue intake;
-- source, rights, attribution, evidence, expiry and takedown records;
-- publication blocked unless current mode-compatible rights evidence is complete;
-- immediate unpublish/takedown controls;
-- moderation, support and operations workspaces;
-- media upload completion and background-processing paths.
+- 151 approved source lanes stored in `content/alpha-approved-sources.json`;
+- approval limited to metadata discovery until item-level evidence passes;
+- source candidates and governed draft promotion;
+- item-level licence/evidence, attribution, expiry, hold and audit controls;
+- database-owned effective availability and fail-closed public policies;
+- source-, content-, playback- and asset-level disablement;
+- secure source downloader with URL, network, size and checksum boundaries;
+- metadata harvest tooling and protected workflow.
 
-### Identity, privacy and trust
+### Live-source catalogue
 
-- Supabase SSR authentication scaffold;
-- profiles and role/capability checks;
-- account data export and deletion processing;
-- protected diagnostics;
-- CSP reporting and bounded browser/server error collection;
-- audit records for privileged and finance-sensitive operations.
+- 46 user-facing entries backed by 52 governed source records;
+- official embeds, secured government current-image sources and official-link-only institutional sources;
+- protected exact-SHA activation workflow with rights freshness and mobile acceptance;
+- database records install disabled and unpublished;
+- no automatic public exposure from a normal deployment.
 
-### Payments and Premium
+### Media and infrastructure
 
-- plans and prices;
-- checkout orders and payment attempts;
-- provider adapter boundary and signed webhook verification;
-- normalized activation, renewal, refund, reversal, dispute and failure states;
-- idempotent event processing and conflicting-replay rejection;
-- subscriptions and entitlements;
-- cancellation-at-period-end and renewal consent fields;
-- operational finance exception handling;
-- authoritative Premium summary, payment ledger, subscription ledger, recurring-customer, reconciliation and benefit-support reports;
-- backend-owned Karachi-time formulas, MRR/ARR definitions, audited UTF-8 CSV exports and separate read/export capabilities.
+- R2/FFmpeg MP4 and HLS processing remains supported;
+- `MEDIA_BACKEND=r2|aws` and `TRANSCODE_BACKEND=ffmpeg|mediaconvert` boundaries;
+- private AWS incoming and processed buckets, KMS, SQS/DLQ, MediaConvert, completion callbacks, CloudFront OAC, signed cookies, alarms and budgets;
+- protected AWS plan/apply and backend-switch workflows;
+- long-form HLS ladder and short-form optimized MP4 outputs;
+- queue reconciliation, idempotency and late-completion availability safeguards.
 
-### AI
+### Platform foundation
 
-- server-side OpenAI-compatible provider gateway;
-- catalogue-grounded responses and citation filtering;
-- provider moderation and hard safety checks;
-- free and Premium usage limits;
-- prompts/evaluation assets held in version control.
+- self-hosted Supabase/PostgreSQL deployment path;
+- authentication, profiles, devices, watch history, privacy export/deletion and audit;
+- payment/webhook/entitlement and Premium finance reporting boundaries;
+- catalogue-grounded AI gateway, moderation and quotas;
+- immutable SHA deployments, encrypted backups, restore drills, rollback and protected diagnostics.
 
-### Release engineering
-
-- forward-only migration inventory and clean-database migration validation;
-- exact lockfile installation and production dependency audit;
-- CycloneDX SBOM generation;
-- production web and worker image builds;
-- fixable high/critical image vulnerability rejection;
-- production image runtime contracts and web-container boot acceptance;
-- desktop/mobile Chromium journeys;
-- immutable commit-SHA deployment images;
-- pre-migration encrypted off-site backup;
-- restore-drill verification;
-- transactional application rollback that restores image and reported version together;
-- protected readiness and release-correlated diagnostics;
-- isolated Terraform state, host, DNS and `jalwa-staging-*` R2 resources for staging.
-
-## Repository gate status
+## Current gate status
 
 | Gate | Status | Evidence boundary |
 |---|---|---|
-| Lint and strict type checking | Complete | GitHub CI |
-| Web and worker tests | Complete | GitHub CI |
-| Migration application and privilege checks | Complete | clean CI PostgreSQL service |
-| Production dependency audit | Complete | `npm audit --omit=dev --audit-level=high` |
-| SBOM | Complete | CycloneDX generated in CI |
-| Web/worker image build | Complete | GitHub CI |
-| Fixable high/critical image scan | Complete | CI vulnerability policy |
-| Production container boot | Complete | CI container acceptance |
+| Repository implementation | Complete | merged `main` |
+| Database migrations and privileges | Complete | clean CI PostgreSQL |
+| Dependency audit and SBOM | Complete | GitHub CI |
+| Web/worker production build | Complete | GitHub CI |
+| Container vulnerability and runtime acceptance | Complete | GitHub CI |
 | Desktop/mobile browser journeys | Complete | pinned Chromium harness |
-| Release rollback contract | Complete | automated release tests |
-| Backup encryption contract | Complete | automated age tests |
-| Premium reporting security/fixtures | Complete | tests and staging acceptance workflow |
-| Vercel frontend build | Complete | frontend preview/build evidence only |
-| Isolated live staging | Blocked externally | environment variables, secrets, accounts, DNS and host required |
-| Real merchant payment provider | Blocked externally | commercial onboarding and credentials required |
-| Production deployment | Not started | requires live staging and production approval |
-| Launch catalogue | Not started | rights-cleared source and editorial work required |
-| Native app-store submission | Out of scope | approved product is mobile-first responsive web/PWA only |
+| AWS Terraform/Lambda contract | Complete | GitHub CI |
+| Vercel frontend deployment | Complete | frontend/noindex evidence |
+| Transactional staging backend | Awaiting external configuration | GitHub environment, host, DNS and secrets required |
+| AWS media plane apply | Awaiting external configuration | AWS account, OIDC, state, certificate, DNS and signing values required |
+| Vercel-to-backend connection | Not started | deploy backend first |
+| 50-item alpha catalogue acceptance | Not started | item-level rights, processing and editorial QA required |
+| Invite-only alpha activation | Disabled | protected exact-SHA workflow only |
+| 46-entry live catalogue activation | Disabled | rights evidence, staging observation and protected workflow required |
+| Commerce/provider activation | Blocked externally | merchant onboarding, policy and credentials required |
+| General production launch | Not started | staging and operational approvals required |
 
-## External staging activation requirements
+## Owner-controlled staging configuration
 
-The GitHub `staging` environment must contain valid, non-example values for:
+The project manager must configure the protected `staging` environment with dedicated values for:
 
-- DigitalOcean host/user, SSH private key and pinned known-host entry;
+- DigitalOcean host, restricted CIDR, deploy user, SSH private key and pinned known-host entry;
 - staging domain and DNS;
-- GHCR deployment credentials;
-- pinned self-hosted Supabase Docker reference;
+- GHCR credentials and immutable image access;
 - generated PostgreSQL, JWT, anon, service-role, dashboard, vault, metadata, log and pooler secrets;
-- Cloudflare account/token and isolated incoming, processed and backup R2 buckets;
-- media-signing and application-operation secrets;
-- SMTP credentials and sender identity;
-- AI provider key and operational quotas;
-- observability destination;
+- Cloudflare account/token, R2 incoming/processed/backup buckets and media-signing values;
+- AWS account, region, Terraform state, GitHub OIDC role, KMS, S3, SQS, MediaConvert and CloudFront configuration;
+- CloudFront signing key group and private key;
+- media-control and callback secrets;
+- SMTP, AI, observability and application-operation secrets;
 - staging mock-payment webhook secret;
-- age identity for encrypted backups.
+- age identity for encrypted backups;
+- internal tester user IDs and named rights/operations/incident owners.
 
-Do not copy production values into staging. Staging must remain independently revocable and use `jalwa-staging-*` storage resources.
+Do not reuse production values in staging. Staging must remain independently revocable.
 
-## Live staging completion sequence
+## Required deployment sequence
 
-1. Run **Bootstrap staging** from the latest green `main` commit when the host and DNS do not yet exist.
-2. Independently verify the provisioned host address and Ed25519 fingerprint before storing the known-host entry.
-3. Run **Deploy staging** from `main`.
-4. Confirm readiness reports the exact deployed commit SHA.
-5. Confirm web, worker, proxy, database, Auth and REST health checks.
-6. Confirm pre-migration and post-deployment encrypted backups, then run the restore drill.
-7. Run the automatic staging release acceptance with zero-content infrastructure expectations.
-8. Create or import at least one authorised catalogue item, complete rights evidence and publish it.
-9. Run staging acceptance with minimum published content `1`.
-10. Exercise sign-up, verification, login, renewal, password reset, profile/device controls, account export/deletion, playback, PWA behaviour, mock checkout, refunds/reconciliation and Premium finance screens.
-11. Retain workflow artifacts and human acceptance notes against the exact release SHA.
+1. Configure the protected staging environment and owner-controlled accounts.
+2. Run **Bootstrap staging** when the host and DNS do not exist.
+3. Verify host address and Ed25519 fingerprint independently.
+4. Run **Deploy staging** from the audited or a newer fully green `main` SHA.
+5. Confirm readiness reports that exact SHA and all core services are healthy.
+6. Retain pre-migration/post-deployment encrypted backups and restore-drill evidence.
+7. Review and apply the AWS media Terraform plan through the protected workflow, or explicitly select R2/FFmpeg for the first acceptance cycle.
+8. Switch the media backend through the protected workflow and verify rollback.
+9. Connect the Vercel frontend to staging backend values and redeploy.
+10. Install the 151-lane source register and the disabled 46-entry live inventory.
+11. Harvest metadata candidates and approve at least 50 mixed assets through item-level rights, processing and editorial QA.
+12. Test authentication, Studio, uploads, queues, HLS, Shorts, search, takedown, backup, rollback and observability.
+13. Run Android Chrome, iPhone Safari and desktop manual acceptance.
+14. Enable invite-only internal alpha only through the protected exact-SHA workflow.
+15. Record environment URL, deployed SHA, workflow artifacts, test report, known issues and sign-off.
 
-## Production blockers
+## Open operational trackers
 
-Production remains blocked until all of the following are true:
+Only these issues should remain open during the deployment wait state:
 
-- live staging evidence is complete for the same release family;
-- domain, DNS, SSH, GHCR, R2, Supabase, SMTP, AI and observability production values are configured;
-- one Pakistan-compatible hosted payment provider is contractually active and tested with signed success, failure, refund, dispute and conflicting replay events;
-- pricing, refund/cancellation wording, support ownership and finance reconciliation ownership are approved;
-- every launch item has source, rights, attribution, review, expiry and takedown evidence;
-- support, privacy, terms, moderation, incident and takedown processes have named owners;
-- launch-day monitoring, rollback and stop-launch authority are rehearsed;
-- the production workflow produces immutable manifests, SBOM/provenance and host-acceptance evidence;
-- production readiness reports the exact deployed SHA and backups/restore evidence is retained.
+- **#22 — Complete live staging, content, commerce and production activation:** umbrella backend and launch tracker.
+- **#52 — Activate the approved 46-entry live catalogue:** source-specific rights, staging observation and controlled activation.
+- **#59 — Internal-alpha content/media deployment:** AWS/R2 selection, 50-item acceptance and invite-only activation.
 
-## Product delivery boundary
+New issues should be created only for a concrete deployment blocker, integration defect or manually reproduced acceptance failure. Do not reopen completed implementation PRs to track missing credentials.
 
-The approved product is a mobile-first responsive browser application and installable PWA. Native Android and iOS applications, Google Play distribution and Apple App Store distribution are not current deliverables, deployment gates or launch blockers.
+## Stop-activation conditions
 
-Acceptance must still cover representative Android and iOS browsers, responsive layouts, PWA installability, constrained-network behaviour, playback and hosted checkout. Do not create native/store issues or packaging work unless the owner explicitly changes the product direction in a future decision.
+Do not enable internal alpha when any of the following is true:
 
-## Issue policy from this point
+- deployed SHA does not match retained release evidence;
+- authentication, RLS or tester revocation fails;
+- source/item kill switch does not block discovery and new playback;
+- raw private storage is accessible without authorization;
+- item-level rights or attribution is incomplete;
+- queues are stuck or DLQ recovery is unproven;
+- HLS fails on required browsers or constrained networks;
+- backups or restore drill fail;
+- monitoring, budget or incident ownership is missing;
+- serious security, privacy, payment or copyright issue is not contained.
 
-- Keep one live activation issue for external staging/production evidence.
-- Use the content-source form for each proposed source programme or rights-holder.
-- Use a release-blocker issue for a failed live gate tied to an exact SHA.
-- Use feature/bug forms for scoped repository work.
-- Close superseded Dependabot major-upgrade PRs; major upgrades require a dedicated compatibility issue.
-- Do not reopen completed implementation issues merely to track external configuration.
+## Safe waiting state
+
+While the deployment team configures and tests the backend:
+
+- keep internal alpha and governed live-source runtime flags disabled;
+- keep Vercel noindex and clearly identified as a frontend preview;
+- do not bulk-download or transcode candidates without item-level approval;
+- do not start unrelated feature development;
+- record deployment findings against #22, #52 or #59;
+- resume development only for verified integration defects or the next approved product phase.
