@@ -54,3 +54,10 @@ declare module "@/lib/ai/prompts.mjs" {
   }>>;
   export function buildAskJalwaSystemPrompt(language?: "en" | "ur" | "roman_ur"): string;
 }
+
+declare module "@/lib/ai/request.mjs" {
+  export class AiRequestBodyError extends Error {
+    status: number;
+  }
+  export function readAiRequestBody(request: Request, maxBytes?: number): Promise<Record<string, unknown>>;
+}
