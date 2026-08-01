@@ -1,0 +1,279 @@
+name: Set public-domain live sources
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_environment:
+        description: Environment to change
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      enabled:
+        description: Desired public-domain live-source state
+        required: true
+        type: choice
+        default: "false"
+        options:
+          - "false"
+          - "true"
+      release_sha:
+        description: Exact deployed 40-character main commit SHA
+        required: true
+        type: string
+      approval_reference:
+        description: Issue #52 evidence or approval reference; production enablement requires an issue #52 URL
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: write
+  issues: write
+
+concurrency:
+  group: jalwa-${{ inputs.target_environment }}-public-domain-live-sources
+  cancel-in-progress: false
+
+jobs:
+  staging:
+    if: inputs.target_environment == 'staging'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: staging
+      url: https://${{ vars.STAGING_DOMAIN }}
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      DESIRED_STATE: ${{ inputs.enabled }}
+      APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
+      HOST: ${{ vars.STAGING_HOST }}
+      USER: ${{ vars.STAGING_USER || 'jalwa' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      REPORT_FILE: ${{ github.workspace }}/public-domain-live-acceptance.json
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+      - name: Validate staging activation request
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main || { echo 'Activation must be dispatched from main.' >&2; exit 1; }
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'A 40-character release SHA is required.' >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main || { echo 'Release SHA is not on main.' >&2; exit 1; }
+          [[ "$DESIRED_STATE" == true || "$DESIRED_STATE" == false ]]
+          test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          test -n "$APPROVAL_REFERENCE" && [[ ${#APPROVAL_REFERENCE} -le 500 ]]
+          [[ "$APPROVAL_REFERENCE" != *$'\n'* ]]
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        if: env.DESIRED_STATE == 'true'
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install pinned live-source acceptance harness
+        if: env.DESIRED_STATE == 'true'
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          npx playwright install --with-deps chromium
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
+      - name: Install and apply controlled staging state
+        id: toggle
+        run: |
+          set -euo pipefail
+          scp -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            infrastructure/production/scripts/set-public-domain-live-sources.sh \
+            "$USER@$HOST:/tmp/set-public-domain-live-sources.sh"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "install -m 750 /tmp/set-public-domain-live-sources.sh /opt/jalwa/scripts/set-public-domain-live-sources.sh && rm -f /tmp/set-public-domain-live-sources.sh"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "/opt/jalwa/scripts/set-public-domain-live-sources.sh '$DESIRED_STATE' '$RELEASE_SHA' '$DOMAIN' staging"
+          echo "state=$DESIRED_STATE" >> "$GITHUB_OUTPUT"
+      - name: Run staging mobile and source acceptance
+        if: env.DESIRED_STATE == 'true'
+        env:
+          JALWA_BROWSER_BASE_URL: https://${{ vars.STAGING_DOMAIN }}
+          JALWA_EXPECTED_VERSION: ${{ env.RELEASE_SHA }}
+          JALWA_PUBLIC_DOMAIN_LIVE_REPORT_FILE: ${{ env.REPORT_FILE }}
+        run: node scripts/public-domain-live-acceptance.mjs
+      - name: Roll back failed staging activation
+        if: failure() && steps.toggle.outputs.state == 'true'
+        run: |
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "/opt/jalwa/scripts/set-public-domain-live-sources.sh false '$RELEASE_SHA' '$DOMAIN' staging"
+      - name: Persist staging expectation
+        if: success()
+        run: gh variable set STAGING_EXPECT_PUBLIC_DOMAIN_LIVE_SOURCES --env staging --body "$DESIRED_STATE"
+      - name: Record staging evidence on issue 52
+        if: success()
+        run: |
+          cat > /tmp/issue-comment.md <<EOF
+          ## Staging live-source state updated
+
+          - State: \`$DESIRED_STATE\`
+          - Release: \`$RELEASE_SHA\`
+          - Environment: staging
+          - Approval/evidence reference: $APPROVAL_REFERENCE
+          - Actor: \`${{ github.actor }}\`
+          - Workflow evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          $([[ "$DESIRED_STATE" == true ]] && echo 'The seven-day observation window may begin only after this successful run and item-level rights approval.' || echo 'The catalogue is fail-closed in staging.')
+          EOF
+          gh issue comment 52 --repo "$GITHUB_REPOSITORY" --body-file /tmp/issue-comment.md
+      - name: Record failed staging attempt
+        if: failure()
+        run: |
+          gh issue comment 52 --repo "$GITHUB_REPOSITORY" --body \
+            "Staging live-source state change failed for release \`$RELEASE_SHA\`. Any partially enabled state was rolled back when possible. Evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Summarize staging state
+        if: success()
+        run: |
+          {
+            echo '### Public-domain live-source staging state'
+            echo "- Enabled: $DESIRED_STATE"
+            echo "- Release: $RELEASE_SHA"
+            echo "- Approval/evidence: $APPROVAL_REFERENCE"
+            if [[ "$DESIRED_STATE" == true ]]; then
+              echo '- Provider-aware source health and 390×844 reduced-motion browser acceptance passed'
+              echo '```json'
+              cat "$REPORT_FILE"
+              echo '```'
+            else
+              echo '- Staging is fail-closed'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  production:
+    if: inputs.target_environment == 'production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment:
+      name: production
+      url: https://${{ vars.PRODUCTION_DOMAIN }}
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      DESIRED_STATE: ${{ inputs.enabled }}
+      APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
+      HOST: ${{ vars.PRODUCTION_HOST }}
+      USER: ${{ vars.PRODUCTION_USER || 'jalwa' }}
+      DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
+      SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.PRODUCTION_SSH_KNOWN_HOSTS }}
+      REPORT_FILE: ${{ github.workspace }}/public-domain-live-acceptance.json
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+      - name: Validate production activation request
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main || { echo 'Activation must be dispatched from main.' >&2; exit 1; }
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'A 40-character release SHA is required.' >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main || { echo 'Release SHA is not on main.' >&2; exit 1; }
+          [[ "$DESIRED_STATE" == true || "$DESIRED_STATE" == false ]]
+          test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          test -n "$APPROVAL_REFERENCE" && [[ ${#APPROVAL_REFERENCE} -le 500 ]]
+          [[ "$APPROVAL_REFERENCE" != *$'\n'* ]]
+          if [[ "$DESIRED_STATE" == true ]]; then
+            [[ "$APPROVAL_REFERENCE" == https://github.com/Watch-Jalwa/jalwa-platform/issues/52* ]] || {
+              echo 'Production enablement requires an issue #52 staging-observation and rights-approval reference.' >&2
+              exit 1
+            }
+          fi
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        if: env.DESIRED_STATE == 'true'
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install pinned live-source acceptance harness
+        if: env.DESIRED_STATE == 'true'
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          npx playwright install --with-deps chromium
+      - name: Configure pinned production SSH identity
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
+      - name: Install and apply controlled production state
+        id: toggle
+        run: |
+          set -euo pipefail
+          scp -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            infrastructure/production/scripts/set-public-domain-live-sources.sh \
+            "$USER@$HOST:/tmp/set-public-domain-live-sources.sh"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "install -m 750 /tmp/set-public-domain-live-sources.sh /opt/jalwa/scripts/set-public-domain-live-sources.sh && rm -f /tmp/set-public-domain-live-sources.sh"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "/opt/jalwa/scripts/set-public-domain-live-sources.sh '$DESIRED_STATE' '$RELEASE_SHA' '$DOMAIN' production"
+          echo "state=$DESIRED_STATE" >> "$GITHUB_OUTPUT"
+      - name: Run production mobile and source acceptance
+        if: env.DESIRED_STATE == 'true'
+        env:
+          JALWA_BROWSER_BASE_URL: https://${{ vars.PRODUCTION_DOMAIN }}
+          JALWA_EXPECTED_VERSION: ${{ env.RELEASE_SHA }}
+          JALWA_PUBLIC_DOMAIN_LIVE_REPORT_FILE: ${{ env.REPORT_FILE }}
+        run: node scripts/public-domain-live-acceptance.mjs
+      - name: Roll back failed production activation
+        if: failure() && steps.toggle.outputs.state == 'true'
+        run: |
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "/opt/jalwa/scripts/set-public-domain-live-sources.sh false '$RELEASE_SHA' '$DOMAIN' production"
+      - name: Record production evidence on issue 52
+        if: success()
+        run: |
+          cat > /tmp/issue-comment.md <<EOF
+          ## Production live-source state updated
+
+          - State: \`$DESIRED_STATE\`
+          - Release: \`$RELEASE_SHA\`
+          - Environment: production
+          - Approval/evidence reference: $APPROVAL_REFERENCE
+          - Actor: \`${{ github.actor }}\`
+          - Workflow evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+          $([[ "$DESIRED_STATE" == true ]] && echo 'Production mobile acceptance and provider-aware source health passed for the approved nine-source inventory.' || echo 'The production catalogue is fail-closed.')
+          EOF
+          gh issue comment 52 --repo "$GITHUB_REPOSITORY" --body-file /tmp/issue-comment.md
+      - name: Record failed production attempt
+        if: failure()
+        run: |
+          gh issue comment 52 --repo "$GITHUB_REPOSITORY" --body \
+            "Production live-source state change failed for release \`$RELEASE_SHA\`. Any partially enabled state was rolled back when possible. Evidence: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      - name: Summarize production state
+        if: success()
+        run: |
+          {
+            echo '### Public-domain live-source production state'
+            echo "- Enabled: $DESIRED_STATE"
+            echo "- Release: $RELEASE_SHA"
+            echo "- Approval/evidence: $APPROVAL_REFERENCE"
+            if [[ "$DESIRED_STATE" == true ]]; then
+              echo '- Provider-aware source health and 390×844 reduced-motion browser acceptance passed'
+              echo '```json'
+              cat "$REPORT_FILE"
+              echo '```'
+            else
+              echo '- Production is fail-closed'
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
