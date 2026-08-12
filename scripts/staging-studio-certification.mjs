@@ -62,15 +62,28 @@ async function main() {
     const adminContext = await browser.newContext({ baseURL: config.baseUrl, viewport: { width: 1440, height: 1000 } });
     const adminPage = await adminContext.newPage();
     await authenticatePage(adminPage, config, admin.email, "/studio");
-    await expectAuthorized(adminPage, `${config.baseUrl}/studio`, /Studio/i);
-    await expectAuthorized(adminPage, `${config.baseUrl}/studio/content`, /content/i);
-    await expectAuthorized(adminPage, `${config.baseUrl}/studio/finance`, /finance|premium/i);
+    const adminSurfaces = [
+      ["/studio", /Studio/i],
+      ["/studio/content", /content/i],
+      ["/studio/moderation", null],
+      ["/studio/support", null],
+      ["/studio/finance", /finance|premium/i],
+      ["/studio/operations", null],
+      ["/studio/live", null],
+      ["/studio/drm", null],
+      ["/studio/alpha", null],
+    ];
+    for (const [route, pattern] of adminSurfaces) {
+      await expectAuthorized(adminPage, `${config.baseUrl}${route}`, pattern);
+    }
     const adminFinanceApi = await adminContext.request.get(`${config.baseUrl}/api/studio/premium-reports/payments?preset=last30&pageSize=1`);
     if ([401, 403].includes(adminFinanceApi.status()) || adminFinanceApi.status() >= 500) {
       throw new Error(`Admin Studio finance API authorization failed with HTTP ${adminFinanceApi.status()}.`);
     }
+    await adminPage.goto(`${config.baseUrl}/studio`, { waitUntil: "networkidle" });
     await adminPage.screenshot({ path: path.join(evidenceDir, "studio-admin.png"), fullPage: true });
-    evidence.checks.push("admin can enter Studio and authorized finance reporting surface");
+    evidence.checks.push("admin can enter core content, moderation, support, finance, operations, live, DRM and alpha surfaces");
+    evidence.checks.push("admin can use the authorized finance reporting API boundary");
     await adminContext.close();
 
     const restrictedContext = await browser.newContext({ baseURL: config.baseUrl, viewport: { width: 1280, height: 900 } });
