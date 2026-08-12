@@ -39,25 +39,34 @@ async function main() {
     const watchPath = watchLinks[0];
     const response = await page.goto(`${baseUrl}${watchPath}`, { waitUntil: "networkidle" });
     if (!response || response.status() >= 500) throw new Error(`Representative watch page returned HTTP ${response?.status() ?? "none"}.`);
-    if (!(await page.locator(".player-shell").isVisible())) throw new Error("Representative watch page did not render a player surface.");
+    const player = page.locator(".player-shell");
+    if (!(await player.isVisible())) throw new Error("Representative watch page did not render a player surface.");
 
-    const safeBoundary = await page.locator(".player-placeholder").isVisible().catch(() => false);
-    const mediaSurface = await page.locator("video, iframe, img").count();
-    if (!safeBoundary && mediaSurface === 0) throw new Error("Representative content exposed neither a playable media surface nor the documented safe unavailable boundary.");
+    const safeUnavailableBoundary = await player.locator(".player-placeholder").isVisible().catch(() => false);
+    const providerHostedBoundary = await player.locator(".live-player-fallback").isVisible().catch(() => false);
+    const mediaSurface = await player.locator("video, iframe, img").count();
+    if (!safeUnavailableBoundary && !providerHostedBoundary && mediaSurface === 0) {
+      throw new Error("Representative content exposed neither an in-player media surface, a provider-hosted live boundary nor the documented safe unavailable boundary.");
+    }
     if (pageErrors.length) throw new Error(`Representative media page emitted browser errors: ${pageErrors.slice(0, 3).join("; ")}`);
     if (failedSameOriginRequests.length) throw new Error(`Representative media page had failed same-origin requests: ${failedSameOriginRequests.slice(0, 5).join("; ")}`);
 
     await page.screenshot({ path: path.join(evidenceDir, "media-catalogue.png"), fullPage: true });
+    const playerBoundary = safeUnavailableBoundary
+      ? "safe-unavailable"
+      : providerHostedBoundary
+        ? "provider-hosted-live"
+        : "media-surface-present";
     const evidence = {
       schema_version: 1,
       representative_watch_path: watchPath,
-      player_boundary: safeBoundary ? "safe-unavailable" : "media-surface-present",
+      player_boundary: playerBoundary,
       same_origin_failed_requests: failedSameOriginRequests.length,
       page_errors: pageErrors.length,
       recorded_at: new Date().toISOString(),
     };
     await writeFile(path.join(evidenceDir, "media-catalogue-evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
-    console.log(`Catalogue/media certification passed for ${watchPath}.`);
+    console.log(`Catalogue/media certification passed for ${watchPath} with ${playerBoundary}.`);
   } finally {
     await context.close();
     await browser.close();
