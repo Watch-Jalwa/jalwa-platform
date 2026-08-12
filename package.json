@@ -7,9 +7,10 @@
   "workspaces": ["apps/*", "packages/*"],
   "overrides": {
     "next": {
-      "postcss": "8.5.22",
+      "postcss": "8.5.24",
       "sharp": "0.35.3"
-    }
+    },
+    "nanoid": "3.3.17"
   },
   "scripts": {
     "dev": "npm run dev --workspace @jalwa/web",
