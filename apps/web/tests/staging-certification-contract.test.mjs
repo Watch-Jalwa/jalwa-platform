@@ -69,13 +69,17 @@ test("all mandatory certification areas are fail closed", async () => {
   assert.match(finalizer, /certification-report\.html/);
 });
 
-test("customer certification covers auth denial, duplicate checkout, authoritative price and full mobile payment", async () => {
+test("customer certification covers auth denial, duplicate checkout, authoritative price, entitlements and full mobile payment", async () => {
   const customer = await read(paths.customer);
   assert.match(customer, /Unauthenticated checkout/);
   assert.match(customer, /Promise\.all/);
   assert.match(customer, /Duplicate checkout requests created different order IDs/);
   assert.match(customer, /amount_minor/);
-  assert.match(customer, /Mobile purchase did not reach authoritative paid state/);
+  assert.match(customer, /paidOrder\.status !== "succeeded"/);
+  assert.match(customer, /\/rest\/v1\/subscriptions/);
+  assert.match(customer, /\/rest\/v1\/entitlements/);
+  assert.match(customer, /Active subscription entitlements do not exactly match/);
+  assert.match(customer, /Mobile purchase did not reach authoritative succeeded state/);
   assert.match(customer, /guest_cart_checkout: "N\/A"/);
 });
 
