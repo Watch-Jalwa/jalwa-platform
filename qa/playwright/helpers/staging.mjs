@@ -92,6 +92,7 @@ export async function expectSubscriptionAndEntitlements(config, userId, price) {
   expect(subscription.user_id).toBe(userId);
   expect(subscription.plan_id).toBe(price.plan_id);
   expect(subscription.status).toBe("active");
+  if ((process.env.ALLOW_MOCK_PAYMENTS ?? "true") === "true") expect(subscription.provider).toBe("mock");
   expect(Date.parse(subscription.current_period_end)).toBeGreaterThan(Date.now());
 
   const entitlementResponse = await serviceFetch(
