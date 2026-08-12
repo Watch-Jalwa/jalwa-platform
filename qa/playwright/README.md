@@ -6,8 +6,9 @@ This suite is the reusable browser-test layer for the protected transactional st
 
 | Spec | Coverage |
 | --- | --- |
-| `public.spec.mjs` | home/explore/search, exact release health, staging `noindex`, login/signup validation, legal pages, readiness, CSP report endpoint, manifest, mobile navigation and responsive overflow |
+| `public.spec.mjs` | home/explore/search, exact release health, staging `noindex`, login/signup validation, legal pages, readiness, CSP report endpoint, manifest and mobile navigation |
 | `auth.spec.mjs` | real email magic-link request boundary, generated staging magic-link session, authenticated session persistence, invalid email rejection |
+| `responsive.spec.mjs` | public customer routes at 360px and 390px, primary heading visibility and horizontal-overflow rejection |
 | `customer.spec.mjs` | anonymous checkout denial, missing/invalid price rejection, duplicate-submit idempotency, authoritative price/currency, mock payment completion, succeeded order, active subscription, exact entitlements, full Mobile Chromium purchase |
 | `studio.spec.mjs` | anonymous denial, admin Studio surfaces, `rights_reviewer` least privilege, viewer denial, Finance reporting sections, filters, pagination, empty/error states, CSV safety, audit linkage and mobile report layout |
 | `media.spec.mjs` | real published catalogue/watch boundary, media-or-safe-unavailable rendering, same-origin/browser failures, governed live catalogue, official-link-only no-iframe boundary and allowlisted live-image routes |
