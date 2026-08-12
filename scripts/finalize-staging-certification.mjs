@@ -21,7 +21,10 @@ const mandatoryAreas = [
 ];
 const allowedStatuses = new Set(["PASS", "FAIL", "BLOCKED", "N/A", "VISUAL REVIEW REQUIRED"]);
 const releaseSha = (process.env.RELEASE_SHA ?? "").trim();
-const visualAcceptedSha = (process.env.VISUAL_REVIEW_ACCEPTED_SHA ?? "").trim();
+// The workflow exports VISUAL_REVIEW_ACCEPTED from the protected staging variable
+// STAGING_VISUAL_REVIEW_ACCEPTED. Its value must be the exact approved release SHA,
+// never a reusable boolean. VISUAL_REVIEW_ACCEPTED_SHA is supported for local tooling.
+const visualAcceptedSha = (process.env.VISUAL_REVIEW_ACCEPTED_SHA ?? process.env.VISUAL_REVIEW_ACCEPTED ?? "").trim();
 const visualAcceptanceReference = (process.env.VISUAL_REVIEW_ACCEPTANCE_REFERENCE ?? "").trim();
 
 function htmlEscape(value) {
