@@ -1,10 +1,13 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 
-const root = fileURLToPath(new URL("../../../", import.meta.url));
-const read = (relative) => readFile(new URL(relative, `file://${root.endsWith("/") ? root : `${root}/`}`), "utf8");
+const rootUrl = new URL("../../../", import.meta.url);
+const root = fileURLToPath(rootUrl);
+const urlFor = (relative) => new URL(relative, rootUrl);
+const read = (relative) => readFile(urlFor(relative), "utf8");
 
 const paths = {
   dockerfile: "Dockerfile",
@@ -18,6 +21,14 @@ const paths = {
   media: "scripts/staging-media-certification.mjs",
   visual: "scripts/staging-visual-certification.mjs",
   manifest: "qa/visual-baselines/manifest.json",
+  playwrightConfig: "playwright.staging.config.mjs",
+  playwrightHelper: "qa/playwright/helpers/staging.mjs",
+  playwrightPublic: "qa/playwright/public.spec.mjs",
+  playwrightAuth: "qa/playwright/auth.spec.mjs",
+  playwrightCustomer: "qa/playwright/customer.spec.mjs",
+  playwrightStudio: "qa/playwright/studio.spec.mjs",
+  playwrightMedia: "qa/playwright/media.spec.mjs",
+  playwrightVisual: "qa/playwright/visual.spec.mjs",
 };
 
 test("staging images carry immutable source and pipeline labels", async () => {
@@ -112,4 +123,59 @@ test("media and visual gates cannot silently pass missing fixtures or baselines"
   const manifest = JSON.parse(manifestRaw);
   assert.equal(manifest.schema_version, 1);
   assert.deepEqual(manifest.baselines, {});
+});
+
+test("reusable staging Playwright suite is syntactically valid and keeps sensitive recording disabled", async () => {
+  const playwrightFiles = [
+    paths.playwrightConfig,
+    paths.playwrightHelper,
+    paths.playwrightPublic,
+    paths.playwrightAuth,
+    paths.playwrightCustomer,
+    paths.playwrightStudio,
+    paths.playwrightMedia,
+    paths.playwrightVisual,
+  ];
+  for (const relative of playwrightFiles) {
+    execFileSync(process.execPath, ["--check", fileURLToPath(urlFor(relative))], { cwd: root, stdio: "pipe" });
+  }
+  const config = await read(paths.playwrightConfig);
+  assert.match(config, /workers: 1/);
+  assert.match(config, /trace: "off"/);
+  assert.match(config, /video: "off"/);
+  assert.match(config, /screenshot: "only-on-failure"/);
+});
+
+test("Playwright customer suite covers authentication, checkout, payment, subscription and mobile purchase", async () => {
+  const [auth, customer] = await Promise.all([read(paths.playwrightAuth), read(paths.playwrightCustomer)]);
+  assert.match(auth, /Check your email for the sign-in link/);
+  assert.match(auth, /authenticatePage/);
+  assert.match(customer, /anonymous checkout is denied/);
+  assert.match(customer, /Promise\.all/);
+  assert.match(customer, /AUTO-QA-/);
+  assert.match(customer, /succeeded/);
+  assert.match(customer, /expectSubscriptionAndEntitlements/);
+  assert.match(customer, /Pixel 7/);
+});
+
+test("Playwright Studio suite covers admin, rights review, finance, export audit and non-staff denial", async () => {
+  const studio = await read(paths.playwrightStudio);
+  assert.match(studio, /"admin"/);
+  assert.match(studio, /"rights_reviewer"/);
+  assert.match(studio, /"viewer"/);
+  assert.match(studio, /"finance"/);
+  assert.match(studio, /premium_report_exported/);
+  assert.match(studio, /x-jalwa-report-sha256/);
+  assert.match(studio, /Permission denied/);
+});
+
+test("Playwright media and visual suites preserve governed live and human-review boundaries", async () => {
+  const [media, visual] = await Promise.all([read(paths.playwrightMedia), read(paths.playwrightVisual)]);
+  assert.match(media, /rights-approved published staging item/);
+  assert.match(media, /official-link-only/);
+  assert.match(media, /toHaveCount\(0\)/);
+  assert.match(media, /JALWA_EXPECT_LIVE_SOURCES/);
+  assert.match(visual, /VISUAL REVIEW REQUIRED/);
+  assert.match(visual, /human-approved baseline/);
+  assert.doesNotMatch(visual, /writeFile/);
 });
