@@ -69,6 +69,14 @@ test("all mandatory certification areas are fail closed", async () => {
   assert.match(finalizer, /certification-report\.html/);
 });
 
+test("visual review approval is bound to the exact candidate release", async () => {
+  const finalizer = await read(paths.finalizer);
+  assert.match(finalizer, /visualAcceptedSha === releaseSha/);
+  assert.match(finalizer, /\^\[0-9a-f\]\{40\}\$/);
+  assert.match(finalizer, /visualAcceptanceReference/);
+  assert.match(finalizer, /exact release SHA is required before UAT/);
+});
+
 test("customer certification covers auth denial, duplicate checkout, authoritative price, entitlements and full mobile payment", async () => {
   const customer = await read(paths.customer);
   assert.match(customer, /Unauthenticated checkout/);
@@ -97,6 +105,8 @@ test("Studio certification enforces admin and least-privilege route and API boun
 test("media and visual gates cannot silently pass missing fixtures or baselines", async () => {
   const [media, visual, manifestRaw] = await Promise.all([read(paths.media), read(paths.visual), read(paths.manifest)]);
   assert.match(media, /BLOCKED: no published staging catalogue item/);
+  assert.match(media, /player\.locator\("video, iframe, img"\)/);
+  assert.match(media, /providerHostedBoundary/);
   assert.match(visual, /VISUAL REVIEW REQUIRED/);
   assert.match(visual, /CI did not update the human-approved baseline manifest/);
   const manifest = JSON.parse(manifestRaw);
