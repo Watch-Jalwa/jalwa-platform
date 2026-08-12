@@ -79,7 +79,7 @@ A missing mandatory result is automatically `BLOCKED`.
 
 ### Customer and payment boundary
 
-The customer suite uses a deterministic staging-only account generated through the protected Supabase admin boundary. It verifies unauthenticated checkout denial, invalid checkout input, authenticated Premium checkout, server-authoritative amount/currency, duplicate-submit idempotency, mock staging payment completion and full Mobile Chromium purchase.
+The customer suite uses a deterministic staging-only account generated through the protected Supabase admin boundary. It verifies unauthenticated checkout denial, invalid checkout input, authenticated Premium checkout, server-authoritative amount/currency, duplicate-submit idempotency, mock staging payment completion, authoritative `succeeded` payment state, active subscription creation/extension, the exact configured entitlement set and full Mobile Chromium purchase.
 
 Staging uses the repository's isolated mock provider. Provider states not implemented by that adapter are not invented. When a real provider is later enabled in staging, its sandbox/UAT paths become mandatory and unavailable sandbox configuration must produce `BLOCKED`.
 
@@ -91,13 +91,13 @@ There is no Dispatcher Branch A/B role in Jalwa today; those scenarios are `N/A`
 
 ### Catalogue and media
 
-A real published staging catalogue item must be available for representative `/watch/<slug>` certification. No published item results in `BLOCKED`, not PASS. The browser verifies a real media surface or the documented safe unavailable boundary and rejects same-origin request or browser failures. Enabled governed live-source checks remain mandatory when their staging flag is enabled.
+A real published staging catalogue item must be available for representative `/watch/<slug>` certification. No published item results in `BLOCKED`, not PASS. The browser verifies the actual `.player-shell` boundary and requires either an in-player media surface, the governed provider-hosted live boundary or the documented safe unavailable boundary. Same-origin request or browser failures are rejected. Enabled governed live-source checks remain mandatory when their staging flag is enabled.
 
 ### Visual regression
 
 Only public, non-sensitive screens are captured for source-controlled visual comparison: home, explore, pricing and login. `qa/visual-baselines/manifest.json` stores human-approved screenshot hashes. CI never updates baselines.
 
-A missing or changed baseline produces `VISUAL REVIEW REQUIRED`, which blocks UAT unless an explicit review reference is configured. The first real staging run intentionally requires baseline review because the manifest starts empty.
+A missing or changed baseline produces `VISUAL REVIEW REQUIRED`. An explicit visual exception can unblock only the **exact release SHA** under review: `STAGING_VISUAL_REVIEW_ACCEPTED` must contain that 40-character release SHA and `STAGING_VISUAL_REVIEW_ACCEPTANCE_REFERENCE` must identify the human review record. A reusable boolean or an approval for an older SHA cannot approve a later visual difference. The first real staging run intentionally requires baseline review because the manifest starts empty.
 
 Authenticated/customer/payment-sensitive flows do not enable Playwright trace or video capture. Evidence must never include credentials, tokens, cookies, real customer data or payment details.
 
@@ -105,7 +105,7 @@ Authenticated/customer/payment-sensitive flows do not enable Playwright trace or
 
 The finalizer can produce only:
 
-- `READY FOR UAT` — every mandatory gate passed or an allowed visual review was explicitly accepted;
+- `READY FOR UAT` — every mandatory gate passed or an exact-release visual review was explicitly accepted;
 - `FAILED` — a reproducible application, security, authorization, business, payment, media or identity failure exists;
 - `BLOCKED` — the selected candidate cannot be proved or tested because required staging infrastructure, identity, fixtures or review evidence is unavailable.
 
@@ -138,10 +138,10 @@ Certification additionally uses the already protected Supabase publishable/servi
 - `STAGING_QA_RESTRICTED_EMAIL`
 - `STAGING_QA_UNAUTHORIZED_EMAIL`
 
-Optional visual review controls:
+Optional exact-release visual review controls:
 
-- `STAGING_VISUAL_REVIEW_ACCEPTED`
-- `STAGING_VISUAL_REVIEW_ACCEPTANCE_REFERENCE`
+- `STAGING_VISUAL_REVIEW_ACCEPTED` — set to the exact 40-character release SHA being approved, never `true`;
+- `STAGING_VISUAL_REVIEW_ACCEPTANCE_REFERENCE` — retained human review/approval reference for that SHA.
 
 Do not put passwords, access tokens or private keys into issues, chat or repository files.
 
