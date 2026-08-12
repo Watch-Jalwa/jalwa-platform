@@ -57,7 +57,8 @@ export async function expectNoHorizontalOverflow(page, label = "page") {
 
 export function watchRuntimeFailures(page, label = "page") {
   const failures = [];
-  const appOrigin = new URL(page.context()._options.baseURL || page.url() || "http://localhost").origin;
+  const baseUrl = (process.env.STAGING_BASE_URL ?? process.env.JALWA_BROWSER_BASE_URL ?? "http://localhost").trim();
+  const appOrigin = new URL(baseUrl).origin;
   page.on("pageerror", (error) => failures.push(`${label} page error: ${error.message}`));
   page.on("console", (message) => {
     if (message.type() === "error") failures.push(`${label} console error: ${message.text()}`);
