@@ -25,6 +25,7 @@ const paths = {
   playwrightHelper: "qa/playwright/helpers/staging.mjs",
   playwrightPublic: "qa/playwright/public.spec.mjs",
   playwrightAuth: "qa/playwright/auth.spec.mjs",
+  playwrightResponsive: "qa/playwright/responsive.spec.mjs",
   playwrightCustomer: "qa/playwright/customer.spec.mjs",
   playwrightStudio: "qa/playwright/studio.spec.mjs",
   playwrightMedia: "qa/playwright/media.spec.mjs",
@@ -131,6 +132,7 @@ test("reusable staging Playwright suite is syntactically valid and keeps sensiti
     paths.playwrightHelper,
     paths.playwrightPublic,
     paths.playwrightAuth,
+    paths.playwrightResponsive,
     paths.playwrightCustomer,
     paths.playwrightStudio,
     paths.playwrightMedia,
@@ -146,10 +148,22 @@ test("reusable staging Playwright suite is syntactically valid and keeps sensiti
   assert.match(config, /screenshot: "only-on-failure"/);
 });
 
-test("Playwright customer suite covers authentication, checkout, payment, subscription and mobile purchase", async () => {
-  const [auth, customer] = await Promise.all([read(paths.playwrightAuth), read(paths.playwrightCustomer)]);
+test("Playwright public suite covers release identity, auth request and required mobile widths", async () => {
+  const [publicSpec, auth, responsive] = await Promise.all([
+    read(paths.playwrightPublic),
+    read(paths.playwrightAuth),
+    read(paths.playwrightResponsive),
+  ]);
+  assert.match(publicSpec, /expectedReleaseSha/);
+  assert.match(publicSpec, /noindex/);
   assert.match(auth, /Check your email for the sign-in link/);
   assert.match(auth, /authenticatePage/);
+  assert.match(responsive, /\[360, 390\]/);
+  assert.match(responsive, /expectNoHorizontalOverflow/);
+});
+
+test("Playwright customer suite covers authentication, checkout, payment, subscription and mobile purchase", async () => {
+  const customer = await read(paths.playwrightCustomer);
   assert.match(customer, /anonymous checkout is denied/);
   assert.match(customer, /Promise\.all/);
   assert.match(customer, /AUTO-QA-/);
