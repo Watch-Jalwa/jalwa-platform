@@ -20,7 +20,8 @@ const mandatoryAreas = [
   "visual_regression",
 ];
 const allowedStatuses = new Set(["PASS", "FAIL", "BLOCKED", "N/A", "VISUAL REVIEW REQUIRED"]);
-const visualAccepted = process.env.VISUAL_REVIEW_ACCEPTED === "true";
+const releaseSha = (process.env.RELEASE_SHA ?? "").trim();
+const visualAcceptedSha = (process.env.VISUAL_REVIEW_ACCEPTED_SHA ?? "").trim();
 const visualAcceptanceReference = (process.env.VISUAL_REVIEW_ACCEPTANCE_REFERENCE ?? "").trim();
 
 function htmlEscape(value) {
@@ -57,12 +58,12 @@ for (const area of mandatoryAreas) areas.push(await readArea(area));
 
 for (const result of areas) {
   if (result.status === "VISUAL REVIEW REQUIRED") {
-    if (visualAccepted && visualAcceptanceReference) {
+    if (/^[0-9a-f]{40}$/.test(releaseSha) && visualAcceptedSha === releaseSha && visualAcceptanceReference) {
       result.status = "PASS";
-      result.summary = `${result.summary} Accepted by explicit visual review reference ${visualAcceptanceReference}.`;
+      result.summary = `${result.summary} Accepted for this exact release by visual review reference ${visualAcceptanceReference}.`;
     } else {
       result.status = "BLOCKED";
-      result.summary = `${result.summary} Explicit visual approval is required before UAT.`;
+      result.summary = `${result.summary} Explicit visual approval tied to this exact release SHA is required before UAT.`;
     }
   }
 }
@@ -76,7 +77,7 @@ const sumTests = (status) => areas.filter((item) => item.status === status).redu
 const report = {
   schema_version: 1,
   qa_run_id: process.env.QA_RUN_ID || null,
-  release_sha: process.env.RELEASE_SHA || null,
+  release_sha: releaseSha || null,
   deployment_pipeline_id: process.env.DEPLOYMENT_PIPELINE_ID || null,
   staging_url: process.env.STAGING_BASE_URL || null,
   generated_at: new Date().toISOString(),
