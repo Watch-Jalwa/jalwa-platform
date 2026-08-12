@@ -50,11 +50,24 @@ async function main() {
 
   const browser = await chromium.launch({ headless: true });
   try {
+    const anonymous = await browser.newContext({ baseURL: config.baseUrl });
+    const anonymousCheckout = await anonymous.request.post(`${config.baseUrl}/api/checkout`, { data: { priceId: price.id, idempotencyKey: `AUTO-QA-${qaRunId}-anonymous` } });
+    if (anonymousCheckout.status() !== 401) throw new Error(`Unauthenticated checkout returned HTTP ${anonymousCheckout.status()} instead of 401.`);
+    await anonymous.close();
+
     const desktop = await browser.newContext({ baseURL: config.baseUrl });
     const page = await desktop.newPage();
     await authenticatePage(page, config, user.email, "/pricing");
     await page.goto(`${config.baseUrl}/pricing`, { waitUntil: "networkidle" });
     if (!(await page.locator(".checkout-button").first().isVisible())) throw new Error("Premium checkout control is not visible to the authenticated QA customer.");
+
+    const missingPrice = await page.evaluate(async () => {
+      const response = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      return response.status;
+    });
+    if (missingPrice !== 400) throw new Error(`Missing-price checkout returned HTTP ${missingPrice} instead of 400.`);
+    const invalidPrice = await checkout(page, "00000000-0000-4000-8000-000000000000", `AUTO-QA-${qaRunId}-invalid-price`);
+    if (invalidPrice.status !== 400) throw new Error(`Invalid-price checkout returned HTTP ${invalidPrice.status} instead of 400.`);
 
     const idempotencyKey = `AUTO-QA-${qaRunId}-duplicate`;
     const [first, second] = await Promise.all([
@@ -91,10 +104,18 @@ async function main() {
     await authenticatePage(mobilePage, config, user.email, "/pricing");
     await mobilePage.goto(`${config.baseUrl}/pricing`, { waitUntil: "networkidle" });
     const mobileCheckout = await checkout(mobilePage, price.id, `AUTO-QA-${qaRunId}-mobile`);
-    if (mobileCheckout.status !== 200 || !mobileCheckout.body?.redirectUrl) throw new Error(`Mobile checkout creation failed with HTTP ${mobileCheckout.status}.`);
+    if (mobileCheckout.status !== 200 || !mobileCheckout.body?.redirectUrl || !mobileCheckout.body?.orderId) throw new Error(`Mobile checkout creation failed with HTTP ${mobileCheckout.status}.`);
     await mobilePage.goto(mobileCheckout.body.redirectUrl, { waitUntil: "networkidle" });
     if (!(await mobilePage.getByRole("button", { name: "Complete test payment" }).isVisible())) throw new Error("Mobile purchase journey did not reach the hosted mock checkout.");
     await mobilePage.screenshot({ path: path.join(evidenceDir, "customer-checkout-mobile.png"), fullPage: true });
+    await Promise.all([
+      mobilePage.waitForURL(/\/billing\/success\?order=/),
+      mobilePage.getByRole("button", { name: "Complete test payment" }).click(),
+    ]);
+    const mobilePaidResponse = await serviceFetch(config, `/rest/v1/checkout_orders?select=id,status,amount_minor,currency&id=eq.${encodeURIComponent(mobileCheckout.body.orderId)}`);
+    const [mobilePaidOrder] = mobilePaidResponse.ok ? await mobilePaidResponse.json() : [];
+    if (!mobilePaidOrder || mobilePaidOrder.status !== "paid") throw new Error("Mobile purchase did not reach authoritative paid state.");
+    if (Number(mobilePaidOrder.amount_minor) !== Number(price.amount_minor) || mobilePaidOrder.currency !== price.currency) throw new Error("Mobile paid order amount/currency differs from the authoritative price.");
     await mobile.close();
     await desktop.close();
 
@@ -103,17 +124,22 @@ async function main() {
       qa_run_id: qaRunId,
       supported_checkout: "authenticated-premium-subscription",
       provider: "mock",
+      negative_boundaries: ["unauthenticated checkout denied", "missing price denied", "invalid price denied"],
       duplicate_order_id: first.body.orderId,
       authoritative_amount_minor: Number(price.amount_minor),
       authoritative_currency: price.currency,
       payment_status: paidOrder.status,
       desktop_purchase: "PASS",
-      mobile_purchase_to_provider: "PASS",
+      mobile_purchase: "PASS",
       guest_cart_checkout: "N/A",
+      delivery: "N/A",
+      takeaway: "N/A",
+      product_cart: "N/A",
+      provider_states_not_supported_by_mock_adapter: ["pending", "cancel", "timeout"],
       recorded_at: new Date().toISOString(),
     };
     await writeFile(path.join(evidenceDir, "customer-evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
-    console.log("Authenticated Premium checkout, idempotency, authoritative pricing, mock payment, and mobile purchase path passed.");
+    console.log("Authenticated Premium checkout, negative auth/input boundaries, idempotency, authoritative pricing, mock payment, and full mobile purchase path passed.");
   } finally {
     await browser.close();
   }
