@@ -48,6 +48,11 @@ RUN npm run build --workspace @jalwa/web
 FROM node:22-alpine AS web
 WORKDIR /app
 ENV NODE_ENV=production HOME=/tmp
+ARG GIT_SHA=unknown
+ARG BUILD_RUN_ID=unknown
+LABEL org.opencontainers.image.source="https://github.com/Watch-Jalwa/jalwa-platform" \
+      org.opencontainers.image.revision="$GIT_SHA" \
+      com.watch-jalwa.build-run-id="$BUILD_RUN_ID"
 COPY --chown=node:node --from=builder /app/apps/web/.next/standalone ./
 COPY --chown=node:node --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 COPY --chown=node:node --from=builder /app/apps/web/public ./apps/web/public
@@ -64,8 +69,13 @@ CMD ["node", "apps/web/server.js"]
 FROM node:22-bookworm-slim AS worker
 WORKDIR /app
 ENV NODE_ENV=production HOME=/tmp
+ARG GIT_SHA=unknown
+ARG BUILD_RUN_ID=unknown
 ARG TARGETARCH
 ARG SHAKA_PACKAGER_VERSION=3.7.2
+LABEL org.opencontainers.image.source="https://github.com/Watch-Jalwa/jalwa-platform" \
+      org.opencontainers.image.revision="$GIT_SHA" \
+      com.watch-jalwa.build-run-id="$BUILD_RUN_ID"
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg && rm -rf /var/lib/apt/lists/* \
   && case "$TARGETARCH" in \
        amd64) binary_arch=x64; checksum=88b022b8cb12602ddb539972efd07a3496ea64f8662a484798c96e95afa41fd8 ;; \
