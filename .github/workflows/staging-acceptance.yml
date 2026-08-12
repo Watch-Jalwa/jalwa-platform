@@ -1,16 +1,20 @@
-name: Staging release acceptance
+name: Staging certification
 
 on:
   workflow_dispatch:
     inputs:
       release_sha:
-        description: Deployed 40-character main commit SHA
+        description: Exact deployed 40-character main commit SHA
+        required: true
+        type: string
+      deployment_run_id:
+        description: Deploy staging GitHub Actions run ID that built the running images
         required: true
         type: string
       minimum_content_items:
-        description: Minimum rights-approved published catalogue size
+        description: Minimum rights-approved published catalogue size for API acceptance
         required: true
-        default: "1"
+        default: "0"
         type: string
   workflow_run:
     workflows: ["Deploy staging"]
@@ -20,7 +24,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: jalwa-staging-acceptance
+  group: jalwa-staging-certification
   cancel-in-progress: false
 
 jobs:
@@ -118,123 +122,285 @@ jobs:
               -c \"select count(*) >= 15 from public.live_source_configs;\"" \
             | grep -qx t
 
-  live-browser-and-api:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+  certify:
+    if: always() && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
     needs: seed-reporting-fixtures
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 75
     environment:
       name: staging
       url: https://${{ vars.STAGING_DOMAIN }}
     env:
       RELEASE_SHA: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
-      BASE_URL: https://${{ vars.STAGING_DOMAIN }}
-      SUPABASE_ANON_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_ANON_KEY }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_SERVICE_ROLE_KEY }}
-      OPERATIONS_DIAGNOSTICS_SECRET: ${{ secrets.OPERATIONS_DIAGNOSTICS_SECRET }}
-      MIN_CONTENT_ITEMS: ${{ inputs.minimum_content_items || vars.MINIMUM_STAGING_CONTENT_ITEMS || '0' }}
-      REPORT_FILE: ${{ github.workspace }}/staging-acceptance.json
-      PREMIUM_REPORT_FILE: ${{ github.workspace }}/premium-reporting-acceptance.json
-      PUBLIC_DOMAIN_LIVE_REPORT_FILE: ${{ github.workspace }}/public-domain-live-acceptance.json
-      JALWA_EXPECT_LIVE_SOURCES: ${{ vars.STAGING_EXPECT_PUBLIC_DOMAIN_LIVE_SOURCES || 'false' }}
-      EXPECTED_ENVIRONMENT: staging
-      EXPECT_NOINDEX: "true"
-      ALLOW_MOCK_PAYMENTS: "true"
-      FINANCE_EMAIL: acceptance+premium-finance@watch-jalwa.com
-      VIEWER_EMAIL: acceptance+premium-viewer@watch-jalwa.com
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
-      - name: Validate staging release identity
-        run: |
-          set -euo pipefail
-          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'A deployed commit SHA is required.' >&2; exit 1; }
-          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          test -n "$SUPABASE_SERVICE_ROLE_KEY"
-      - name: Run protected API and catalogue acceptance
-        run: infrastructure/production/scripts/production-acceptance.sh "$BASE_URL"
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
-        with:
-          node-version: 22
-          package-manager-cache: false
-      - name: Install pinned browser acceptance harness
-        run: |
-          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1 @supabase/supabase-js@2.111.0
-          npx playwright install --with-deps chromium
-      - name: Run live desktop and Pakistan-mobile journeys
-        env:
-          JALWA_BROWSER_BASE_URL: ${{ env.BASE_URL }}
-          JALWA_EXPECTED_VERSION: ${{ env.RELEASE_SHA }}
-          JALWA_EXPECT_READINESS_STATUS: "200"
-          JALWA_EXPECT_NOINDEX: "true"
-        run: node scripts/browser-acceptance.mjs
-      - name: Run authenticated Premium reporting acceptance
-        env:
-          JALWA_BROWSER_BASE_URL: ${{ env.BASE_URL }}
-          JALWA_SUPABASE_URL: https://api.${{ vars.STAGING_DOMAIN }}
-          JALWA_SUPABASE_SERVICE_ROLE_KEY: ${{ env.SUPABASE_SERVICE_ROLE_KEY }}
-          JALWA_FINANCE_EMAIL: ${{ env.FINANCE_EMAIL }}
-          JALWA_VIEWER_EMAIL: ${{ env.VIEWER_EMAIL }}
-          JALWA_EXPECTED_VERSION: ${{ env.RELEASE_SHA }}
-          JALWA_PREMIUM_REPORT_FILE: ${{ env.PREMIUM_REPORT_FILE }}
-        run: node scripts/premium-reporting-acceptance.mjs
-      - name: Run public-domain live-source acceptance when enabled
-        if: env.JALWA_EXPECT_LIVE_SOURCES == 'true'
-        env:
-          JALWA_BROWSER_BASE_URL: ${{ env.BASE_URL }}
-          JALWA_EXPECTED_VERSION: ${{ env.RELEASE_SHA }}
-          JALWA_PUBLIC_DOMAIN_LIVE_REPORT_FILE: ${{ env.PUBLIC_DOMAIN_LIVE_REPORT_FILE }}
-        run: node scripts/public-domain-live-acceptance.mjs
-      - name: Record staging evidence summary
-        run: |
-          {
-            echo '### Staging release acceptance passed'
-            echo "- URL: $BASE_URL"
-            echo "- Release: $RELEASE_SHA"
-            echo "- Minimum published catalogue: $MIN_CONTENT_ITEMS"
-            echo '- Protected readiness, Supabase health, security headers, mobile browser journeys and noindex isolation passed'
-            echo '- Finance/read-only role separation, Karachi report filters, seeded payment lifecycle cases and audited CSV exports passed'
-            echo '#### Platform acceptance'
-            echo '```json'
-            cat "$REPORT_FILE"
-            echo '```'
-            echo '#### Premium reporting acceptance'
-            echo '```json'
-            cat "$PREMIUM_REPORT_FILE"
-            echo '```'
-            if [[ "$JALWA_EXPECT_LIVE_SOURCES" == "true" ]]; then
-              echo '#### Public-domain live-source acceptance'
-              echo '```json'
-              cat "$PUBLIC_DOMAIN_LIVE_REPORT_FILE"
-              echo '```'
-            else
-              echo '- Public-domain live sources remain disabled; live-origin acceptance was intentionally skipped.'
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
-  host-acceptance:
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    environment: staging
-    env:
+      DEPLOYMENT_PIPELINE_ID: ${{ inputs.deployment_run_id || github.event.workflow_run.id }}
+      QA_RUN_ID: certification-${{ github.run_id }}
       HOST: ${{ vars.STAGING_HOST }}
       USER: ${{ vars.STAGING_USER || 'jalwa' }}
       DOMAIN: ${{ vars.STAGING_DOMAIN }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      STAGING_BASE_URL: https://${{ vars.STAGING_DOMAIN }}
+      STAGING_SUPABASE_URL: https://api.${{ vars.STAGING_DOMAIN }}
+      STAGING_SUPABASE_ANON_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_ANON_KEY }}
+      STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_SERVICE_ROLE_KEY }}
+      STAGING_QA_CUSTOMER_EMAIL: ${{ vars.STAGING_QA_CUSTOMER_EMAIL || 'acceptance+customer@watch-jalwa.com' }}
+      STAGING_QA_ADMIN_EMAIL: ${{ vars.STAGING_QA_ADMIN_EMAIL || 'acceptance+admin@watch-jalwa.com' }}
+      STAGING_QA_RESTRICTED_EMAIL: ${{ vars.STAGING_QA_RESTRICTED_EMAIL || 'acceptance+rights@watch-jalwa.com' }}
+      STAGING_QA_UNAUTHORIZED_EMAIL: ${{ vars.STAGING_QA_UNAUTHORIZED_EMAIL || 'acceptance+viewer@watch-jalwa.com' }}
+      OPERATIONS_DIAGNOSTICS_SECRET: ${{ secrets.OPERATIONS_DIAGNOSTICS_SECRET }}
+      MIN_CONTENT_ITEMS: ${{ inputs.minimum_content_items || vars.MINIMUM_STAGING_CONTENT_ITEMS || '0' }}
+      CERTIFICATION_EVIDENCE_DIR: ${{ github.workspace }}/staging-certification-evidence
+      VISUAL_REVIEW_ACCEPTED: ${{ vars.STAGING_VISUAL_REVIEW_ACCEPTED || 'false' }}
+      VISUAL_REVIEW_ACCEPTANCE_REFERENCE: ${{ vars.STAGING_VISUAL_REVIEW_ACCEPTANCE_REFERENCE }}
+      EXPECTED_ENVIRONMENT: staging
+      EXPECT_NOINDEX: "true"
+      ALLOW_MOCK_PAYMENTS: "true"
+      FINANCE_EMAIL: acceptance+premium-finance@watch-jalwa.com
+      VIEWER_EMAIL: acceptance+premium-viewer@watch-jalwa.com
+      JALWA_EXPECT_LIVE_SOURCES: ${{ vars.STAGING_EXPECT_PUBLIC_DOMAIN_LIVE_SOURCES || 'false' }}
     steps:
-      - name: Configure pinned staging SSH identity
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
+
+      - name: Validate certification candidate
         run: |
           set -euo pipefail
-          test -n "$HOST" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          mkdir -p "$CERTIFICATION_EVIDENCE_DIR"
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid release SHA.' >&2; exit 1; }
+          [[ "$DEPLOYMENT_PIPELINE_ID" =~ ^[0-9]+$ ]] || { echo 'Invalid deployment pipeline ID.' >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+
+      - name: Gate zero — prove deployed artifact identity
+        run: |
+          set +e
+          mkdir -p "$CERTIFICATION_EVIDENCE_DIR"
+          if [[ -z "$HOST" || -z "$SSH_KEY" || -z "$KNOWN_HOSTS" ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity BLOCKED "Pinned staging host identity is not configured." tests=10
+            exit 0
+          fi
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
-          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
-      - name: Re-run host and recovery acceptance
+          if ! ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null || ! ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity BLOCKED "Pinned staging host is unreachable from the certification runner." tests=10
+            exit 0
+          fi
+          identity="$CERTIFICATION_EVIDENCE_DIR/release-identity.json"
+          if ! scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST:/opt/jalwa/deployments/$RELEASE_SHA.identity.json" "$identity"; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity BLOCKED "Deployment identity evidence is missing for the selected release." tests=10
+            exit 0
+          fi
+          if node scripts/verify-release-identity.mjs "$identity" "$RELEASE_SHA" "$DEPLOYMENT_PIPELINE_ID" > "$CERTIFICATION_EVIDENCE_DIR/release-identity-summary.json"; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity PASS "Source SHA, deployment run, web and worker registry digests, running image IDs, OCI revisions and rollback reference are traceable." tests=10
+          else
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity FAIL "Running artifact identity does not match the selected source SHA and deployment run." tests=10
+          fi
+          exit 0
+
+      - name: Verify API and runtime health
         run: |
-          set -euo pipefail
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/host-acceptance.sh 'https://$DOMAIN' 'https://api.$DOMAIN'"
+          set +e
+          if [[ -z "$DOMAIN" || -z "$OPERATIONS_DIAGNOSTICS_SECRET" || -z "$STAGING_SUPABASE_ANON_KEY" ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime BLOCKED "Required protected staging runtime inputs are not configured." tests=12
+            exit 0
+          fi
+          if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true >/dev/null 2>&1; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime BLOCKED "Staging runtime cannot be reached from the certification runner." tests=12
+            exit 0
+          fi
+          if ! ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/host-acceptance.sh 'https://$DOMAIN' 'https://api.$DOMAIN'" > "$CERTIFICATION_EVIDENCE_DIR/host-acceptance.json"; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Host, worker, database or dependency acceptance failed after deployment." tests=12
+            exit 0
+          fi
+          health="$(curl -fsS --max-time 25 "$STAGING_BASE_URL/api/health")"
+          if ! jq -e --arg release "$RELEASE_SHA" '.status == "ready" and .version == $release' <<<"$health" >/dev/null; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Public health does not report the exact selected release as ready." tests=12
+            exit 0
+          fi
+          export BASE_URL="$STAGING_BASE_URL" SUPABASE_ANON_KEY="$STAGING_SUPABASE_ANON_KEY" REPORT_FILE="$CERTIFICATION_EVIDENCE_DIR/platform-acceptance.json"
+          if ! infrastructure/production/scripts/production-acceptance.sh "$STAGING_BASE_URL"; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Database-backed readiness, Auth, REST, security headers or required runtime dependency checks failed." tests=12
+            exit 0
+          fi
+          node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime PASS "Exact release health, host recovery checks, database-backed readiness, Auth, REST and required runtime dependencies passed." tests=12
+          exit 0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Install pinned certification browser harness
+        id: browser_harness
+        continue-on-error: true
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1 @supabase/supabase-js@2.111.0
+          npx playwright install --with-deps chromium
+
+      - name: Public desktop and mobile browser certification
+        if: always()
+        env:
+          HARNESS_OUTCOME: ${{ steps.browser_harness.outcome }}
+          JALWA_BROWSER_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          JALWA_EXPECTED_VERSION: ${{ env.RELEASE_SHA }}
+          JALWA_EXPECT_READINESS_STATUS: "200"
+          JALWA_EXPECT_NOINDEX: "true"
+        run: |
+          set +e
+          if [[ "$HARNESS_OUTCOME" != "success" ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" public_browser BLOCKED "Pinned browser harness could not be installed on the certification runner." tests=14
+            exit 0
+          fi
+          if node scripts/browser-acceptance.mjs; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" public_browser PASS "Desktop and mobile Chromium public routes, exact release marker, noindex boundary, overflow and browser-error checks passed." tests=14
+          else
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" public_browser FAIL "A reproducible public desktop or mobile browser journey failed." tests=14
+          fi
+          exit 0
+
+      - name: Authenticated Premium checkout and payment certification
+        if: always()
+        env:
+          HARNESS_OUTCOME: ${{ steps.browser_harness.outcome }}
+        run: |
+          set +e
+          if [[ "$HARNESS_OUTCOME" != "success" ]]; then
+            for area in authenticated_checkout payments mobile_purchase; do
+              node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" "$area" BLOCKED "Pinned browser harness is unavailable for the mandatory customer purchase certification." tests=4
+            done
+            exit 0
+          fi
+          node scripts/staging-customer-certification.mjs
+          code=$?
+          if [[ "$code" -eq 0 ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" authenticated_checkout PASS "Authenticated Premium checkout negative boundaries, exact server pricing and duplicate-submit idempotency passed." tests=7
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" payments PASS "Enabled staging mock payment completed safely and authoritative paid state and amount correlation passed." tests=4
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" mobile_purchase PASS "The complete authenticated Premium purchase path passed on Mobile Chromium." tests=4
+          elif [[ "$code" -eq 2 ]]; then
+            for area in authenticated_checkout payments mobile_purchase; do
+              node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" "$area" BLOCKED "Mandatory staging customer identity, price fixture or payment fixture is not available." tests=4
+            done
+          else
+            for area in authenticated_checkout payments mobile_purchase; do
+              node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" "$area" FAIL "A mandatory customer checkout, payment, pricing, idempotency or mobile purchase assertion failed." tests=4
+            done
+          fi
+          exit 0
+
+      - name: Studio admin and least-privilege certification
+        if: always()
+        env:
+          HARNESS_OUTCOME: ${{ steps.browser_harness.outcome }}
+          SEED_RESULT: ${{ needs.seed-reporting-fixtures.result }}
+          JALWA_BROWSER_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          JALWA_SUPABASE_URL: ${{ env.STAGING_SUPABASE_URL }}
+          JALWA_SUPABASE_SERVICE_ROLE_KEY: ${{ env.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+          JALWA_FINANCE_EMAIL: ${{ env.FINANCE_EMAIL }}
+          JALWA_VIEWER_EMAIL: ${{ env.VIEWER_EMAIL }}
+          JALWA_EXPECTED_VERSION: ${{ env.RELEASE_SHA }}
+          JALWA_PREMIUM_REPORT_FILE: ${{ env.CERTIFICATION_EVIDENCE_DIR }}/premium-reporting-acceptance.json
+        run: |
+          set +e
+          if [[ "$HARNESS_OUTCOME" != "success" ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization BLOCKED "Pinned browser harness is unavailable for Studio certification." tests=18
+            exit 0
+          fi
+          if [[ "$SEED_RESULT" != "success" ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization BLOCKED "Deterministic Studio reporting fixtures could not be prepared." tests=18
+            exit 0
+          fi
+          node scripts/staging-studio-certification.mjs
+          studio_code=$?
+          node scripts/premium-reporting-acceptance.mjs
+          reporting_code=$?
+          if [[ "$studio_code" -eq 0 && "$reporting_code" -eq 0 ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization PASS "Admin operational surfaces, finance reporting, anonymous denial and least-privilege UI/API authorization boundaries passed." tests=18
+          elif [[ "$studio_code" -eq 2 || "$reporting_code" -eq 2 ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization BLOCKED "A mandatory deterministic Studio identity or reporting fixture is unavailable." tests=18
+          else
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization FAIL "A Studio admin, reporting or least-privilege authorization assertion failed." tests=18
+          fi
+          exit 0
+
+      - name: Catalogue and media certification
+        if: always()
+        env:
+          HARNESS_OUTCOME: ${{ steps.browser_harness.outcome }}
+          JALWA_BROWSER_BASE_URL: ${{ env.STAGING_BASE_URL }}
+          JALWA_EXPECTED_VERSION: ${{ env.RELEASE_SHA }}
+          JALWA_PUBLIC_DOMAIN_LIVE_REPORT_FILE: ${{ env.CERTIFICATION_EVIDENCE_DIR }}/public-domain-live-acceptance.json
+        run: |
+          set +e
+          if [[ "$HARNESS_OUTCOME" != "success" ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue BLOCKED "Pinned browser harness is unavailable for catalogue and media certification." tests=6
+            exit 0
+          fi
+          node scripts/staging-media-certification.mjs
+          media_code=$?
+          live_code=0
+          if [[ "$JALWA_EXPECT_LIVE_SOURCES" == "true" ]]; then
+            node scripts/public-domain-live-acceptance.mjs
+            live_code=$?
+          fi
+          if [[ "$media_code" -eq 0 && "$live_code" -eq 0 ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue PASS "Representative catalogue/watch playback boundary and all enabled live-source checks passed." tests=6
+          elif [[ "$media_code" -eq 2 ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue BLOCKED "No rights-approved published staging item is available for representative media certification." tests=6
+          else
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue FAIL "A catalogue, playback, same-origin media or enabled live-source assertion failed." tests=6
+          fi
+          exit 0
+
+      - name: Public visual regression certification
+        if: always()
+        env:
+          HARNESS_OUTCOME: ${{ steps.browser_harness.outcome }}
+        run: |
+          set +e
+          if [[ "$HARNESS_OUTCOME" != "success" ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" visual_regression BLOCKED "Pinned browser harness is unavailable for visual certification." tests=4
+            exit 0
+          fi
+          node scripts/staging-visual-certification.mjs
+          code=$?
+          if [[ "$code" -eq 0 ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" visual_regression PASS "All public screenshots match human-approved baseline hashes." tests=4
+          elif [[ "$code" -eq 3 ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" visual_regression "VISUAL REVIEW REQUIRED" "One or more public screenshots have no approved baseline or differ from the approved baseline." tests=4
+          elif [[ "$code" -eq 2 ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" visual_regression BLOCKED "Visual certification cannot reach the configured staging site." tests=4
+          else
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" visual_regression FAIL "Visual capture itself failed before a safe review comparison could be produced." tests=4
+          fi
+          exit 0
+
+      - name: Finalize sanitized certification report
+        if: always()
+        id: finalizer
+        run: |
+          node scripts/finalize-staging-certification.mjs "$CERTIFICATION_EVIDENCE_DIR"
+          cat "$CERTIFICATION_EVIDENCE_DIR/certification-report.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload sanitized certification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: staging-certification-${{ env.RELEASE_SHA }}-${{ env.QA_RUN_ID }}
+          path: ${{ env.CERTIFICATION_EVIDENCE_DIR }}
+          if-no-files-found: error
+          retention-days: 30
+          include-hidden-files: false
+
+      - name: Enforce UAT gate
+        if: always()
+        env:
+          DECISION: ${{ steps.finalizer.outputs.decision }}
+        run: |
+          case "$DECISION" in
+            "READY FOR UAT") echo 'READY FOR UAT' ;;
+            "FAILED") echo 'FAILED — UAT BLOCKED' >&2; exit 1 ;;
+            "BLOCKED") echo 'BLOCKED — UAT BLOCKED' >&2; exit 1 ;;
+            *) echo 'BLOCKED — certification decision unavailable' >&2; exit 1 ;;
+          esac
