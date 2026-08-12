@@ -22,6 +22,12 @@
     "test:release": "bash scripts/test-production-release.sh",
     "test:container": "bash scripts/test-production-container.sh",
     "test:backup-encryption": "bash scripts/test-backup-encryption.sh",
+    "test:staging:playwright": "playwright test --config=playwright.staging.config.mjs",
+    "test:staging:playwright:public": "playwright test --config=playwright.staging.config.mjs qa/playwright/public.spec.mjs qa/playwright/auth.spec.mjs",
+    "test:staging:playwright:customer": "playwright test --config=playwright.staging.config.mjs qa/playwright/customer.spec.mjs",
+    "test:staging:playwright:studio": "playwright test --config=playwright.staging.config.mjs qa/playwright/studio.spec.mjs",
+    "test:staging:playwright:media": "playwright test --config=playwright.staging.config.mjs qa/playwright/media.spec.mjs",
+    "test:staging:playwright:visual": "playwright test --config=playwright.staging.config.mjs qa/playwright/visual.spec.mjs",
     "harvest:alpha": "node scripts/harvest-alpha-open-content.mjs",
     "ci": "npm run lint && npm run typecheck && npm run test && npm run test:ai && npm run test:release && npm run test:backup-encryption && npm run build"
   }
