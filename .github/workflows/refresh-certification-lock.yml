@@ -6,6 +6,7 @@ on:
       - chore/permanent-staging-certification
     paths:
       - package.json
+      - .github/workflows/refresh-certification-lock.yml
 
 permissions:
   contents: write
@@ -27,14 +28,17 @@ jobs:
           node-version: 22
           package-manager-cache: false
       - name: Refresh exact lockfile from declared security overrides
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+        run: npm update postcss nanoid --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Verify patched transitive versions and production audit
         run: |
           set -euo pipefail
           node <<'NODE'
           const lock = require('./package-lock.json')
-          if (lock.packages?.['node_modules/postcss']?.version !== '8.5.24') throw new Error('PostCSS lock version is not 8.5.24')
-          if (lock.packages?.['node_modules/nanoid']?.version !== '3.3.17') throw new Error('Nano ID lock version is not 3.3.17')
+          const postcss = lock.packages?.['node_modules/postcss']?.version
+          const nanoid = lock.packages?.['node_modules/nanoid']?.version
+          console.log(`postcss=${postcss} nanoid=${nanoid}`)
+          if (postcss !== '8.5.24') throw new Error(`PostCSS lock version is ${postcss}, expected 8.5.24`)
+          if (nanoid !== '3.3.17') throw new Error(`Nano ID lock version is ${nanoid}, expected 3.3.17`)
           NODE
           npm ci --ignore-scripts --no-audit --no-fund
           npm audit --omit=dev --audit-level=high
