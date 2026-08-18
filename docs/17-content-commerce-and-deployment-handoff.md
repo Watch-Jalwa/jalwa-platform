@@ -1,111 +1,124 @@
 # Content, Commerce and Deployment Handoff
 
-This is the current handoff after repository and frontend readiness. It separates backend deployment, media infrastructure, governed content onboarding, AI acceptance, internal-alpha activation and later commerce activation so one workstream cannot silently authorize another.
+This is the current handoff for the owner-controlled staging and production path. It separates self-hosted deployment, media infrastructure, governed content onboarding, AI acceptance, internal-alpha activation and later commerce activation so one workstream cannot silently authorize another.
 
 ## Release identity
 
-- Internal-alpha application baseline: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430` (PRs #60–#62).
-- Organization audit and maintenance: PRs #63–#67.
-- Current frontend release: read the exact SHA from `/api/health` and the browser `data-release` marker; both must match.
-- Vercel state: READY.
-- Current Vercel mode: noindex frontend preview until transactional backend values are connected.
-- Repository implementation: complete.
-- Transactional backend deployment: pending.
+- Repository implementation: staging candidate is represented by the exact reviewed/green `main` SHA selected for deployment.
+- Current release identity is always read from `/api/health`, the browser release marker and captured running-container evidence; mutable documentation is not an authority for a deployed SHA.
+- Supported deployment target: owner-controlled Linux servers using SSH, Docker/Compose and immutable GHCR images.
+- PostgreSQL is the source-of-truth database; self-hosted Supabase provides Auth and REST/API services around PostgreSQL.
+- Vercel is not part of the required staging or production release path.
+- Transactional staging deployment/certification: pending owner-controlled host configuration and protected credentials.
 - Internal-alpha activation: disabled.
-- Governed live catalogue: installed in code/database migrations but disabled.
-- AI development baseline: versioned prompts/evals and deterministic checks implemented; live exact-configuration evaluation pending staging.
+- Governed live catalogue: disabled until its protected acceptance process succeeds.
+- AI development baseline: versioned prompts/evals and deterministic checks implemented; live exact-configuration evaluation remains a later staging gate.
 
-No unrelated feature development should begin before backend deployment and manual integration testing. Development resumes from reproduced defects and approved follow-up scope.
+No unrelated feature development should begin before staging deployment/certification. Development resumes from reproduced integration/certification defects and approved follow-up scope.
 
-## Workstream 1 — Configure isolated staging
+## Workstream 1 — Prepare isolated self-hosted staging
 
-### Required owner inputs
+The definitive environment-variable and credential ownership list is [docs/28-self-hosted-staging-environment.md](28-self-hosted-staging-environment.md).
 
-- DigitalOcean account, region and restricted administrator CIDR;
-- staging domain and DNS control;
-- SSH keypair and independently verified Ed25519 host fingerprint;
-- GHCR deployment credentials;
-- generated self-hosted Supabase/PostgreSQL secrets;
-- Cloudflare account, isolated R2 buckets and media-signing values;
-- SMTP, AI-provider, observability and application-operation secrets;
-- age backup identity;
-- staging mock-payment secret;
-- internal tester IDs and named product/operations/rights/security/incident owners.
+### DevOps can complete before PM credentials arrive
 
-### Required AWS inputs when the managed media path is selected
+- prepare the Linux host, Docker Engine and Docker Compose;
+- create the dedicated non-root deployment user (`jalwa` by default);
+- create `/opt/jalwa/{scripts,systemd,migrations,supabase,backups/postgres,operations,secrets,deployments}` with correct ownership;
+- configure firewall/restricted SSH access and system updates;
+- prepare persistent storage for PostgreSQL/Supabase and backups;
+- generate the SSH deployment key and independently capture the server host key;
+- generate the self-hosted PostgreSQL/Supabase internal secrets listed in `docs/28-self-hosted-staging-environment.md`;
+- prepare DNS/TLS records once the staging domain is known;
+- validate server capacity for web, worker, PostgreSQL, Supabase Auth/REST and FFmpeg processing.
 
-- AWS account and region;
-- environment-scoped GitHub OIDC role;
-- encrypted Terraform state backend and locking;
-- staging media domain and certificate/DNS control;
-- CloudFront signing key pair;
-- media-control and Supabase callback secrets;
-- budget destination and monthly limit;
-- KMS/log-retention policy.
+### Owner / project-manager inputs
+
+The owner/PM supplies or authorizes the external-service and QA values listed in `docs/28-self-hosted-staging-environment.md`, including the staging domain, GHCR deploy access, Cloudflare/R2, SMTP, AI/observability values and synthetic QA identities where required.
+
+No real secrets belong in repository files, issues, chat or WhatsApp. Store them in the protected GitHub `staging` environment or the approved server-side secret location.
 
 ### Exit evidence
 
-- protected GitHub `staging` environment contains only dedicated staging values;
-- all required values are non-example and independently verified;
-- no production secret or bucket is reused;
+- owner-controlled staging host is reachable over pinned SSH;
+- protected GitHub `staging` environment contains dedicated staging values only;
+- generated self-hosted PostgreSQL/Supabase values are internally consistent;
+- no production credential, bucket or database is reused;
+- DNS/TLS is valid for customer and API endpoints;
 - named deployment approver and stop-activation owner are recorded.
 
-## Workstream 2 — Deploy the transactional backend
+## Workstream 2 — Deploy the transactional stack
 
-1. Run **Bootstrap staging** when infrastructure is absent.
-2. Verify the host address and SSH fingerprint outside the workflow.
-3. Run **Deploy staging** from the exact green `main` SHA selected for acceptance.
-4. Verify web, worker, proxy, PostgreSQL, Auth and REST health.
-5. Verify migration inventory and background-job readiness.
-6. Retain deployment manifest and exact readiness SHA.
-7. Verify pre-migration and post-deployment encrypted backups.
-8. Run and retain the restore drill.
-9. Exercise the tested transactional rollback path.
-10. Run zero-content staging browser acceptance.
+The existing **Deploy staging** workflow already targets a generic SSH/Docker host; it does not require Vercel or DigitalOcean provisioning.
 
-The deployment is incomplete when the frontend is reachable but the worker, database, Auth, REST, backups or readiness evidence are missing.
+1. Confirm the server prerequisite work above is complete.
+2. Independently verify the host address and SSH fingerprint outside the workflow.
+3. Merge the release-quality candidate only after repository checks and explicit owner approval.
+4. Run **Deploy staging** from the exact green `main` SHA selected for acceptance.
+5. Build/push immutable web and worker GHCR images for that SHA.
+6. Write the protected Jalwa/Supabase runtime environments on the server.
+7. Prepare self-hosted Supabase/PostgreSQL and apply migrations.
+8. Deploy web, worker and reverse-proxy services transactionally.
+9. Capture exact running container IDs, local image IDs, GHCR digests, OCI revision/build-run labels and previous rollback release.
+10. Verify web, worker, PostgreSQL, Auth and REST health.
+11. Retain pre-migration and post-deployment encrypted backups and run the restore drill.
+12. Exercise/retain the tested rollback path and host acceptance evidence.
 
-## Workstream 3 — Select and validate the media backend
+The deployment is incomplete when the site is merely reachable but the worker, PostgreSQL, Auth, REST, exact-SHA identity, backup/restore or rollback evidence is missing.
+
+## Workstream 3 — Run permanent automated staging certification
+
+After a successful **Deploy staging** run, **Staging certification** starts automatically for the exact deployed release.
+
+It must prove:
+
+- source SHA → deployment run → immutable registry digest → running image ID → OCI revision;
+- database-backed readiness, Auth, REST, security headers and runtime dependencies;
+- Playwright public pages, user-facing magic-link request boundary and 360/390px responsive behavior;
+- authenticated Premium checkout negative paths, authoritative price/currency and duplicate-submit idempotency;
+- isolated mock payment → authoritative `succeeded` order → active subscription → exact entitlements;
+- full Mobile Chromium Premium purchase;
+- Studio/admin authorization, rights-reviewer least privilege, viewer denial and Finance reporting/export audit;
+- representative catalogue/watch/media boundary and enabled governed live-source behavior;
+- public visual-regression evidence.
+
+The reusable specs in `qa/playwright/` are now directly invoked for the public/Auth/responsive, customer/payment, Studio/Finance and catalogue/media browser gates. Their HTML/JUnit/failure evidence is retained in the sanitized certification artifact.
+
+Missing required infrastructure/configuration/fixtures is `BLOCKED`. A reproducible product/security/business assertion failure is `FAILED`. Only a complete accepted candidate can become `READY FOR UAT`.
+
+The first real visual run intentionally requires human review because the baseline manifest starts empty. Any visual acceptance must be bound to the exact release SHA; CI never self-approves a visual change.
+
+## Workstream 4 — Select and validate the media backend
 
 ### Safe first option
 
-Use the existing path:
+Use the existing staging path:
 
 ```text
 MEDIA_BACKEND=r2
 TRANSCODE_BACKEND=ffmpeg
 ```
 
-This is acceptable for the first staging integration cycle when R2 credentials and worker compute are ready.
+This is the supported first staging integration cycle when isolated R2 credentials and worker compute are ready.
 
 ### Managed AWS option
 
-1. Run **Apply AWS media plane** with `apply=false`.
-2. Review the exact Terraform plan and cost boundary.
-3. Apply through the protected staging environment.
-4. Verify private S3 access, SQS/DLQ, MediaConvert, CloudFront OAC, signed cookies, alarms and budgets.
-5. Run **Set media backend** using `backend=aws`.
-6. Verify upload, processing, completion callback, HLS playback and rollback to R2.
+The AWS path remains optional and separately protected. If selected later:
 
-Do not create long-lived AWS keys on the application host. Use the implemented OIDC/HMAC/signing boundaries.
+1. run the AWS media plan without apply;
+2. review the exact Terraform plan/cost boundary;
+3. apply only through the protected staging environment;
+4. verify private S3 access, SQS/DLQ, MediaConvert, CloudFront OAC, signing, alarms and budgets;
+5. switch the media backend through the protected control;
+6. verify upload, processing, completion callback, HLS playback and rollback to R2.
 
-## Workstream 4 — Connect the Vercel frontend
-
-After the backend is healthy:
-
-1. configure the Vercel environment variables for the selected backend URL and public keys;
-2. keep service-role, database, media-control, AI-provider and signing secrets server-side only;
-3. redeploy the frontend;
-4. verify `/api/health` and browser `data-release` show the exact Vercel deployment SHA;
-5. verify backend readiness and application release evidence point to the intended release family;
-6. confirm the preview banner/fallback catalogue no longer hides a missing backend connection;
-7. keep noindex and internal-alpha restrictions active.
+Do not create long-lived AWS application-host keys or silently change media backend during the initial staging certification.
 
 ## Workstream 5 — Install governed source records
 
 ### Alpha source register
 
-Install the 151 approved discovery lanes from `content/alpha-approved-sources.json`.
+Install the approved discovery lanes from `content/alpha-approved-sources.json` when the content acceptance phase begins.
 
 - Source-level approval permits metadata discovery only.
 - It does not authorize an individual file for download, adaptation, monetisation or publication.
@@ -114,156 +127,63 @@ Install the 151 approved discovery lanes from `content/alpha-approved-sources.js
 
 ### Live-source inventory
 
-Install the 52 governed source records representing 46 user-facing live entries.
+Install governed live-source records disabled and unpublished.
 
-- Keep every source disabled and unpublished at installation.
 - Preserve official-embed, secured-current-image and official-link-only delivery boundaries.
 - Do not restream, record or automatically upgrade link-only sources.
+- Activation remains a separate protected rights/observation gate.
 
-## Workstream 6 — Build the first 50-item internal-alpha catalogue
+## Workstream 6 — Build the first internal-alpha catalogue
 
 Use metadata harvesting to create candidates, then approve only items that pass the complete item-level workflow.
 
-Recommended mix:
+Every published self-hosted item must retain the required source, licence/evidence, attribution, territory/monetisation/expiry, privacy/trademark, media-checksum, editorial, rights and takedown records. No metadata import may publish automatically.
 
-- 30 short-form items;
-- 10 medium-form items;
-- 5 long-form items;
-- 5 audio/story or provider-linked items.
+A rights-approved published staging item is required for representative media Playwright certification. If none exists, the certification result is `BLOCKED`, never PASS.
 
-Every item must retain:
+## Workstream 7 — Human UAT
 
-- canonical source URL and source-lane revision;
-- creator/publisher;
-- exact licence and licence URL or public-domain basis;
-- evidence snapshot/hash and review date;
-- attribution and modification notice;
-- territory, monetisation and expiry decisions;
-- third-party music, performer, privacy and trademark review;
-- media checksum and processing outputs;
-- editorial, rights and takedown owners;
-- explicit availability state and audit history.
+Human UAT begins **only after automated certification reports `READY FOR UAT`**.
 
-No metadata import may publish automatically. Stock libraries remain production ingredients, not unchanged catalogue programmes.
+Human testing focuses on what automated certification cannot fully approve: UX/usability, copy/content, visual quality, exploratory behavior, business acceptance and representative real-device experience.
 
-## Workstream 7 — Internal-alpha acceptance
+Any reproducible defect found during UAT should gain a permanent regression test when it can be automated safely, then the corrected exact release must be re-certified.
 
-### Platform journeys
+## Workstream 8 — Internal-alpha/live/AI acceptance
 
-- signup, verification, login, session renewal and password reset;
-- profiles, devices, tester grant and tester revocation;
-- Studio access and capability denial;
-- candidate review, content promotion and publication;
-- upload, processing, retry and DLQ recovery;
-- search, feeds, collections, Shorts and watch pages;
-- HLS adaptation and MP4 fallback;
-- captions, keyboard, reduced-motion and low-data behavior;
-- account export/deletion and protected diagnostics.
+These are later protected gates, not prerequisites for merely proving the staging platform itself unless the corresponding feature is enabled for the candidate.
 
-### Rights and takedown journeys
+- catalogue/content acceptance follows item-level rights rules;
+- governed live sources remain disabled until rights/health/observation approval;
+- Ask Jalwa remains disabled until exact prompt/model/provider/retrieval staging evaluation and emergency-disable evidence exist;
+- invite-only internal alpha is enabled only through its protected exact-SHA workflow.
 
-- source disable removes all child content from discovery and blocks new playback;
-- item disable affects only that item;
-- rights hold cancels/blocks processing and playback;
-- rights expiry fails closed;
-- urgent manifest/poster invalidation is exercised;
-- restore requires current rights approval and explicit child restoration;
-- attribution and evidence remain available to operators.
+## Workstream 9 — Production promotion and old-production retirement
 
-### Infrastructure journeys
+Production is never authorized automatically by staging certification or human UAT.
 
-- raw storage is private;
-- signed CloudFront/R2 playback succeeds and expires as designed;
-- queue retries and DLQ replay work;
-- MediaConvert or FFmpeg failure is visible and recoverable;
-- backup and restore drill pass;
-- rollback returns to the previous media/backend state;
-- monitoring, budget and incident alerts reach the named owners.
+After the user/owner explicitly approves production:
 
-### AI journeys
+1. identify the exact staging-tested/UAT-approved Git SHA;
+2. retain its web/worker immutable GHCR digests and staging certification artifact;
+3. take/verify the required production backup and rollback reference;
+4. promote the **same tested immutable artifacts** to the owner-controlled production server rather than rebuilding a different release;
+5. configure production-only secrets separately from staging;
+6. run non-destructive production health/smoke checks and verify exact release identity;
+7. keep rollback immediately available during the cutover observation window;
+8. retire the old production environment only after the replacement is verified healthy.
 
-- `npm run test:ai` passes for the candidate;
-- exact prompt, model, provider, moderation and eval revisions are recorded;
-- catalogue citations and insufficient-context behaviour are correct;
-- Urdu and Roman Urdu quality are accepted;
-- source-injected instructions do not override the prompt policy;
-- private/unpublished records are not leaked;
-- farming, religious, health, legal and financial limitations behave conservatively;
-- quota, provider timeout/failure and emergency disablement are exercised;
-- latency, tokens and cost are retained for the staging run.
+A poor-performing or obsolete production environment may be removed after successful replacement verification; it must not be destroyed before the tested replacement and rollback path are proven.
 
-### Device acceptance
+## Commerce remains separate
 
-- Android Chrome;
-- iPhone Safari;
-- desktop Chrome/Chromium;
-- 360–390px mobile layouts;
-- constrained network and interrupted playback;
-- PWA installation and service-worker behavior.
+Staging uses the isolated mock payment provider. Internal alpha does not activate live customer billing.
 
-## Workstream 8 — Complete live-source observation
-
-- run provider/source health and the 46-entry mobile suite;
-- verify all 22 official-link-only pages have no iframe;
-- verify representative official-player and current-image routes;
-- exercise stale, blocked, off-air, degraded and emergency-unpublish states;
-- retain seven continuous days of staging health evidence;
-- recheck terms, attribution and review deadlines before activation.
-
-## Workstream 9 — Activate invite-only internal alpha
-
-Use **Set internal alpha state** only after all preceding evidence exists.
-
-Enablement must verify:
-
-- exact deployed `main` SHA;
-- healthy backend and release correlation;
-- all required source approvals are current;
-- at least 50 published, playable and explicitly available items;
-- no rights holds or expired evidence;
-- at least one active tester grant;
-- retained platform, device, AI and operational acceptance artifacts;
-- named sign-off and stop-activation authority.
-
-Failed activation must roll back to disabled/invite-only. Do not enable through direct database edits or ad-hoc environment changes.
-
-## Workstream 10 — Team manual testing and development restart
-
-The project manager should return:
-
-- staging URL;
-- backend and frontend deployed SHAs;
-- infrastructure/workflow run references;
-- 50-item inventory and rights report;
-- seven-day live-source evidence;
-- device/browser and AI-evaluation results;
-- security, backup, rollback and takedown results;
-- known issues with reproduction steps and severity;
-- signed alpha go/no-go decision.
-
-After that handoff:
-
-1. fix verified integration defects;
-2. stabilize alpha operations and analytics;
-3. prioritize the next product/AI phase from actual tester evidence;
-4. create scoped issues with prompt/model/provider/eval impact where relevant;
-5. avoid reopening historical implementation PRs.
-
-## Commerce and public production remain separate
-
-Internal alpha does not activate live customer billing or constitute a public launch.
-
-Before commerce or general production:
-
-- confirm merchant entity, settlement, pricing, tax/receipt and refund/cancellation policy;
-- select and onboard a Pakistan-compatible hosted checkout provider;
-- test signed success, failure, duplicate, conflict, refund, dispute and reconciliation paths;
-- approve legal/support/finance ownership;
-- complete production infrastructure, content, AI and incident acceptance;
-- promote only an exact release already proven in staging.
+Before real commerce activation, complete merchant onboarding, pricing/tax/refund/support ownership and sandbox/UAT tests for the selected hosted payment provider. Real payment credentials are not required for the current staging certification.
 
 ## Open trackers
 
-- #22 — umbrella backend, commerce and production activation.
-- #52 — governed 46-entry live-catalogue activation.
-- #59 — internal-alpha content/media deployment and 50-item acceptance.
+- #22 — umbrella backend, staging/UAT, commerce and production activation.
+- #52 — governed live-catalogue activation.
+- #59 — internal-alpha content/media deployment and acceptance.
+- #71 — permanent automated staging certification and release-quality control.
