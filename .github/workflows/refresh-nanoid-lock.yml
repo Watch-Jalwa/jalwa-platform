@@ -28,8 +28,8 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - name: Refresh only the lockfile
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Refresh only the patched transitive lock entry
+        run: npm update nanoid --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Verify patched dependency and narrow change
         run: |
           set -euo pipefail
