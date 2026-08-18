@@ -1,6 +1,8 @@
 # Jalwa staging Playwright suite
 
-This suite is the reusable browser-test layer for the protected transactional staging environment. It complements the release-certification orchestrator in `.github/workflows/staging-acceptance.yml`; the orchestrator remains authoritative for the final `READY FOR UAT`, `FAILED` or `BLOCKED` decision.
+This suite is the reusable browser-test layer for the protected self-hosted staging environment. `.github/workflows/staging-acceptance.yml` invokes the public/Auth/responsive, customer/payment, Studio/Finance and catalogue/media specs directly as mandatory release gates. The orchestrator remains authoritative for the final `READY FOR UAT`, `FAILED` or `BLOCKED` decision.
+
+Public visual regression keeps a specialized classifier in the certification workflow so a missing/changed baseline can become `VISUAL REVIEW REQUIRED` rather than an ordinary failure. `visual.spec.mjs` remains available for direct Playwright regression execution.
 
 ## Coverage
 
@@ -18,7 +20,7 @@ Generic restaurant cart, delivery/take-away, dispatcher-branch and native-mobile
 
 ## Protected inputs
 
-Never commit credentials. Supply them from the GitHub `staging` environment or a local secret manager.
+Never commit credentials. Supply them from the GitHub `staging` environment or a local secret manager. The complete deployment/credential ownership contract is documented in `docs/28-self-hosted-staging-environment.md`.
 
 Common runtime inputs:
 
@@ -64,6 +66,8 @@ npm run test:staging:playwright:studio
 npm run test:staging:playwright:media
 npm run test:staging:playwright:visual
 ```
+
+The certification workflow runs the first four area commands directly and writes separate Playwright HTML/JUnit/result directories into the sanitized certification artifact. A lightweight media fixture preflight runs before the media spec only so an unavailable rights-approved catalogue fixture is classified `BLOCKED` rather than as a product regression.
 
 The Playwright config forces one worker because checkout, role assignment and reporting fixtures are intentionally stateful staging scenarios. Trace and video are disabled so authenticated/payment-sensitive browser state is not retained. Failure screenshots, HTML output and JUnit output are written under the configured test-results/report directories.
 
