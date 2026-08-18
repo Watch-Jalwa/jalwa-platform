@@ -19,6 +19,7 @@ const paths = {
   customer: "scripts/staging-customer-certification.mjs",
   studio: "scripts/staging-studio-certification.mjs",
   media: "scripts/staging-media-certification.mjs",
+  mediaFixturePreflight: "scripts/staging-media-fixture-preflight.mjs",
   visual: "scripts/staging-visual-certification.mjs",
   manifest: "qa/visual-baselines/manifest.json",
   playwrightConfig: "playwright.staging.config.mjs",
@@ -137,6 +138,7 @@ test("reusable staging Playwright suite is syntactically valid and keeps sensiti
     paths.playwrightStudio,
     paths.playwrightMedia,
     paths.playwrightVisual,
+    paths.mediaFixturePreflight,
   ];
   for (const relative of playwrightFiles) {
     execFileSync(process.execPath, ["--check", fileURLToPath(urlFor(relative))], { cwd: root, stdio: "pipe" });
@@ -146,6 +148,20 @@ test("reusable staging Playwright suite is syntactically valid and keeps sensiti
   assert.match(config, /trace: "off"/);
   assert.match(config, /video: "off"/);
   assert.match(config, /screenshot: "only-on-failure"/);
+});
+
+test("staging workflow directly invokes the reusable Playwright suites", async () => {
+  const workflow = await read(paths.certify);
+  assert.match(workflow, /npm run test:staging:playwright:public/);
+  assert.match(workflow, /npm run test:staging:playwright:customer/);
+  assert.match(workflow, /npm run test:staging:playwright:studio/);
+  assert.match(workflow, /npm run test:staging:playwright:media/);
+  assert.match(workflow, /PLAYWRIGHT_HTML_REPORT/);
+  assert.match(workflow, /staging-media-fixture-preflight\.mjs/);
+  assert.doesNotMatch(workflow, /node scripts\/staging-customer-certification\.mjs/);
+  assert.doesNotMatch(workflow, /node scripts\/staging-studio-certification\.mjs/);
+  assert.doesNotMatch(workflow, /node scripts\/staging-media-certification\.mjs/);
+  assert.match(workflow, /staging-visual-certification\.mjs/);
 });
 
 test("Playwright public suite covers release identity, auth request and required mobile widths", async () => {
