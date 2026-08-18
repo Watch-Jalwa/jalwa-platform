@@ -127,6 +127,16 @@ test("media and visual gates cannot silently pass missing fixtures or baselines"
   assert.deepEqual(manifest.baselines, {});
 });
 
+test("visual certification validates every configured route before accepting review", async () => {
+  const visual = await read(paths.visual);
+  assert.doesNotMatch(visual, /pageFiles\[0\]/);
+  assert.match(visual, /for \(const \[name, route\] of routes\)/);
+  assert.match(visual, /manifest\.baselines\?\.\[name\]\?\.sha256/);
+  assert.match(visual, /captures\.filter/);
+  assert.match(visual, /VISUAL REVIEW REQUIRED/);
+  assert.match(visual, /CI did not update the human-approved baseline manifest/);
+});
+
 test("reusable staging Playwright suite is syntactically valid and keeps sensitive recording disabled", async () => {
   const playwrightFiles = [
     paths.playwrightConfig,
