@@ -1,9 +1,9 @@
 name: Refresh patched nanoid lock entry
 
 on:
-  push:
+  pull_request:
     branches:
-      - chore/permanent-staging-certification
+      - main
 
 permissions:
   contents: read
