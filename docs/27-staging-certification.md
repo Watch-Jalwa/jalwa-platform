@@ -1,8 +1,8 @@
 # Permanent staging certification
 
-Status: implementation branch in progress; live execution remains blocked until the protected staging environment is deployed and configured.
+Status: implementation branch in progress; live execution remains blocked until the protected self-hosted staging environment is deployed and configured.
 
-Control issue: #71. Implementation trackers: #72, #73 and #74. Deployment control: #22.
+Control issue: #71. Implementation trackers: #72, #73 and #74. Deployment control: #22. Environment contract: [docs/28-self-hosted-staging-environment.md](28-self-hosted-staging-environment.md).
 
 ## Purpose
 
@@ -10,7 +10,7 @@ A reachable staging site is not release evidence. Every successful **Deploy stag
 
 Permanent flow:
 
-`Code / PR → unit/build/security checks → immutable staging deployment → exact running-artifact proof → automated staging certification → READY FOR UAT → human UAT → explicit production approval → exact-artifact promotion → production smoke`
+`Code / PR → unit/build/security checks → immutable self-hosted staging deployment → exact running-artifact proof → automated Playwright/runtime certification → READY FOR UAT → human UAT → explicit production approval → exact-artifact promotion → production smoke`
 
 Automated certification never authorizes production.
 
@@ -20,9 +20,11 @@ Jalwa is one private monorepo, not separate customer/backend/admin/dispatcher re
 
 - `apps/web` — customer web/PWA, server API routes and Studio/admin surfaces;
 - `apps/worker` — background jobs and media processing;
-- PostgreSQL/Supabase — database, Auth and REST control plane;
+- PostgreSQL/Supabase — PostgreSQL source-of-truth database with self-hosted Auth and REST/API services;
 - Cloudflare R2/FFmpeg — initial staging media path, with the separately protected AWS media plane available later;
-- Vercel — frontend deployment evidence, not the transactional staging backend.
+- owner-controlled Linux server — web, worker, PostgreSQL/Supabase and reverse-proxy runtime deployed through SSH/Docker tooling.
+
+Vercel is not part of the required staging or production release path. DigitalOcean provisioning is also not required; any suitable owner-controlled Linux host may be used as long as the SSH/Docker/runtime contracts pass.
 
 There is no current native mobile app, GraphQL service, Redis dependency, restaurant product cart, delivery/take-away flow, branch dispatcher or cross-branch order domain. Generic QA scenarios for those capabilities are `N/A` until the product actually adds them. They must never be claimed as automated merely because a generic checklist mentions them.
 
@@ -77,6 +79,14 @@ The permanent workflow requires results for all of these areas:
 
 A missing mandatory result is automatically `BLOCKED`.
 
+### Playwright is the browser gate
+
+The reusable specs under `qa/playwright/` are invoked directly by `.github/workflows/staging-acceptance.yml` for the mandatory public/Auth/responsive, customer/payment, Studio/Finance and catalogue/media areas. Their HTML/JUnit/failure evidence is written into the certification artifact.
+
+The older customer/Studio/media browser scripts remain as historical/diagnostic helpers but are not the authoritative workflow gate for those areas. A small media fixture preflight is retained only to distinguish an unavailable rights-approved published staging item (`BLOCKED`) from a reproducible Playwright product failure (`FAILED`).
+
+Public visual regression keeps the specialized `staging-visual-certification.mjs` classifier because it must distinguish `VISUAL REVIEW REQUIRED` from `BLOCKED` and `FAILED` while preserving exact-release human approval semantics. The reusable `visual.spec.mjs` remains available for direct Playwright execution and regression development.
+
 ### Customer and payment boundary
 
 The customer suite uses a deterministic staging-only account generated through the protected Supabase admin boundary. It verifies unauthenticated checkout denial, invalid checkout input, authenticated Premium checkout, server-authoritative amount/currency, duplicate-submit idempotency, mock staging payment completion, authoritative `succeeded` payment state, active subscription creation/extension, the exact configured entitlement set and full Mobile Chromium purchase.
@@ -85,13 +95,13 @@ Staging uses the repository's isolated mock provider. Provider states not implem
 
 ### Studio authorization
 
-The Studio suite creates deterministic staging-only `admin`, `rights_reviewer` and `viewer` identities and verifies anonymous denial, core admin surfaces, finance API authorization, restricted-role denial and non-staff denial. Existing Premium reporting acceptance also covers Finance versus non-Finance reporting UI/API boundaries and audited CSV exports.
+The Studio suite creates deterministic staging-only `admin`, `rights_reviewer`, `viewer`, `finance` and report-viewer identities and verifies anonymous denial, core admin surfaces, finance API authorization, restricted-role denial, non-staff denial, Finance reporting and audited CSV exports.
 
 There is no Dispatcher Branch A/B role in Jalwa today; those scenarios are `N/A` rather than fake coverage.
 
 ### Catalogue and media
 
-A real published staging catalogue item must be available for representative `/watch/<slug>` certification. No published item results in `BLOCKED`, not PASS. The browser verifies the actual `.player-shell` boundary and requires either an in-player media surface, the governed provider-hosted live boundary or the documented safe unavailable boundary. Same-origin request or browser failures are rejected. Enabled governed live-source checks remain mandatory when their staging flag is enabled.
+A real published staging catalogue item must be available for representative `/watch/<slug>` certification. No published item results in `BLOCKED`, not PASS. The Playwright suite verifies the actual `.player-shell` boundary and requires either an in-player media surface, the governed provider-hosted live boundary or the documented safe unavailable boundary. Same-origin request or browser failures are rejected. Enabled governed live-source checks remain mandatory when their staging flag is enabled.
 
 ### Visual regression
 
@@ -119,8 +129,8 @@ Each run retains a sanitized artifact containing applicable evidence such as:
 - web/worker image IDs and immutable digests;
 - rollback release reference;
 - host/runtime acceptance JSON;
+- Playwright HTML/JUnit output and allowed failure screenshots;
 - customer/Studio/media evidence;
-- public and synthetic-QA screenshots;
 - visual hashes;
 - per-area PASS/FAIL/BLOCKED results and test counts;
 - final JSON, Markdown and HTML certification reports.
@@ -129,14 +139,18 @@ Artifacts are retained for 30 days by the workflow. Secret-bearing environment d
 
 ## Protected staging inputs
 
-Existing deployment inputs remain under the protected GitHub `staging` environment: DigitalOcean, SSH, Cloudflare/R2, Supabase/PostgreSQL, SMTP, backup, operations and other server-only deployment values.
+The authoritative division of generated, owner/PM-supplied and ordinary values is in [docs/28-self-hosted-staging-environment.md](28-self-hosted-staging-environment.md).
 
-Certification additionally uses the already protected Supabase publishable/service credentials plus deterministic synthetic QA email identities. Default synthetic addresses exist in the workflow and can be overridden by environment variables:
+Core deployment inputs remain under the protected GitHub `staging` environment: SSH/GHCR, self-hosted Supabase/PostgreSQL, Cloudflare/R2, SMTP, backup, operations and other server-only deployment values. There is no required Vercel or DigitalOcean credential.
+
+Certification uses the protected Supabase publishable/service credentials plus deterministic synthetic QA email identities. Default synthetic addresses exist in the workflow and can be overridden by environment variables:
 
 - `STAGING_QA_CUSTOMER_EMAIL`
 - `STAGING_QA_ADMIN_EMAIL`
 - `STAGING_QA_RESTRICTED_EMAIL`
 - `STAGING_QA_UNAUTHORIZED_EMAIL`
+- `STAGING_QA_FINANCE_EMAIL`
+- `STAGING_QA_REPORT_VIEWER_EMAIL`
 
 Optional exact-release visual review controls:
 
@@ -150,6 +164,8 @@ Do not put passwords, access tokens or private keys into issues, chat or reposit
 Human UAT starts only after `READY FOR UAT` and remains an explicit manual approval focused on UX, usability, copy/content, visual quality, mobile experience, exploratory scenarios and business acceptance.
 
 Production requires separate explicit approval. Promotion must use the exact immutable artifacts proven in staging/UAT; production smoke must be non-destructive and preserve rollback evidence. This certification workflow contains no production deployment action.
+
+The old production environment must not be retired merely because the new server is reachable. Retire it only after the explicitly approved exact tested release is running on the new production host and production smoke/health checks have passed with rollback still available.
 
 ## Permanent feature rule
 
