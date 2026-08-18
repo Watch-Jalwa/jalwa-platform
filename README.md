@@ -6,6 +6,7 @@ Jalwa is a mobile-first Pakistani content platform for curated entertainment, le
 - **Primary domain:** `watch-jalwa.com`
 - **Application model:** mobile-first responsive web application and installable PWA; native mobile apps and app-store distribution are out of current scope
 - **Architecture:** modular monolith with a Next.js web application, background worker and PostgreSQL/Supabase control plane; media can use the existing Cloudflare R2/FFmpeg path or the protected AWS S3/SQS/MediaConvert/CloudFront path
+- **Deployment target:** owner-controlled Linux servers using Docker/Compose, SSH and immutable GHCR images
 - **Repository:** private monorepo
 
 ## Current status
@@ -14,8 +15,8 @@ Repository development for the controlled internal alpha is complete on `main` a
 
 - Internal-alpha application baseline: `7f476e7ba0fd5c940fccc39b13f3ceb980a6d430` (PRs #60–#62).
 - Organization audit and maintenance are recorded through PRs #63–#67. The current deployed frontend SHA is intentionally not hard-coded here; `/api/health` and the browser `data-release` marker are the release sources of truth.
-- The connected Vercel frontend deployment is ready and reports its exact deployment SHA through both release surfaces.
-- Vercel remains a noindex frontend-preview environment until the transactional backend is deployed and connected.
+- The supported staging/production path is now the owner-controlled self-hosted server stack. Vercel is not a required staging or production dependency.
+- PostgreSQL is the source-of-truth database; self-hosted Supabase provides Auth and REST/API services around it.
 - The rights-first alpha source register contains 151 approved discovery lanes. Source approval permits metadata discovery; it never auto-approves an individual asset for publication.
 - The governed live-source implementation contains 46 user-facing entries backed by 52 source records. They remain disabled until the protected staging rights and activation process succeeds.
 - Database-enforced availability, source/content/asset kill switches, rights holds, invite-only tester grants and Studio alpha operations are implemented.
@@ -23,23 +24,24 @@ Repository development for the controlled internal alpha is complete on `main` a
 - Ask Jalwa has a provider-neutral adapter, versioned prompt registry, synthetic evaluation set, bounded request boundary, prompt-injection controls, citations, quotas, moderation, prompt/model audit records and a protected shared runtime state workflow.
 - Catalogue, authentication, Studio, worker, payments, finance reporting, AI, backups, rollback, observability and release acceptance are repository-complete but still require a deployed backend for end-to-end evidence.
 - Permanent staging certification is defined in [docs/27-staging-certification.md](docs/27-staging-certification.md): after every successful staging deployment it must prove the exact running web/worker artifacts and produce only `READY FOR UAT`, `FAILED` or `BLOCKED`. Human UAT and production approval remain separate manual gates.
+- The self-hosted staging environment/credential contract is defined in [docs/28-self-hosted-staging-environment.md](docs/28-self-hosted-staging-environment.md).
 
-No additional product feature is required before deployment. The next work is backend/infrastructure configuration, deployment, connection to Vercel, automated staging certification, content/media acceptance and manual internal-alpha testing.
+No additional product feature is required before deployment. The next work is self-hosted server configuration, protected environment values, staging deployment, automated Playwright certification, content/media acceptance and manual internal-alpha testing.
 
-See [Current status and next-stage gates](docs/16-current-status-and-next-stage-gates.md), [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md), [Internal alpha content platform](docs/24-internal-alpha-content-platform.md), [AI-native development readiness](docs/26-ai-native-development-readiness.md) and [Permanent staging certification](docs/27-staging-certification.md).
+See [Current status and next-stage gates](docs/16-current-status-and-next-stage-gates.md), [Content, commerce and deployment handoff](docs/17-content-commerce-and-deployment-handoff.md), [Internal alpha content platform](docs/24-internal-alpha-content-platform.md), [AI-native development readiness](docs/26-ai-native-development-readiness.md), [Permanent staging certification](docs/27-staging-certification.md) and [Self-hosted staging environment contract](docs/28-self-hosted-staging-environment.md).
 
 ## Next operating phase
 
-1. Configure the protected GitHub `staging` environment and owner-controlled DigitalOcean, Supabase, Cloudflare/R2, optional AWS, DNS, SSH, SMTP, AI, observability and signing values.
-2. Bootstrap and deploy the isolated transactional backend from the exact green `main` SHA.
-3. Select and prove R2/FFmpeg or review and apply the AWS media plane.
-4. Run the permanent staging certification and prove the exact deployed source SHA, pipeline/run, immutable web/worker digests, running image IDs and OCI revisions.
-5. Connect the Vercel frontend to the deployed backend and confirm health, readiness and release-SHA correlation.
-6. Install the approved source registers, harvest metadata candidates and approve at least 50 mixed items through item-level rights, media and editorial QA.
-7. Complete the governed live-catalogue health/mobile checks and seven-day staging observation.
-8. Enable Ask Jalwa through **Set AI state**, run exact-configuration evaluation, exercise the protected disable path and retain the evidence.
-9. Run source/content kill-switch, queue/DLQ, HLS, mobile-browser, accessibility, backup, rollback and security acceptance.
-10. Proceed to human UAT only after automated staging certification reports `READY FOR UAT`; enable invite-only internal alpha only through the protected exact-SHA workflow and continue feature development from verified integration/tester evidence.
+1. Prepare the owner-controlled staging Linux server with Docker/Compose, the `jalwa` deployment user, restricted SSH, persistent storage, DNS and TLS.
+2. Configure the protected GitHub `staging` environment with the generated self-hosted PostgreSQL/Supabase values plus owner/PM-supplied SSH/GHCR, Cloudflare/R2, SMTP, AI, observability and signing values described in `docs/28-self-hosted-staging-environment.md`.
+3. Deploy the isolated transactional stack from the exact green `main` SHA using **Deploy staging**; the workflow prepares self-hosted Supabase/PostgreSQL, applies migrations, builds immutable web/worker images, records exact running identity and verifies backup/restore recovery.
+4. Select and prove R2/FFmpeg or review and apply the AWS media plane.
+5. Run the permanent staging certification. The workflow directly invokes the reusable Playwright suites for public/Auth/responsive, Premium checkout/payment, Studio/Finance and catalogue/media coverage, and proves the exact deployed source SHA, pipeline/run, immutable web/worker digests, running image IDs and OCI revisions.
+6. Review the first-run public visual baseline; approval must be tied to the exact release SHA.
+7. Install the approved source registers, harvest metadata candidates and approve at least 50 mixed items through item-level rights, media and editorial QA.
+8. Complete the governed live-catalogue health/mobile checks and seven-day staging observation when that feature is approved for staging.
+9. Enable Ask Jalwa through **Set AI state** only after its exact-release staging checks, run exact-configuration evaluation, exercise the protected disable path and retain the evidence.
+10. Proceed to human UAT only after automated staging certification reports `READY FOR UAT`; production then requires a separate explicit approval and promotion of the exact tested immutable artifacts to the owner-controlled production server.
 
 The approved delivery model is mobile-first web/PWA only. Android and iOS native applications, Google Play distribution and Apple App Store distribution are not part of the current roadmap or release gates.
 
@@ -85,9 +87,9 @@ supabase/migrations/           forward-only database migrations
 content/                       approved source registers and governed inputs
 infrastructure/
   aws-media/                   private AWS video processing and delivery plane
-  digitalocean/                Terraform host provisioning
+  digitalocean/                optional host-provisioning Terraform; not required by the release path
   media-gateway/               Cloudflare media gateway
-  production/                  Compose stack, deployment and acceptance scripts
+  production/                  generic self-hosted Compose stack, deployment and acceptance scripts
 scripts/                       release, backup, fixture, harvesting, certification and validation utilities
 docs/                          product, architecture, operations and handoff documents
 .github/                       CI/CD, protected controls, Dependabot, templates and ownership rules
@@ -123,6 +125,7 @@ docs/                          product, architecture, operations and handoff doc
 26. [Organization audit — 1 August 2026](docs/25-organization-audit-2026-08-01.md)
 27. [AI-native development readiness — 2 August 2026](docs/26-ai-native-development-readiness.md)
 28. [Permanent staging certification](docs/27-staging-certification.md)
+29. [Self-hosted staging environment contract](docs/28-self-hosted-staging-environment.md)
 
 ## Open operational trackers
 
@@ -143,9 +146,10 @@ docs/                          product, architecture, operations and handoff doc
 - Keep non-local AI disabled until the shared runtime flag is enabled through the protected exact-SHA workflow.
 - Never promote an AI prompt/model/provider change without versioned prompts, relevant evaluations and staging evidence.
 - Keep live streaming and web DRM disabled until contracted providers and browser acceptance are complete.
-- Treat the current Vercel deployment as frontend evidence only until it is connected to the deployed transactional backend.
+- Never make an external frontend-hosting provider a release requirement; staging and production acceptance are based on the owner-controlled running artifacts.
 - Never label a staging release ready for UAT merely because it is reachable; the permanent certification must prove the actual running artifacts and all mandatory supported gates.
 - Production promotion requires a green `main` commit, `READY FOR UAT` certification, explicit human UAT, immutable tested artifacts, backup evidence and explicit production approval.
+- Do not retire the old production environment until the new explicitly approved production host passes smoke/health verification with rollback still available.
 
 ## Contributing and security
 
