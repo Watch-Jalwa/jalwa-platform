@@ -84,7 +84,7 @@ test("all mandatory certification areas are fail closed", async () => {
 
 test("visual review approval is bound to the exact candidate release", async () => {
   const finalizer = await read(paths.finalizer);
-  assert.match(finalizer, /visualAcceptedSha === releaseSha/);
+  assert.match(finalizer, /visualAcceptedSha === requestedReleaseSha/);
   assert.match(finalizer, /\^\[0-9a-f\]\{40\}\$/);
   assert.match(finalizer, /visualAcceptanceReference/);
   assert.match(finalizer, /exact release SHA is required before UAT/);
