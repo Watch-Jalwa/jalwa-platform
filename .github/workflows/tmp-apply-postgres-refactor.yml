@@ -21,7 +21,7 @@ jobs:
         run: |
           set -euo pipefail
           test -f .github/refactor-ready || { echo 'Patch parts are not complete yet.'; exit 0; }
-          cat .github/refactor-patch.part* | base64 --decode | gzip --decompress > /tmp/refactor.patch
+          cat .github/refactor-patch.part* | base64 --decode | xz --decompress > /tmp/refactor.patch
           git apply --check /tmp/refactor.patch
           git apply /tmp/refactor.patch
           rm -f .github/refactor-patch.part* .github/refactor-ready
