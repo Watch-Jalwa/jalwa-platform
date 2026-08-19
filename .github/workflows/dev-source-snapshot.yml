@@ -1,0 +1,27 @@
+name: Dev source snapshot
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Create source-only snapshot
+        run: |
+          set -euo pipefail
+          tar --exclude=.git --exclude=node_modules --exclude='.next' -czf /tmp/jalwa-source.tgz .
+      - name: Upload source-only snapshot
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dev-source-${{ github.sha }}
+          path: /tmp/jalwa-source.tgz
+          retention-days: 1
+          if-no-files-found: error
