@@ -99,7 +99,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec -i supabase-db psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            "docker exec -i jalwa-postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
               -v deployment_environment='$TARGET_ENV' \
               -v desired_state='$DESIRED_STATE' \
               -v release_sha='$RELEASE_SHA'" \

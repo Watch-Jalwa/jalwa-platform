@@ -63,8 +63,11 @@ jobs:
       - run: npm run build
         env:
           NEXT_PUBLIC_APP_URL: http://localhost:3000
-          NEXT_PUBLIC_SUPABASE_URL: https://api.example.com
-          NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci_anon_placeholder
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+          BETTER_AUTH_URL: http://localhost:3000
+          BETTER_AUTH_SECRET: ci_better_auth_secret_that_is_long_enough_for_builds
+          SMTP_HOST: localhost
+          SMTP_FROM: no-reply@example.com
           NEXT_PUBLIC_ENABLE_PHONE_AUTH: "false"
           NEXT_PUBLIC_ENABLE_GOOGLE_AUTH: "false"
           NEXT_PUBLIC_ENABLE_APPLE_AUTH: "false"
@@ -102,15 +105,15 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y postgresql-client
           fi
-      - name: Bootstrap Supabase-compatible roles
-        run: psql --set ON_ERROR_STOP=1 --file scripts/ci-bootstrap-postgres.sql
+      - name: Bootstrap PostgreSQL compatibility roles
+        run: psql --set ON_ERROR_STOP=1 --file database/bootstrap.sql
       - name: Apply migrations in order
         run: |
           set -euo pipefail
           while IFS= read -r migration; do
             echo "Applying ${migration}"
             psql --set ON_ERROR_STOP=1 --file "$migration"
-          done < <(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+          done < <(find database/migrations -maxdepth 1 -type f -name '*.sql' | sort)
       - name: Verify production privileges
         run: psql --set ON_ERROR_STOP=1 --file scripts/ci-verify-production-schema.sql
 
@@ -124,8 +127,6 @@ jobs:
         run: |
           docker build --target web \
             --build-arg NEXT_PUBLIC_APP_URL=http://localhost:3000 \
-            --build-arg NEXT_PUBLIC_SUPABASE_URL=https://api.example.com \
-            --build-arg NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=ci_anon_placeholder \
             --build-arg NEXT_PUBLIC_ENABLE_PHONE_AUTH=false \
             --build-arg NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=false \
             --build-arg NEXT_PUBLIC_ENABLE_APPLE_AUTH=false \

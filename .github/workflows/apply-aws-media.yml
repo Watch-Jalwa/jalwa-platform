@@ -50,7 +50,6 @@ jobs:
       UPLOAD_ALLOWED_ORIGINS_JSON: ${{ vars.AWS_MEDIA_UPLOAD_ALLOWED_ORIGINS_JSON || '[]' }}
       APP_DOMAIN: ${{ inputs.target_environment == 'staging' && vars.STAGING_DOMAIN || vars.PRODUCTION_DOMAIN }}
       MEDIA_CONTROL_SECRET: ${{ secrets.AWS_MEDIA_CONTROL_SECRET }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_SERVICE_ROLE_KEY }}
       CLOUDFRONT_PRIVATE_KEY_BASE64: ${{ secrets.AWS_MEDIA_CLOUDFRONT_PRIVATE_KEY_BASE64 }}
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -77,7 +76,6 @@ jobs:
           jq -e 'type == "array" and length > 0 and all(.[]; type == "string" and startswith("https://"))' <<<"$UPLOAD_ALLOWED_ORIGINS_JSON" >/dev/null
           if [[ '${{ inputs.apply }}' == 'true' ]]; then
             test ${#MEDIA_CONTROL_SECRET} -ge 32
-            test -n "$SUPABASE_SERVICE_ROLE_KEY"
             test -n "$CLOUDFRONT_PRIVATE_KEY_BASE64"
             printf '%s' "$CLOUDFRONT_PRIVATE_KEY_BASE64" | base64 --decode > /tmp/cloudfront-private.pem
             chmod 600 /tmp/cloudfront-private.pem
@@ -107,6 +105,7 @@ jobs:
           jq -n \
             --arg environment "$TARGET_ENV" \
             --arg aws_region "$AWS_REGION" \
+            --arg app_domain "$APP_DOMAIN" \
             --arg media_domain "$MEDIA_DOMAIN" \
             --arg acm_certificate_arn "$ACM_CERTIFICATE_ARN" \
             --arg cloudfront_public_key_pem "$CLOUDFRONT_PUBLIC_KEY_PEM" \
@@ -116,6 +115,7 @@ jobs:
             '{
               environment: $environment,
               aws_region: $aws_region,
+              app_domain: $app_domain,
               media_domain: $media_domain,
               acm_certificate_arn: $acm_certificate_arn,
               cloudfront_public_key_pem: $cloudfront_public_key_pem,
@@ -149,15 +149,15 @@ jobs:
         working-directory: infrastructure/aws-media
         run: terraform apply -input=false -auto-approve tfplan
 
-      - name: Populate protected AWS callback secrets
+      - name: Populate protected AWS media secrets
         if: inputs.apply
         working-directory: infrastructure/aws-media
         run: |
           set -euo pipefail
           control_secret_arn="$(terraform output -raw media_control_secret_arn)"
-          callback_secret_arn="$(terraform output -raw supabase_callback_secret_arn)"
+          callback_secret_arn="$(terraform output -raw application_callback_secret_arn)"
+          callback_payload="$(jq -nc --arg url "https://$APP_DOMAIN/api/internal/media/mediaconvert" --arg secret "$MEDIA_CONTROL_SECRET" '{url:$url,secret:$secret}')"
           aws secretsmanager put-secret-value --secret-id "$control_secret_arn" --secret-string "$MEDIA_CONTROL_SECRET" >/dev/null
-          callback_payload="$(jq -nc --arg url "https://api.$APP_DOMAIN" --arg serviceRoleKey "$SUPABASE_SERVICE_ROLE_KEY" '{url:$url,serviceRoleKey:$serviceRoleKey}')"
           aws secretsmanager put-secret-value --secret-id "$callback_secret_arn" --secret-string "$callback_payload" >/dev/null
 
       - name: Publish runtime variables to the protected environment

@@ -40,8 +40,7 @@ jobs:
       SOURCE_ID: ${{ inputs.source_id }}
       CANDIDATE_LIMIT: ${{ inputs.candidate_limit }}
       IMPORT_TO_STAGING: ${{ inputs.import_to_staging }}
-      NEXT_PUBLIC_SUPABASE_URL: ${{ vars.STAGING_SUPABASE_URL }}
-      SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE_ROLE_KEY }}
+      DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
       SMITHSONIAN_API_KEY: ${{ secrets.SMITHSONIAN_API_KEY }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -66,8 +65,7 @@ jobs:
           test "$CANDIDATE_LIMIT" -le 50000
           if test -n "$SOURCE_ID"; then [[ "$SOURCE_ID" =~ ^[A-Z]{2}-[0-9]{3}$ ]]; fi
           if [[ "$IMPORT_TO_STAGING" == true ]]; then
-            test -n "$NEXT_PUBLIC_SUPABASE_URL"
-            test -n "$SUPABASE_SERVICE_ROLE_KEY"
+            test -n "$DATABASE_URL"
           fi
 
       - name: Harvest metadata without downloading media

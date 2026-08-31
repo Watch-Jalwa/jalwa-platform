@@ -40,7 +40,7 @@ jobs:
       DOMAIN: ${{ vars.STAGING_DOMAIN }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
-      SERVICE_ROLE_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_SERVICE_ROLE_KEY }}
+      STAGING_QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}
       FINANCE_EMAIL: ${{ vars.STAGING_QA_FINANCE_EMAIL || 'acceptance+premium-finance@watch-jalwa.com' }}
       VIEWER_EMAIL: ${{ vars.STAGING_QA_REPORT_VIEWER_EMAIL || 'acceptance+premium-viewer@watch-jalwa.com' }}
       MANUAL_EMAIL: acceptance+premium-manual@watch-jalwa.com
@@ -48,16 +48,14 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
-
       - name: Validate staging fixture boundary
         run: |
           set -euo pipefail
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'A deployed commit SHA is required.' >&2; exit 1; }
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS" && test -n "$SERVICE_ROLE_KEY"
+          test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS" && test -n "$STAGING_QA_SECRET"
           grep -q "Premium reporting fixtures may run only in staging" scripts/seed-premium-reporting-staging.sql
           grep -q "Public-domain live source fixtures may run only in staging" scripts/seed-public-domain-live-sources.sql
-
       - name: Configure pinned staging SSH identity
         run: |
           set -euo pipefail
@@ -67,32 +65,26 @@ jobs:
           chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
-
-      - name: Ensure deterministic acceptance users
+      - name: Ensure deterministic Better Auth acceptance users
         id: users
         run: |
           set -euo pipefail
-          auth_url="https://api.$DOMAIN/auth/v1/admin/users"
-          headers=(-H "apikey: $SERVICE_ROLE_KEY" -H "Authorization: Bearer $SERVICE_ROLE_KEY" -H 'Content-Type: application/json')
-          users_json=$(curl -fsS "${headers[@]}" "$auth_url?page=1&per_page=1000")
           ensure_user() {
-            local email="$1" id payload
-            id=$(jq -r --arg email "$email" '.users[]? | select(.email == $email) | .id' <<<"$users_json" | head -1)
-            if [[ -z "$id" ]]; then
-              payload=$(jq -nc --arg email "$email" '{email:$email,email_confirm:true,user_metadata:{acceptance_fixture:true}}')
-              id=$(curl -fsS -X POST "${headers[@]}" --data "$payload" "$auth_url" | jq -r '.id // .user.id // empty')
-            fi
+            local email="$1" role="$2" payload id
+            payload="$(jq -nc --arg email "$email" --arg role "$role" '{email:$email,role:$role,issueLink:false}')"
+            id="$(curl -fsS -X POST "https://$DOMAIN/api/internal/qa/session" \
+              -H "x-jalwa-qa-token: $STAGING_QA_SECRET" -H 'content-type: application/json' \
+              --data "$payload" | jq -r '.user.id // empty')"
             [[ "$id" =~ ^[0-9a-f-]{36}$ ]] || { echo "Could not resolve acceptance user $email" >&2; exit 1; }
             printf '%s' "$id"
           }
-          finance_id=$(ensure_user "$FINANCE_EMAIL")
-          viewer_id=$(ensure_user "$VIEWER_EMAIL")
-          manual_id=$(ensure_user "$MANUAL_EMAIL")
+          finance_id="$(ensure_user "$FINANCE_EMAIL" finance)"
+          viewer_id="$(ensure_user "$VIEWER_EMAIL" viewer)"
+          manual_id="$(ensure_user "$MANUAL_EMAIL" subscriber)"
           echo "finance_id=$finance_id" >> "$GITHUB_OUTPUT"
           echo "viewer_id=$viewer_id" >> "$GITHUB_OUTPUT"
           echo "manual_id=$manual_id" >> "$GITHUB_OUTPUT"
-
-      - name: Assign acceptance roles and seed reporting scenarios
+      - name: Seed deterministic reporting and live-source scenarios
         env:
           FINANCE_ID: ${{ steps.users.outputs.finance_id }}
           VIEWER_ID: ${{ steps.users.outputs.viewer_id }}
@@ -100,32 +92,21 @@ jobs:
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec supabase-db psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
-              -v finance_id='$FINANCE_ID' -v viewer_id='$VIEWER_ID' -v manual_id='$MANUAL_ID' \
-              -c \"update public.profiles set role='finance', onboarding_completed=true where id=:'finance_id'; \
-                  update public.profiles set role='subscriber', onboarding_completed=true where id in (:'viewer_id',:'manual_id');\""
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec -i supabase-db psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            "docker exec -i jalwa-postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
               -v deployment_environment=staging \
               -v fixture_user_id='$FINANCE_ID' \
               -v fixture_user_id_2='$VIEWER_ID' \
               -v fixture_user_id_3='$MANUAL_ID'" \
             < scripts/seed-premium-reporting-staging.sql
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec supabase-db psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
-              -c \"select count(*) >= 5 from public.checkout_orders where idempotency_key like 'staging-report-%';\"" \
-            | grep -qx t
-
-      - name: Seed allowlisted live-source drafts
-        run: |
-          set -euo pipefail
+            "docker exec jalwa-postgres psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              -c \"select count(*) >= 5 from public.checkout_orders where idempotency_key like 'staging-report-%';\"" | grep -qx t
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec -i supabase-db psql -v ON_ERROR_STOP=1 -U postgres -d postgres -v deployment_environment=staging" \
+            "docker exec -i jalwa-postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres -v deployment_environment=staging" \
             < scripts/seed-public-domain-live-sources.sql
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec supabase-db psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
-              -c \"select count(*) >= 15 from public.live_source_configs;\"" \
-            | grep -qx t
+            "docker exec jalwa-postgres psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              -c \"select count(*) >= 15 from public.live_source_configs;\"" | grep -qx t
 
   certify:
     if: always() && (github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success')
@@ -144,10 +125,9 @@ jobs:
       DOMAIN: ${{ vars.STAGING_DOMAIN }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      STAGING_SSH_KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
       STAGING_BASE_URL: https://${{ vars.STAGING_DOMAIN }}
-      STAGING_SUPABASE_URL: https://api.${{ vars.STAGING_DOMAIN }}
-      STAGING_SUPABASE_ANON_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_ANON_KEY }}
-      STAGING_SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_SERVICE_ROLE_KEY }}
+      STAGING_QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}
       STAGING_QA_CUSTOMER_EMAIL: ${{ vars.STAGING_QA_CUSTOMER_EMAIL || 'acceptance+customer@watch-jalwa.com' }}
       STAGING_QA_ADMIN_EMAIL: ${{ vars.STAGING_QA_ADMIN_EMAIL || 'acceptance+admin@watch-jalwa.com' }}
       STAGING_QA_RESTRICTED_EMAIL: ${{ vars.STAGING_QA_RESTRICTED_EMAIL || 'acceptance+rights@watch-jalwa.com' }}
@@ -157,11 +137,13 @@ jobs:
       OPERATIONS_DIAGNOSTICS_SECRET: ${{ secrets.OPERATIONS_DIAGNOSTICS_SECRET }}
       MIN_CONTENT_ITEMS: ${{ inputs.minimum_content_items || vars.MINIMUM_STAGING_CONTENT_ITEMS || '0' }}
       CERTIFICATION_EVIDENCE_DIR: ${{ github.workspace }}/staging-certification-evidence
-      VISUAL_REVIEW_ACCEPTED: ${{ vars.STAGING_VISUAL_REVIEW_ACCEPTED || 'false' }}
+      VISUAL_REVIEW_ACCEPTED: ${{ vars.STAGING_VISUAL_REVIEW_ACCEPTED }}
       VISUAL_REVIEW_ACCEPTANCE_REFERENCE: ${{ vars.STAGING_VISUAL_REVIEW_ACCEPTANCE_REFERENCE }}
       EXPECTED_ENVIRONMENT: staging
       EXPECT_NOINDEX: "true"
       ALLOW_MOCK_PAYMENTS: "true"
+      JALWA_EXPECT_READINESS_STATUS: "200"
+      JALWA_EXPECT_NOINDEX: "true"
       FINANCE_EMAIL: ${{ vars.STAGING_QA_FINANCE_EMAIL || 'acceptance+premium-finance@watch-jalwa.com' }}
       VIEWER_EMAIL: ${{ vars.STAGING_QA_REPORT_VIEWER_EMAIL || 'acceptance+premium-viewer@watch-jalwa.com' }}
       JALWA_EXPECT_LIVE_SOURCES: ${{ vars.STAGING_EXPECT_PUBLIC_DOMAIN_LIVE_SOURCES || 'false' }}
@@ -169,7 +151,6 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
-
       - name: Validate certification candidate
         run: |
           set -euo pipefail
@@ -177,11 +158,9 @@ jobs:
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid release SHA.' >&2; exit 1; }
           [[ "$DEPLOYMENT_PIPELINE_ID" =~ ^[0-9]+$ ]] || { echo 'Invalid deployment pipeline ID.' >&2; exit 1; }
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-
       - name: Gate zero — prove deployed artifact identity
         run: |
           set +e
-          mkdir -p "$CERTIFICATION_EVIDENCE_DIR"
           if [[ -z "$HOST" || -z "$SSH_KEY" || -z "$KNOWN_HOSTS" ]]; then
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity BLOCKED "Pinned staging host identity is not configured." tests=10
             exit 0
@@ -205,20 +184,15 @@ jobs:
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity FAIL "Running artifact identity does not match the selected source SHA and deployment run." tests=10
           fi
           exit 0
-
       - name: Verify API and runtime health
         run: |
           set +e
-          if [[ -z "$DOMAIN" || -z "$OPERATIONS_DIAGNOSTICS_SECRET" || -z "$STAGING_SUPABASE_ANON_KEY" ]]; then
+          if [[ -z "$DOMAIN" || -z "$OPERATIONS_DIAGNOSTICS_SECRET" ]]; then
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime BLOCKED "Required protected staging runtime inputs are not configured." tests=12
             exit 0
           fi
-          if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true >/dev/null 2>&1; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime BLOCKED "Staging runtime cannot be reached from the certification runner." tests=12
-            exit 0
-          fi
-          if ! ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/host-acceptance.sh 'https://$DOMAIN' 'https://api.$DOMAIN'" > "$CERTIFICATION_EVIDENCE_DIR/host-acceptance.json"; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Host, worker, database or dependency acceptance failed after deployment." tests=12
+          if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/host-acceptance.sh 'https://$DOMAIN'" > "$CERTIFICATION_EVIDENCE_DIR/host-acceptance.json"; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Host, worker, PostgreSQL or recovery acceptance failed after deployment." tests=12
             exit 0
           fi
           health="$(curl -fsS --max-time 25 "$STAGING_BASE_URL/api/health")"
@@ -226,53 +200,42 @@ jobs:
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Public health does not report the exact selected release as ready." tests=12
             exit 0
           fi
-          export BASE_URL="$STAGING_BASE_URL" SUPABASE_ANON_KEY="$STAGING_SUPABASE_ANON_KEY" REPORT_FILE="$CERTIFICATION_EVIDENCE_DIR/platform-acceptance.json"
+          export BASE_URL="$STAGING_BASE_URL" REPORT_FILE="$CERTIFICATION_EVIDENCE_DIR/platform-acceptance.json"
           if ! infrastructure/production/scripts/production-acceptance.sh "$STAGING_BASE_URL"; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Database-backed readiness, Auth, REST, security headers or required runtime dependency checks failed." tests=12
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Database-backed readiness, Better Auth, security headers or required runtime dependency checks failed." tests=12
             exit 0
           fi
-          node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime PASS "Exact release health, host recovery checks, database-backed readiness, Auth, REST and required runtime dependencies passed." tests=12
+          node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime PASS "Exact release health, host recovery checks, PostgreSQL readiness, Better Auth and required runtime dependencies passed." tests=12
           exit 0
-
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
           node-version: 22
           package-manager-cache: false
-
       - name: Install pinned certification browser harness
         id: browser_harness
         continue-on-error: true
         run: |
-          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1 @supabase/supabase-js@2.111.0
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
           npx playwright install --with-deps chromium
-
       - name: Playwright public, auth and responsive certification
         if: always()
         env:
           HARNESS_OUTCOME: ${{ steps.browser_harness.outcome }}
           JALWA_BROWSER_BASE_URL: ${{ env.STAGING_BASE_URL }}
           JALWA_EXPECTED_VERSION: ${{ env.RELEASE_SHA }}
-          JALWA_EXPECT_NOINDEX: "true"
           PLAYWRIGHT_OUTPUT_DIR: ${{ env.CERTIFICATION_EVIDENCE_DIR }}/playwright-public-results
           PLAYWRIGHT_HTML_REPORT: ${{ env.CERTIFICATION_EVIDENCE_DIR }}/playwright-public-html
           PLAYWRIGHT_JUNIT_REPORT: ${{ env.CERTIFICATION_EVIDENCE_DIR }}/playwright-public-junit.xml
         run: |
           set +e
-          if [[ "$HARNESS_OUTCOME" != "success" ]]; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" public_browser BLOCKED "Pinned browser harness could not be installed on the certification runner." tests=10
-            exit 0
-          fi
-          if [[ -z "$STAGING_SUPABASE_URL" || -z "$STAGING_SUPABASE_ANON_KEY" || -z "$STAGING_SUPABASE_SERVICE_ROLE_KEY" || -z "$STAGING_QA_CUSTOMER_EMAIL" ]]; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" public_browser BLOCKED "Protected Auth/QA configuration required by the public Playwright suite is unavailable." tests=10
-            exit 0
-          fi
-          if npm run test:staging:playwright:public; then
+          if [[ "$HARNESS_OUTCOME" != success || -z "$STAGING_QA_SECRET" || -z "$STAGING_QA_CUSTOMER_EMAIL" ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" public_browser BLOCKED "Protected Better Auth QA configuration or browser harness is unavailable." tests=10
+          elif npm run test:staging:playwright:public; then
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" public_browser PASS "Playwright public, magic-link Auth and 360/390px responsive journeys passed against the exact staging release." tests=10
           else
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" public_browser FAIL "A reproducible Playwright public, Auth or responsive staging journey failed." tests=10
           fi
           exit 0
-
       - name: Playwright authenticated Premium checkout and payment certification
         if: always()
         env:
@@ -282,23 +245,13 @@ jobs:
           PLAYWRIGHT_JUNIT_REPORT: ${{ env.CERTIFICATION_EVIDENCE_DIR }}/playwright-customer-junit.xml
         run: |
           set +e
-          if [[ "$HARNESS_OUTCOME" != "success" ]]; then
-            for area in authenticated_checkout payments mobile_purchase; do
-              node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" "$area" BLOCKED "Pinned browser harness is unavailable for the mandatory customer purchase certification." tests=1
-            done
+          if [[ "$HARNESS_OUTCOME" != success || -z "$STAGING_QA_SECRET" || -z "$STAGING_QA_CUSTOMER_EMAIL" ]]; then
+            for area in authenticated_checkout payments mobile_purchase; do node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" "$area" BLOCKED "Mandatory protected staging customer/Auth configuration is unavailable." tests=1; done
             exit 0
           fi
-          if [[ -z "$STAGING_SUPABASE_URL" || -z "$STAGING_SUPABASE_ANON_KEY" || -z "$STAGING_SUPABASE_SERVICE_ROLE_KEY" || -z "$STAGING_QA_CUSTOMER_EMAIL" ]]; then
-            for area in authenticated_checkout payments mobile_purchase; do
-              node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" "$area" BLOCKED "Mandatory protected staging customer/Auth configuration is unavailable." tests=1
-            done
-            exit 0
-          fi
-          price_json=$(curl -fsS -H "apikey: $STAGING_SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $STAGING_SUPABASE_SERVICE_ROLE_KEY" "$STAGING_SUPABASE_URL/rest/v1/prices?select=id&is_active=eq.true&limit=1")
-          if [[ "$(jq 'length' <<<"$price_json" 2>/dev/null)" -lt 1 ]]; then
-            for area in authenticated_checkout payments mobile_purchase; do
-              node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" "$area" BLOCKED "An active staging Premium price fixture is required before customer Playwright certification can run." tests=1
-            done
+          price_json="$(curl -fsS -H "x-jalwa-qa-token: $STAGING_QA_SECRET" "$STAGING_BASE_URL/api/internal/qa/state?kind=active-price")"
+          if [[ "$(jq -r '.data.id // empty' <<<"$price_json")" == "" ]]; then
+            for area in authenticated_checkout payments mobile_purchase; do node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" "$area" BLOCKED "An active staging Premium price fixture is required before customer Playwright certification can run." tests=1; done
             exit 0
           fi
           if npm run test:staging:playwright:customer; then
@@ -311,7 +264,6 @@ jobs:
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" mobile_purchase FAIL "The mandatory Mobile Chromium Premium purchase assertion failed." tests=1
           fi
           exit 0
-
       - name: Playwright Studio admin and least-privilege certification
         if: always()
         env:
@@ -322,19 +274,12 @@ jobs:
           PLAYWRIGHT_JUNIT_REPORT: ${{ env.CERTIFICATION_EVIDENCE_DIR }}/playwright-studio-junit.xml
         run: |
           set +e
-          if [[ "$HARNESS_OUTCOME" != "success" ]]; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization BLOCKED "Pinned browser harness is unavailable for Studio Playwright certification." tests=6
+          if [[ "$HARNESS_OUTCOME" != success || "$SEED_RESULT" != success || -z "$STAGING_QA_SECRET" ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization BLOCKED "Browser harness, deterministic Finance fixtures or protected Studio QA configuration is unavailable." tests=6
             exit 0
           fi
-          if [[ "$SEED_RESULT" != "success" ]]; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization BLOCKED "Deterministic Finance/reporting fixtures could not be prepared." tests=6
-            exit 0
-          fi
-          for value in "$STAGING_QA_ADMIN_EMAIL" "$STAGING_QA_RESTRICTED_EMAIL" "$STAGING_QA_UNAUTHORIZED_EMAIL" "$STAGING_QA_FINANCE_EMAIL" "$STAGING_QA_REPORT_VIEWER_EMAIL" "$STAGING_SUPABASE_SERVICE_ROLE_KEY"; do
-            if [[ -z "$value" ]]; then
-              node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization BLOCKED "Mandatory protected Studio QA identity/configuration is unavailable." tests=6
-              exit 0
-            fi
+          for value in "$STAGING_QA_ADMIN_EMAIL" "$STAGING_QA_RESTRICTED_EMAIL" "$STAGING_QA_UNAUTHORIZED_EMAIL" "$STAGING_QA_FINANCE_EMAIL" "$STAGING_QA_REPORT_VIEWER_EMAIL"; do
+            if [[ -z "$value" ]]; then node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization BLOCKED "Mandatory protected Studio QA identity is unavailable." tests=6; exit 0; fi
           done
           if npm run test:staging:playwright:studio; then
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization PASS "Playwright proved anonymous denial, admin operations, rights-reviewer least privilege, viewer denial, Finance reporting and audited CSV export." tests=6
@@ -342,7 +287,6 @@ jobs:
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization FAIL "A mandatory Playwright Studio authorization or Finance reporting assertion failed." tests=6
           fi
           exit 0
-
       - name: Playwright catalogue and media certification
         if: always()
         env:
@@ -352,36 +296,24 @@ jobs:
           PLAYWRIGHT_JUNIT_REPORT: ${{ env.CERTIFICATION_EVIDENCE_DIR }}/playwright-media-junit.xml
         run: |
           set +e
-          if [[ "$HARNESS_OUTCOME" != "success" ]]; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue BLOCKED "Pinned browser harness is unavailable for catalogue/media Playwright certification." tests=4
-            exit 0
-          fi
+          if [[ "$HARNESS_OUTCOME" != success ]]; then node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue BLOCKED "Pinned browser harness is unavailable for catalogue/media Playwright certification." tests=4; exit 0; fi
           node scripts/staging-media-fixture-preflight.mjs
           preflight=$?
-          if [[ "$preflight" -eq 2 ]]; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue BLOCKED "No rights-approved published staging item is available for representative media Playwright certification." tests=4
-            exit 0
-          elif [[ "$preflight" -ne 0 ]]; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue FAIL "The staging catalogue could not be inspected safely before media Playwright certification." tests=4
-            exit 0
-          fi
+          if [[ "$preflight" -eq 2 ]]; then node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue BLOCKED "No rights-approved published staging item is available for representative media Playwright certification." tests=4; exit 0; fi
+          if [[ "$preflight" -ne 0 ]]; then node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue FAIL "The staging catalogue could not be inspected safely before media Playwright certification." tests=4; exit 0; fi
           if npm run test:staging:playwright:media; then
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue PASS "Playwright representative watch/media boundaries and all enabled governed live-source assertions passed." tests=4
           else
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue FAIL "A mandatory Playwright catalogue, playback, browser-runtime or enabled live-source assertion failed." tests=4
           fi
           exit 0
-
       - name: Public visual regression certification
         if: always()
         env:
           HARNESS_OUTCOME: ${{ steps.browser_harness.outcome }}
         run: |
           set +e
-          if [[ "$HARNESS_OUTCOME" != "success" ]]; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" visual_regression BLOCKED "Pinned browser harness is unavailable for visual certification." tests=4
-            exit 0
-          fi
+          if [[ "$HARNESS_OUTCOME" != success ]]; then node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" visual_regression BLOCKED "Pinned browser harness is unavailable for visual certification." tests=4; exit 0; fi
           node scripts/staging-visual-certification.mjs
           code=$?
           if [[ "$code" -eq 0 ]]; then
@@ -394,14 +326,12 @@ jobs:
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" visual_regression FAIL "Visual capture itself failed before a safe review comparison could be produced." tests=4
           fi
           exit 0
-
       - name: Finalize sanitized certification report
         if: always()
         id: finalizer
         run: |
           node scripts/finalize-staging-certification.mjs "$CERTIFICATION_EVIDENCE_DIR"
           cat "$CERTIFICATION_EVIDENCE_DIR/certification-report.md" >> "$GITHUB_STEP_SUMMARY"
-
       - name: Upload sanitized certification evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -411,7 +341,6 @@ jobs:
           if-no-files-found: error
           retention-days: 30
           include-hidden-files: false
-
       - name: Enforce UAT gate
         if: always()
         env:
@@ -421,5 +350,5 @@ jobs:
             "READY FOR UAT") echo 'READY FOR UAT' ;;
             "FAILED") echo 'FAILED — UAT BLOCKED' >&2; exit 1 ;;
             "BLOCKED") echo 'BLOCKED — UAT BLOCKED' >&2; exit 1 ;;
-            *) echo 'BLOCKED — certification decision unavailable' >&2; exit 1 ;;
+            *) echo 'BLOCKED — UAT BLOCKED' >&2; exit 1 ;;
           esac

@@ -119,7 +119,7 @@ jobs:
           set_database_state() {
             local state="$1"
             ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-              "docker exec -i supabase-db psql -v ON_ERROR_STOP=1 -U postgres -d postgres -v deployment_environment='$TARGET_ENV' -v desired_state='$state'" \
+              "docker exec -i jalwa-postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres -v deployment_environment='$TARGET_ENV' -v desired_state='$state'" \
               < scripts/set-public-domain-live-catalogue-state.sql
           }
 
@@ -149,7 +149,7 @@ jobs:
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
             "/opt/jalwa/scripts/set-public-domain-live-sources.sh false '$RELEASE_SHA' '$DOMAIN' '$TARGET_ENV'"
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec -i supabase-db psql -v ON_ERROR_STOP=1 -U postgres -d postgres -v deployment_environment='$TARGET_ENV' -v desired_state=false" \
+            "docker exec -i jalwa-postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres -v deployment_environment='$TARGET_ENV' -v desired_state=false" \
             < scripts/set-public-domain-live-catalogue-state.sql
           if [[ "$TARGET_ENV" == staging ]]; then
             gh variable set STAGING_EXPECT_PUBLIC_DOMAIN_LIVE_SOURCES --env staging --body false
