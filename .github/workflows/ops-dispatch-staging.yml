@@ -1,0 +1,47 @@
+name: Operations staging dispatcher
+
+on:
+  push:
+    branches: [ops/release-61b29488]
+    paths:
+      - .github/workflows/ops-dispatch-staging.yml
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Wait for exact main CI and dispatch staging
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RELEASE_SHA: 61b294888edce6b52b4cd590e5d289ec0c6deca5
+        run: |
+          set -euo pipefail
+          api="https://api.github.com/repos/${GITHUB_REPOSITORY}"
+          success=false
+          for attempt in $(seq 1 180); do
+            runs="$(curl -fsSL -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$api/actions/runs?head_sha=$RELEASE_SHA&per_page=100")"
+            status="$(jq -r '[.workflow_runs[] | select(.name == "CI" and .event == "push" and .head_branch == "main")][0].status // "missing"' <<<"$runs")"
+            conclusion="$(jq -r '[.workflow_runs[] | select(.name == "CI" and .event == "push" and .head_branch == "main")][0].conclusion // ""' <<<"$runs")"
+            if [[ "$status" == completed && "$conclusion" == success ]]; then
+              success=true
+              break
+            fi
+            if [[ "$status" == completed && "$conclusion" != success ]]; then
+              echo "Exact-main CI completed with $conclusion; refusing staging dispatch." >&2
+              exit 1
+            fi
+            sleep 10
+          done
+          [[ "$success" == true ]] || { echo 'Timed out waiting for exact-main CI.' >&2; exit 1; }
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "$api/actions/workflows/deploy-staging.yml/dispatches" \
+            -d '{"ref":"main"}'
+          echo "Dispatched staging for $RELEASE_SHA"
