@@ -1,0 +1,53 @@
+name: Apply verified final refactor
+
+on:
+  push:
+    branches:
+      - chore/permanent-staging-certification
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jalwa-verified-final-refactor
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: chore/permanent-staging-certification
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Apply verified refactor and self-clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+          cat .github/final-refactor.part{00..14} > /tmp/final-refactor.b64
+          base64 --decode /tmp/final-refactor.b64 > /tmp/final-refactor.xz
+          xz --decompress --stdout /tmp/final-refactor.xz > /tmp/final-refactor.patch
+          git apply --check /tmp/final-refactor.patch
+          git apply /tmp/final-refactor.patch
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test --workspace @jalwa/web
+          rm -f .github/final-refactor.part*
+          rm -f .github/refactor-patch.part* .github/refactor-postgres.part*
+          rm -f .github/workflows/tmp-apply-final-refactor.yml
+          rm -f .github/workflows/tmp-source-bundle.yml
+          rm -f .github/workflows/tmp-lock-bundle.yml
+          rm -f .github/workflows/dev-source-snapshot.yml
+          git add -A
+          git diff --cached --check
+          git config user.name 'jalwa-release-bot'
+          git config user.email 'jalwa-release-bot@users.noreply.github.com'
+          git commit -m 'Complete PostgreSQL and Better Auth staging refactor'
+          git push origin HEAD:chore/permanent-staging-certification
