@@ -71,14 +71,17 @@ set_release() {
 }
 
 write_marker() {
-  local path="$1" value="$2" temporary="${path}.tmp.$$"
+  local path="$1" value="$2" temporary
+  temporary="${path}.tmp.$$"
   printf '%s\n' "$value" > "$temporary"
   chmod 600 "$temporary"
   mv -f "$temporary" "$path"
 }
 
 write_manifest() {
-  local tag="$1" web_image="$2" worker_image="$3" path="$manifest_dir/${tag}.images.env" temporary="${path}.tmp.$$"
+  local tag="$1" web_image="$2" worker_image="$3" path temporary
+  path="$manifest_dir/${tag}.images.env"
+  temporary="${path}.tmp.$$"
   {
     printf 'JALWA_IMAGE_TAG=%s\n' "$tag"
     printf 'GIT_SHA=%s\n' "$tag"
