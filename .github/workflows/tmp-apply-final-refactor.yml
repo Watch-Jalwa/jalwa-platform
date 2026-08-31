@@ -31,7 +31,7 @@ jobs:
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
-          cat .github/final-refactor.part{00..14} > /tmp/final-refactor.b64
+          cat .github/final-refactor.part{00..14} | tr -cd 'A-Za-z0-9+/=' > /tmp/final-refactor.b64
           base64 --decode /tmp/final-refactor.b64 > /tmp/final-refactor.xz
           xz --decompress --stdout /tmp/final-refactor.xz > /tmp/final-refactor.patch
           git apply --check /tmp/final-refactor.patch
