@@ -15,34 +15,34 @@ export type AuthFacade = {
 };
 
 type Cardinality = "many" | "single" | "maybeSingle";
-type QueryData<C extends Cardinality> = C extends "many" ? DatabaseRow[] : C extends "single" ? DatabaseRow : DatabaseRow | null;
+type QueryData<T, C extends Cardinality> = C extends "many" ? T[] : C extends "single" ? T : T | null;
 
-export class QueryBuilder<C extends Cardinality = "many"> implements PromiseLike<DbResult<QueryData<C>>> {
-  select(columns?: string, options?: { count?: "exact" | string; head?: boolean }): QueryBuilder<C>;
-  insert(values: DatabaseRow | DatabaseRow[]): QueryBuilder<C>;
-  update(values: DatabaseRow): QueryBuilder<C>;
-  upsert(values: DatabaseRow | DatabaseRow[], options?: { onConflict?: string }): QueryBuilder<C>;
-  delete(): QueryBuilder<C>;
-  eq(column: string, value: unknown): QueryBuilder<C>;
-  neq(column: string, value: unknown): QueryBuilder<C>;
-  gt(column: string, value: unknown): QueryBuilder<C>;
-  gte(column: string, value: unknown): QueryBuilder<C>;
-  lt(column: string, value: unknown): QueryBuilder<C>;
-  lte(column: string, value: unknown): QueryBuilder<C>;
-  like(column: string, value: unknown): QueryBuilder<C>;
-  ilike(column: string, value: unknown): QueryBuilder<C>;
-  in(column: string, values: unknown[]): QueryBuilder<C>;
-  is(column: string, value: unknown): QueryBuilder<C>;
-  not(column: string, operator: string, value: unknown): QueryBuilder<C>;
-  contains(column: string, value: unknown): QueryBuilder<C>;
-  match(values: Record<string, unknown>): QueryBuilder<C>;
-  order(column: string, options?: { ascending?: boolean }): QueryBuilder<C>;
-  limit(value: number): QueryBuilder<C>;
-  range(from: number, to: number): QueryBuilder<C>;
-  single(): QueryBuilder<"single">;
-  maybeSingle(): QueryBuilder<"maybeSingle">;
-  then<TResult1 = DbResult<QueryData<C>>, TResult2 = never>(
-    onfulfilled?: ((value: DbResult<QueryData<C>>) => TResult1 | PromiseLike<TResult1>) | null,
+export class QueryBuilder<T extends DatabaseRow = any, C extends Cardinality = "many"> implements PromiseLike<DbResult<QueryData<T, C>>> {
+  select(columns?: string, options?: { count?: "exact" | string; head?: boolean }): QueryBuilder<T, C>;
+  insert(values: DatabaseRow | DatabaseRow[]): QueryBuilder<T, C>;
+  update(values: DatabaseRow): QueryBuilder<T, C>;
+  upsert(values: DatabaseRow | DatabaseRow[], options?: { onConflict?: string; ignoreDuplicates?: boolean }): QueryBuilder<T, C>;
+  delete(): QueryBuilder<T, C>;
+  eq(column: string, value: unknown): QueryBuilder<T, C>;
+  neq(column: string, value: unknown): QueryBuilder<T, C>;
+  gt(column: string, value: unknown): QueryBuilder<T, C>;
+  gte(column: string, value: unknown): QueryBuilder<T, C>;
+  lt(column: string, value: unknown): QueryBuilder<T, C>;
+  lte(column: string, value: unknown): QueryBuilder<T, C>;
+  like(column: string, value: unknown): QueryBuilder<T, C>;
+  ilike(column: string, value: unknown): QueryBuilder<T, C>;
+  in(column: string, values: unknown[]): QueryBuilder<T, C>;
+  is(column: string, value: unknown): QueryBuilder<T, C>;
+  not(column: string, operator: string, value: unknown): QueryBuilder<T, C>;
+  contains(column: string, value: unknown): QueryBuilder<T, C>;
+  match(values: Record<string, unknown>): QueryBuilder<T, C>;
+  order(column: string, options?: { ascending?: boolean }): QueryBuilder<T, C>;
+  limit(value: number): QueryBuilder<T, C>;
+  range(from: number, to: number): QueryBuilder<T, C>;
+  single(): QueryBuilder<T, "single">;
+  maybeSingle(): QueryBuilder<T, "maybeSingle">;
+  then<TResult1 = DbResult<QueryData<T, C>>, TResult2 = never>(
+    onfulfilled?: ((value: DbResult<QueryData<T, C>>) => TResult1 | PromiseLike<TResult1>) | null,
     onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null,
   ): PromiseLike<TResult1 | TResult2>;
 }
@@ -50,7 +50,7 @@ export class QueryBuilder<C extends Cardinality = "many"> implements PromiseLike
 export class DatabaseClient {
   constructor(pool: Pool, options?: { userId?: string | null; role?: string; auth?: AuthFacade });
   auth: AuthFacade;
-  from(table: string): QueryBuilder;
+  from<T extends DatabaseRow = any>(table: string): QueryBuilder<T>;
   rpc(name: string, args?: Record<string, unknown>): Promise<DbResult<any>>;
   query<T extends QueryResultRow = DatabaseRow>(text: string, values?: unknown[]): Promise<QueryResult<T>>;
 }
