@@ -1,7 +1,7 @@
 import { databasePool } from "@/lib/database/pool";
-import { createDatabaseClient } from "@jalwa/postgres";
+import { createDatabaseClient, type AdminDatabaseClient } from "@jalwa/postgres";
 
-export function createAdminClient() {
+export function createAdminClient(): AdminDatabaseClient {
   return createDatabaseClient(databasePool, {
     role: "service_role",
     auth: {
@@ -20,5 +20,5 @@ export function createAdminClient() {
         },
       },
     },
-  });
+  }) as AdminDatabaseClient;
 }

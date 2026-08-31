@@ -39,6 +39,7 @@ export async function POST(request: Request) {
   const callbackURL = safeQaNextPath(body.nextPath);
   await databasePool.query(`delete from public.qa_magic_links where email=$1 and qa_run_id=$2`, [email, qaRunId]);
   await auth.api.signInMagicLink({
+    headers: request.headers,
     body: { email, callbackURL, metadata: { qaSecret: process.env.STAGING_QA_SECRET, qaRunId } },
   });
   const link = await databasePool.query<{ url: string }>(
