@@ -33,13 +33,13 @@ jobs:
     timeout-minutes: 45
     environment: staging
     env:
-      GH_TOKEN: ${{ github.token }}
       DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      ENV_ADMIN_TOKEN: ${{ secrets.GITHUB_ENV_ADMIN_TOKEN }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
@@ -48,13 +48,23 @@ jobs:
         run: test "$GITHUB_REF" = refs/heads/main
 
       - name: Validate required staging connections
-        env:
-          SSH_PUBLIC_KEY: ${{ secrets.DIGITALOCEAN_SSH_PUBLIC_KEY }}
         run: |
           set -euo pipefail
-          for value in DIGITALOCEAN_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_ZONE_ID AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SSH_PUBLIC_KEY; do
+          for value in DIGITALOCEAN_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_ZONE_ID AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY ENV_ADMIN_TOKEN; do
             test -n "${!value:-}" || { echo "Missing staging value $value" >&2; exit 1; }
           done
+
+      - name: Install bootstrap secret tooling
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age >/dev/null
+
+      - name: Generate missing Jalwa-owned staging secrets
+        id: generated
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_ENV_ADMIN_TOKEN }}
+          DEPLOY_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        run: bash scripts/seed-environment-secrets.sh staging STAGING_SSH_KEY true
 
       - name: Create isolated staging R2 buckets
         run: |
@@ -74,13 +84,14 @@ jobs:
       - name: Provision isolated staging host
         id: terraform
         env:
-          SSH_PUBLIC_KEY: ${{ secrets.DIGITALOCEAN_SSH_PUBLIC_KEY }}
+          SSH_PUBLIC_KEY: ${{ steps.generated.outputs.ssh_public_key }}
           REGION: ${{ inputs.digitalocean_region }}
           ADMIN_CIDR: ${{ inputs.admin_cidr }}
           DOMAIN: ${{ inputs.domain }}
           DROPLET_SIZE: ${{ inputs.droplet_size }}
         run: |
           set -euo pipefail
+          test -n "$SSH_PUBLIC_KEY"
           cd infrastructure/digitalocean
           terraform init -reconfigure \
             -backend-config="bucket=jalwa-terraform-state" \
@@ -149,23 +160,25 @@ jobs:
 
       - name: Persist staging deployment outputs
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_ENV_ADMIN_TOKEN }}
           HOST: ${{ steps.terraform.outputs.host }}
           DOMAIN: ${{ inputs.domain }}
           HOST_FINGERPRINT: ${{ steps.hostkey.outputs.fingerprint }}
         run: |
           set -euo pipefail
-          gh variable set STAGING_HOST --env staging --body "$HOST"
-          gh variable set STAGING_USER --env staging --body "jalwa"
-          gh variable set STAGING_DOMAIN --env staging --body "$DOMAIN"
-          gh variable set STAGING_SSH_KNOWN_HOSTS --env staging --body "$(cat /tmp/staging-known-hosts)"
-          gh variable set R2_INCOMING_BUCKET --env staging --body "jalwa-staging-incoming"
-          gh variable set R2_PROCESSED_BUCKET --env staging --body "jalwa-staging-media"
-          gh variable set R2_BACKUP_BUCKET --env staging --body "jalwa-staging-backups"
+          gh variable set STAGING_HOST --repo "$GITHUB_REPOSITORY" --env staging --body "$HOST"
+          gh variable set STAGING_USER --repo "$GITHUB_REPOSITORY" --env staging --body "jalwa"
+          gh variable set STAGING_DOMAIN --repo "$GITHUB_REPOSITORY" --env staging --body "$DOMAIN"
+          gh variable set STAGING_SSH_KNOWN_HOSTS --repo "$GITHUB_REPOSITORY" --env staging --body "$(cat /tmp/staging-known-hosts)"
+          gh variable set R2_INCOMING_BUCKET --repo "$GITHUB_REPOSITORY" --env staging --body "jalwa-staging-incoming"
+          gh variable set R2_PROCESSED_BUCKET --repo "$GITHUB_REPOSITORY" --env staging --body "jalwa-staging-media"
+          gh variable set R2_BACKUP_BUCKET --repo "$GITHUB_REPOSITORY" --env staging --body "jalwa-staging-backups"
           {
             echo '### Staging bootstrap complete'
             echo "- Host: $HOST"
             echo "- Domain: https://$DOMAIN"
             echo "- SSH Ed25519 fingerprint: $HOST_FINGERPRINT"
+            echo '- Jalwa-owned secrets were generated only when absent'
             echo '- Terraform state and media/backup buckets are isolated from production'
-            echo '- Configure the remaining staging environment secrets, then run Deploy staging'
+            echo '- Configure SMTP, DeepSeek and payment-provider sandbox credentials, then run Deploy staging'
           } >> "$GITHUB_STEP_SUMMARY"
