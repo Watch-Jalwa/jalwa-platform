@@ -1,0 +1,37 @@
+name: Temporary AWS Terraform formatter
+
+on:
+  push:
+    branches:
+      - chore/permanent-staging-certification
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: chore/permanent-staging-certification
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
+        with:
+          terraform_version: 1.13.5
+          terraform_wrapper: false
+      - name: Format and publish AWS Terraform
+        run: |
+          set -euo pipefail
+          terraform fmt infrastructure/aws-media/main.tf
+          git diff --check
+          if git diff --quiet -- infrastructure/aws-media/main.tf; then
+            echo 'Terraform already formatted.'
+            exit 0
+          fi
+          git config user.name 'jalwa-release-bot'
+          git config user.email 'jalwa-release-bot@users.noreply.github.com'
+          git add infrastructure/aws-media/main.tf
+          git commit -m 'Format AWS media Terraform'
+          git push origin HEAD:chore/permanent-staging-certification
