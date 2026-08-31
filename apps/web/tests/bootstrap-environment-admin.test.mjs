@@ -41,6 +41,19 @@ test("bootstrap uses explicit environment administration and idempotent generate
   assert.match(seeder, /refusing to rotate it/);
 });
 
+test("persistent SSH CIDRs are optional and omitted by default", () => {
+  for (const workflow of [staging, production]) {
+    assert.match(workflow, /admin_cidr:\n\s+description: Optional persistent SSH CIDR/);
+    assert.match(workflow, /admin_cidr:[\s\S]{0,220}required: false/);
+    assert.match(workflow, /admin_cidrs='\[\]'/);
+    assert.match(workflow, /if \[\[ -n "\$ADMIN_CIDR" \]\]; then/);
+    assert.match(workflow, /-var="admin_cidrs=\$admin_cidrs"/);
+  }
+  assert.match(variables, /variable "admin_cidrs"[\s\S]*default\s*=\s*\[\]/);
+  assert.match(terraform, /dynamic "inbound_rule"/);
+  assert.match(terraform, /for_each = length\(var\.admin_cidrs\) > 0 \? \[1\] : \[\]/);
+});
+
 test("GitHub-hosted deploys use temporary runner SSH access and run-scoped GHCR credentials", () => {
   for (const workflow of [deployStaging, deployProduction]) {
     assert.match(workflow, /DIGITALOCEAN_TOKEN/);
