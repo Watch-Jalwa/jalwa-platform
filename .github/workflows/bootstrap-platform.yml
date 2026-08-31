@@ -33,25 +33,38 @@ jobs:
     timeout-minutes: 45
     environment: production
     env:
-      GH_TOKEN: ${{ github.token }}
       DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
       AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      ENV_ADMIN_TOKEN: ${{ secrets.GITHUB_ENV_ADMIN_TOKEN }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
 
+      - name: Restrict bootstrap to main
+        run: test "$GITHUB_REF" = refs/heads/main
+
       - name: Validate required account connections
-        env:
-          SSH_PUBLIC_KEY: ${{ secrets.DIGITALOCEAN_SSH_PUBLIC_KEY }}
         run: |
           set -euo pipefail
-          for value in DIGITALOCEAN_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_ZONE_ID AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY SSH_PUBLIC_KEY; do
-            test -n "${!value:-}" || { echo "Missing $value" >&2; exit 1; }
+          for value in DIGITALOCEAN_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_ZONE_ID AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY ENV_ADMIN_TOKEN; do
+            test -n "${!value:-}" || { echo "Missing production value $value" >&2; exit 1; }
           done
+
+      - name: Install bootstrap secret tooling
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq age >/dev/null
+
+      - name: Generate missing Jalwa-owned production secrets
+        id: generated
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_ENV_ADMIN_TOKEN }}
+          DEPLOY_SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
+        run: bash scripts/seed-environment-secrets.sh production PRODUCTION_SSH_KEY false
 
       - name: Create Cloudflare R2 buckets
         run: |
@@ -71,13 +84,14 @@ jobs:
       - name: Provision DigitalOcean with Terraform
         id: terraform
         env:
-          SSH_PUBLIC_KEY: ${{ secrets.DIGITALOCEAN_SSH_PUBLIC_KEY }}
+          SSH_PUBLIC_KEY: ${{ steps.generated.outputs.ssh_public_key }}
           REGION: ${{ inputs.digitalocean_region }}
           ADMIN_CIDR: ${{ inputs.admin_cidr }}
           DOMAIN: ${{ inputs.domain }}
           DROPLET_SIZE: ${{ inputs.droplet_size }}
         run: |
           set -euo pipefail
+          test -n "$SSH_PUBLIC_KEY"
           cd infrastructure/digitalocean
           terraform init -reconfigure \
             -backend-config="bucket=jalwa-terraform-state" \
@@ -92,6 +106,8 @@ jobs:
             -backend-config="endpoints={s3=\"https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com\"}"
           terraform apply -auto-approve \
             -var="digitalocean_token=$DIGITALOCEAN_TOKEN" \
+            -var="project_name=jalwa-production" \
+            -var="deployment_environment=production" \
             -var="region=$REGION" \
             -var="droplet_size=$DROPLET_SIZE" \
             -var="ssh_public_key=$SSH_PUBLIC_KEY" \
@@ -122,8 +138,7 @@ jobs:
         run: |
           set -euo pipefail
           upsert_record() {
-            local name="$1"
-            local existing body
+            local name="$1" existing body
             existing=$(curl -fsS "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records?type=A&name=$name" \
               -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | jq -r '.result[0].id // empty')
             body=$(jq -nc --arg type A --arg name "$name" --arg content "$HOST" '{type:$type,name:$name,content:$content,ttl:1,proxied:true}')
@@ -145,20 +160,25 @@ jobs:
 
       - name: Persist deployment outputs
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_ENV_ADMIN_TOKEN }}
           HOST: ${{ steps.terraform.outputs.host }}
           DOMAIN: ${{ inputs.domain }}
           HOST_FINGERPRINT: ${{ steps.hostkey.outputs.fingerprint }}
         run: |
           set -euo pipefail
-          gh variable set PRODUCTION_HOST --env production --body "$HOST"
-          gh variable set PRODUCTION_USER --env production --body "jalwa"
-          gh variable set PRODUCTION_DOMAIN --env production --body "$DOMAIN"
-          gh variable set PRODUCTION_SSH_KNOWN_HOSTS --env production --body "$(cat /tmp/production-known-hosts)"
+          gh variable set PRODUCTION_HOST --repo "$GITHUB_REPOSITORY" --env production --body "$HOST"
+          gh variable set PRODUCTION_USER --repo "$GITHUB_REPOSITORY" --env production --body "jalwa"
+          gh variable set PRODUCTION_DOMAIN --repo "$GITHUB_REPOSITORY" --env production --body "$DOMAIN"
+          gh variable set PRODUCTION_SSH_KNOWN_HOSTS --repo "$GITHUB_REPOSITORY" --env production --body "$(cat /tmp/production-known-hosts)"
+          gh variable set R2_INCOMING_BUCKET --repo "$GITHUB_REPOSITORY" --env production --body "jalwa-incoming"
+          gh variable set R2_PROCESSED_BUCKET --repo "$GITHUB_REPOSITORY" --env production --body "jalwa-media"
+          gh variable set R2_BACKUP_BUCKET --repo "$GITHUB_REPOSITORY" --env production --body "jalwa-backups"
           {
             echo '### Platform bootstrap complete'
             echo "- DigitalOcean host: $HOST"
             echo "- SSH Ed25519 fingerprint: $HOST_FINGERPRINT"
+            echo '- Jalwa-owned secrets were generated only when absent'
             echo '- R2 buckets and Cloudflare DNS configured'
-            echo '- Production SSH host identity pinned for subsequent deploys'
-            echo '- Configure PostgreSQL, Better Auth and SMTP production secrets before deployment'
+            echo '- Production SSH host identity and R2 variables pinned for subsequent deploys'
+            echo '- Configure SMTP, DeepSeek and approved live payment credentials before production deployment'
           } >> "$GITHUB_STEP_SUMMARY"
