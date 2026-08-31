@@ -41,8 +41,6 @@ jobs:
           test -d supabase
           test ! -e database
           mv supabase database
-          rm -f .github/refactor-patch.part00 .github/refactor-patch.part01 .github/refactor-patch.part02
-          rm -f .github/refactor-postgres.part000
           rm -f infrastructure/production/scripts/prepare-supabase.sh
           rm -f scripts/generate-supabase-secrets.mjs
 
@@ -59,11 +57,37 @@ jobs:
               path.write_text(json.dumps(data, indent=2) + '\n')
           PY
 
-          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          npm ci --ignore-scripts --no-audit --no-fund
-          npm test --workspace @jalwa/web
-          node --test apps/web/tests/no-supabase-runtime.test.mjs
+          cat > scripts/generate-database-secrets.mjs <<'EOF'
+          #!/usr/bin/env node
+          import { randomBytes } from "node:crypto";
+          import { pathToFileURL } from "node:url";
 
+          function secret(bytes = 48) { return randomBytes(bytes).toString("base64url"); }
+
+          export function generateSelfHostedSecrets() {
+            return {
+              SELF_HOSTED_POSTGRES_PASSWORD: secret(36),
+              BETTER_AUTH_SECRET: secret(48),
+              STAGING_QA_SECRET: secret(48),
+              MEDIA_SIGNING_SECRET: secret(48),
+              RATE_LIMIT_SALT: secret(36),
+              OBSERVABILITY_HASH_SALT: secret(36),
+              OPERATIONS_DIAGNOSTICS_SECRET: secret(48),
+              RECOMMENDATION_REFRESH_SECRET: secret(48),
+              CRON_SECRET: secret(48),
+              ACCOUNT_REQUEST_PROCESSOR_SECRET: secret(48),
+              ACCOUNT_DELETION_HASH_SECRET: secret(48),
+            };
+          }
+
+          if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+            const values = generateSelfHostedSecrets();
+            for (const [name, value] of Object.entries(values)) console.log(`${name}=${value}`);
+          }
+          EOF
+          chmod +x scripts/generate-database-secrets.mjs
+
+          # Self-clean transport before tests so the fail-closed runtime audit sees only final source.
           rm -f .github/jalwa-smart.part*
           rm -f .github/final-refactor.part*
           rm -f .github/refactor-patch.part* .github/refactor-postgres.part*
@@ -73,6 +97,11 @@ jobs:
           rm -f .github/workflows/dev-source-snapshot.yml
           rm -f .github/workflows/tmp-apply-postgres-only.yml
           rm -f .github/workflows/tmp-apply-postgres-refactor.yml
+
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test --workspace @jalwa/web
+          node --test apps/web/tests/no-supabase-runtime.test.mjs
 
           git add -A
           git diff --cached --check
