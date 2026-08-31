@@ -8,6 +8,17 @@ variable "project_name" {
   default = "jalwa-production"
 }
 
+variable "deployment_environment" {
+  type        = string
+  default     = "production"
+  description = "Deployment environment label used for DigitalOcean project metadata and resource tags."
+
+  validation {
+    condition     = contains(["production", "staging"], var.deployment_environment)
+    error_message = "deployment_environment must be either production or staging."
+  }
+}
+
 variable "region" {
   type        = string
   description = "DigitalOcean region slug, selected in the account before apply."
