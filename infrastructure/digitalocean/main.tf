@@ -12,7 +12,7 @@ resource "digitalocean_droplet" "jalwa" {
   monitoring = true
   ipv6       = true
   ssh_keys   = [digitalocean_ssh_key.jalwa.fingerprint]
-  tags       = ["jalwa", "production", "web", "worker"]
+  tags       = ["jalwa", var.deployment_environment, "web", "worker"]
 
   user_data = templatefile("${path.module}/cloud-init.yaml.tftpl", {
     ssh_public_key = var.ssh_public_key
@@ -68,8 +68,8 @@ resource "digitalocean_firewall" "jalwa" {
 
 resource "digitalocean_project" "jalwa" {
   name        = var.project_name
-  description = "Jalwa production web and media-processing infrastructure"
+  description = "Jalwa ${var.deployment_environment} web and media-processing infrastructure"
   purpose     = "Web Application"
-  environment = "Production"
+  environment = title(var.deployment_environment)
   resources   = [digitalocean_droplet.jalwa.urn]
 }
