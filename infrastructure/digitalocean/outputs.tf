@@ -2,6 +2,10 @@ output "droplet_id" {
   value = digitalocean_droplet.jalwa.id
 }
 
+output "firewall_id" {
+  value = digitalocean_firewall.jalwa.id
+}
+
 output "ipv4_address" {
   value = digitalocean_droplet.jalwa.ipv4_address
 }
