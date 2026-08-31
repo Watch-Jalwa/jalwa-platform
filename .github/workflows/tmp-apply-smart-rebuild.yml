@@ -49,6 +49,16 @@ jobs:
           git apply --check /tmp/jalwa-smart.patch
           git apply /tmp/jalwa-smart.patch
 
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          for name in ('apps/web/package.json', 'apps/worker/package.json'):
+              path = Path(name)
+              data = json.loads(path.read_text())
+              data.setdefault('dependencies', {})['@jalwa/postgres'] = 'file:../../packages/postgres'
+              path.write_text(json.dumps(data, indent=2) + '\n')
+          PY
+
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
           npm ci --ignore-scripts --no-audit --no-fund
           npm test --workspace @jalwa/web
