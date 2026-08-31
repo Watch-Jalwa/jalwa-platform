@@ -8,8 +8,9 @@ on:
         required: true
         default: blr1
       admin_cidr:
-        description: Trusted persistent SSH CIDR, such as 203.0.113.10/32
-        required: true
+        description: Optional persistent SSH CIDR for break-glass access; leave empty for deployment-runner-only SSH
+        required: false
+        default: ''
       domain:
         description: Staging domain
         required: true
@@ -92,6 +93,16 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$SSH_PUBLIC_KEY"
+          admin_cidrs='[]'
+          if [[ -n "$ADMIN_CIDR" ]]; then
+            python - "$ADMIN_CIDR" <<'PY'
+          import ipaddress, sys
+          network = ipaddress.ip_network(sys.argv[1], strict=False)
+          if network.version != 4:
+              raise SystemExit('admin_cidr must be an IPv4 CIDR')
+          PY
+            admin_cidrs="$(jq -nc --arg cidr "$ADMIN_CIDR" '[$cidr]')"
+          fi
           cd infrastructure/digitalocean
           terraform init -reconfigure \
             -backend-config="bucket=jalwa-terraform-state" \
@@ -111,7 +122,7 @@ jobs:
             -var="region=$REGION" \
             -var="droplet_size=$DROPLET_SIZE" \
             -var="ssh_public_key=$SSH_PUBLIC_KEY" \
-            -var="admin_cidrs=[\"$ADMIN_CIDR\"]" \
+            -var="admin_cidrs=$admin_cidrs" \
             -var="domain=$DOMAIN"
           host=$(terraform output -raw ipv4_address)
           firewall_id=$(terraform output -raw firewall_id)
@@ -171,6 +182,7 @@ jobs:
           FIREWALL_ID: ${{ steps.terraform.outputs.firewall_id }}
           DOMAIN: ${{ inputs.domain }}
           HOST_FINGERPRINT: ${{ steps.hostkey.outputs.fingerprint }}
+          ADMIN_CIDR: ${{ inputs.admin_cidr }}
         run: |
           set -euo pipefail
           gh variable set STAGING_HOST --repo "$GITHUB_REPOSITORY" --env staging --body "$HOST"
@@ -186,7 +198,7 @@ jobs:
             echo "- Host: $HOST"
             echo "- Domain: https://$DOMAIN"
             echo "- SSH Ed25519 fingerprint: $HOST_FINGERPRINT"
-            echo '- Owner/admin SSH CIDR remains the only persistent SSH source'
+            if [[ -n "$ADMIN_CIDR" ]]; then echo "- Persistent break-glass SSH CIDR: $ADMIN_CIDR"; else echo '- Persistent SSH access: none'; fi
             echo '- GitHub runner SSH access was temporary and removed after host-key capture'
             echo '- Jalwa-owned secrets were generated only when absent'
             echo '- Terraform state and media/backup buckets are isolated from production'
