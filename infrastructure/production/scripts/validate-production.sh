@@ -35,6 +35,7 @@ node --check scripts/generate-database-secrets.mjs
 node --check scripts/launch-catalogue.mjs
 node --check scripts/import-launch-catalogue.mjs
 node --check scripts/harvest-alpha-open-content.mjs
+node --check scripts/verify-release-identity.mjs
 node scripts/launch-catalogue.mjs content/launch-catalogue.example.jsonl --min=2 --allow-placeholders >/tmp/jalwa-catalogue-validation.json
 jq -e '.ok == true and .summary.items == 2' /tmp/jalwa-catalogue-validation.json >/dev/null
 node scripts/generate-database-secrets.mjs > /tmp/jalwa-self-hosted-secrets.env
@@ -50,10 +51,16 @@ cp infrastructure/production/.env.production.example infrastructure/production/.
 trap 'rm -f infrastructure/production/.env.production /tmp/jalwa-self-hosted-secrets.env /tmp/jalwa-catalogue-validation.json' EXIT
 (
   cd infrastructure/production
-  DOMAIN=example.com JALWA_IMAGE_TAG=0000000000000000000000000000000000000000 docker compose config --quiet
+  DOMAIN=example.com \
+    JALWA_IMAGE_TAG=0000000000000000000000000000000000000000 \
+    JALWA_WEB_IMAGE=ghcr.io/watch-jalwa/jalwa-platform-web:0000000000000000000000000000000000000000 \
+    JALWA_WORKER_IMAGE=ghcr.io/watch-jalwa/jalwa-platform-worker:0000000000000000000000000000000000000000 \
+    docker compose config --quiet
 )
 require_match 'postgres:17-alpine' infrastructure/production/docker-compose.yml 'Pinned PostgreSQL service is missing.'
 require_match 'container_name: jalwa-postgres' infrastructure/production/docker-compose.yml 'Stable PostgreSQL container identity is missing.'
+require_match '${JALWA_WEB_IMAGE:-ghcr.io/watch-jalwa/jalwa-platform-web:latest}' infrastructure/production/docker-compose.yml 'Web service does not accept an exact promoted image reference.'
+require_match '${JALWA_WORKER_IMAGE:-ghcr.io/watch-jalwa/jalwa-platform-worker:latest}' infrastructure/production/docker-compose.yml 'Worker service does not accept an exact promoted image reference.'
 require_match 'DATABASE_URL=postgresql://postgres:' .github/workflows/deploy-staging.yml 'Staging does not use a direct PostgreSQL URL.'
 require_match 'BETTER_AUTH_URL=https://$DOMAIN' .github/workflows/deploy-staging.yml 'Staging Better Auth URL is missing.'
 require_match 'PAYMENT_PROVIDER=mock' .github/workflows/deploy-staging.yml 'Staging mock payment boundary is missing.'
@@ -88,11 +95,25 @@ require_match 'WORKER_HEARTBEAT_PATH' infrastructure/production/docker-compose.y
 require_match 'BACKUP_REASON=pre-migration' .github/workflows/deploy-production.yml 'Pre-migration backup is missing.'
 require_match 'deploy-release.sh' .github/workflows/deploy-production.yml 'Transactional release deployment is missing.'
 require_match 'PRODUCTION_SSH_KNOWN_HOSTS' .github/workflows/deploy-production.yml 'Pinned production SSH identity is missing.'
-require_match 'docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c' .github/workflows/deploy-production.yml 'Buildx action is not pinned.'
-require_match 'docker/login-action@dbcb813823bdd20940b903addbd779551569679f' .github/workflows/deploy-production.yml 'Registry login action is not pinned.'
-require_count 2 'docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a' .github/workflows/deploy-production.yml 'Image build actions are not pinned.'
-require_count 2 'provenance: mode=max' .github/workflows/deploy-production.yml 'Image provenance is not enabled for both images.'
-require_count 2 'sbom: true' .github/workflows/deploy-production.yml 'Image SBOM attestations are not enabled for both images.'
+require_match 'certification_run_id:' .github/workflows/deploy-production.yml 'Production does not require retained staging certification evidence.'
+require_match 'payment_sandbox_run_id:' .github/workflows/deploy-production.yml 'Production does not require real-provider sandbox evidence.'
+require_match 'uat_approval_reference:' .github/workflows/deploy-production.yml 'Production does not require a human UAT reference.'
+require_match 'READY FOR UAT' .github/workflows/deploy-production.yml 'Production does not validate the READY FOR UAT decision.'
+require_match '.services.web.repo_digest' .github/workflows/deploy-production.yml 'Production does not promote the certified web digest.'
+require_match '.services.worker.repo_digest' .github/workflows/deploy-production.yml 'Production does not promote the certified worker digest.'
+require_match "docker pull '\$JALWA_WEB_IMAGE'" .github/workflows/deploy-production.yml 'Production does not pre-pull the certified web digest.'
+require_match "docker pull '\$JALWA_WORKER_IMAGE'" .github/workflows/deploy-production.yml 'Production does not pre-pull the certified worker digest.'
+if grep -Fq 'docker/build-push-action@' .github/workflows/deploy-production.yml || grep -Fq 'docker/setup-buildx-action@' .github/workflows/deploy-production.yml; then
+  echo 'Production must promote staging-certified image digests and must not rebuild application images.' >&2
+  exit 1
+fi
+require_match 'Payment provider sandbox certification' .github/workflows/deploy-production.yml 'Production does not validate real-provider sandbox evidence.'
+require_match 'signed_webhook_lifecycle == "succeeded"' .github/workflows/deploy-production.yml 'Production does not require a successful signed provider lifecycle.'
+require_match "mock|'')" .github/workflows/payment-sandbox-certification.yml 'The payment sandbox gate does not reject mock.'
+require_match 'STAGING_PAYMENT_EXPECTED_HOST' .github/workflows/payment-sandbox-certification.yml 'The provider sandbox redirect host is not pinned.'
+require_match 'capture-release-identity.sh' .github/workflows/deploy-production.yml 'Production does not capture running release identity.'
+require_match 'build_pipeline_id' infrastructure/production/scripts/capture-release-identity.sh 'Release identity does not retain image build provenance.'
+require_match 'deployment_pipeline_id' infrastructure/production/scripts/capture-release-identity.sh 'Release identity does not retain deployment provenance.'
 require_match 'restore-drill.sh' .github/workflows/deploy-production.yml 'Deployment does not rehearse database restoration.'
 require_match 'host-acceptance.sh' .github/workflows/deploy-production.yml 'Deployment does not enforce host acceptance.'
 require_match 'Content-Security-Policy-Report-Only' infrastructure/production/Caddyfile 'CSP reporting policy is missing.'

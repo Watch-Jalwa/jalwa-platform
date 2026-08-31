@@ -30,7 +30,7 @@ services:
     networks: [jalwa]
 
   web:
-    image: ghcr.io/watch-jalwa/jalwa-platform-web:${JALWA_IMAGE_TAG:-latest}
+    image: ${JALWA_WEB_IMAGE:-ghcr.io/watch-jalwa/jalwa-platform-web:latest}
     restart: unless-stopped
     init: true
     depends_on:
@@ -67,7 +67,7 @@ services:
     networks: [jalwa]
 
   worker:
-    image: ghcr.io/watch-jalwa/jalwa-platform-worker:${JALWA_IMAGE_TAG:-latest}
+    image: ${JALWA_WORKER_IMAGE:-ghcr.io/watch-jalwa/jalwa-platform-worker:latest}
     restart: unless-stopped
     init: true
     depends_on:

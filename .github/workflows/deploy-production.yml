@@ -4,7 +4,19 @@ on:
   workflow_dispatch:
     inputs:
       release_sha:
-        description: Exact green main commit SHA to deploy
+        description: Exact staging-certified 40-character main commit SHA
+        required: true
+        type: string
+      certification_run_id:
+        description: Successful Staging certification run ID with READY FOR UAT evidence
+        required: true
+        type: string
+      payment_sandbox_run_id:
+        description: Successful real-provider sandbox certification run ID
+        required: true
+        type: string
+      uat_approval_reference:
+        description: Human UAT approval reference for this exact release
         required: true
         type: string
       confirm_production:
@@ -15,24 +27,28 @@ on:
 
 permissions:
   contents: read
-  packages: write
+  actions: read
 
 concurrency:
   group: jalwa-production
   cancel-in-progress: false
-
-env:
-  REGISTRY: ghcr.io
-  WEB_IMAGE: ghcr.io/watch-jalwa/jalwa-platform-web
-  WORKER_IMAGE: ghcr.io/watch-jalwa/jalwa-platform-worker
 
 jobs:
   validate:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment: production
+    outputs:
+      web_image: ${{ steps.evidence.outputs.web_image }}
+      worker_image: ${{ steps.evidence.outputs.worker_image }}
+      staging_build_run_id: ${{ steps.evidence.outputs.staging_build_run_id }}
+      payment_provider: ${{ steps.evidence.outputs.payment_provider }}
     env:
+      GH_TOKEN: ${{ github.token }}
       RELEASE_SHA: ${{ inputs.release_sha }}
+      CERTIFICATION_RUN_ID: ${{ inputs.certification_run_id }}
+      PAYMENT_SANDBOX_RUN_ID: ${{ inputs.payment_sandbox_run_id }}
+      UAT_APPROVAL_REFERENCE: ${{ inputs.uat_approval_reference }}
       PRODUCTION_HOST: ${{ vars.PRODUCTION_HOST }}
       PRODUCTION_DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
       PRODUCTION_SSH_KNOWN_HOSTS: ${{ vars.PRODUCTION_SSH_KNOWN_HOSTS }}
@@ -78,12 +94,16 @@ jobs:
         with:
           ref: ${{ inputs.release_sha }}
           fetch-depth: 0
-      - name: Validate exact production request
+
+      - name: Validate exact production request and environment
         run: |
           set -euo pipefail
           test '${{ inputs.confirm_production }}' = 'true' || { echo 'Production confirmation is required.' >&2; exit 1; }
-          test "$GITHUB_REF" = refs/heads/main || { echo 'Production deploys must run from main.' >&2; exit 1; }
+          test "$GITHUB_REF" = refs/heads/main || { echo 'Production deploys must be dispatched from main.' >&2; exit 1; }
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_sha must be a 40-character lowercase SHA.' >&2; exit 1; }
+          [[ "$CERTIFICATION_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'certification_run_id must be numeric.' >&2; exit 1; }
+          [[ "$PAYMENT_SANDBOX_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'payment_sandbox_run_id must be numeric.' >&2; exit 1; }
+          test ${#UAT_APPROVAL_REFERENCE} -ge 4 || { echo 'A human UAT approval reference is required.' >&2; exit 1; }
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           git merge-base --is-ancestor "$RELEASE_SHA" origin/main
           required=(
@@ -107,69 +127,77 @@ jobs:
           esac
           infrastructure/production/scripts/validate-production.sh
 
-  build:
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    needs: validate
-    environment: production
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
-          ref: ${{ inputs.release_sha }}
-      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c
-      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Build and push immutable production web image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
-        with:
-          context: .
-          target: web
-          push: true
-          provenance: mode=max
-          sbom: true
-          tags: ${{ env.WEB_IMAGE }}:${{ inputs.release_sha }}
-          build-args: |
-            GIT_SHA=${{ inputs.release_sha }}
-            BUILD_RUN_ID=${{ github.run_id }}
-            NEXT_PUBLIC_APP_URL=https://${{ vars.PRODUCTION_DOMAIN }}
-            NEXT_PUBLIC_ENABLE_PHONE_AUTH=false
-            NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=${{ vars.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH || 'false' }}
-            NEXT_PUBLIC_ENABLE_APPLE_AUTH=${{ vars.NEXT_PUBLIC_ENABLE_APPLE_AUTH || 'false' }}
-            NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH=${{ vars.NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH || 'false' }}
-            NEXT_PUBLIC_ENABLE_LIVE_STREAMING=${{ vars.NEXT_PUBLIC_ENABLE_LIVE_STREAMING || 'false' }}
-            NEXT_PUBLIC_ENABLE_WEB_DRM=${{ vars.NEXT_PUBLIC_ENABLE_WEB_DRM || 'false' }}
-      - name: Build and push immutable production worker image
-        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
-        with:
-          context: .
-          target: worker
-          push: true
-          provenance: mode=max
-          sbom: true
-          tags: ${{ env.WORKER_IMAGE }}:${{ inputs.release_sha }}
-          build-args: |
-            GIT_SHA=${{ inputs.release_sha }}
-            BUILD_RUN_ID=${{ github.run_id }}
+      - name: Verify READY FOR UAT and real-provider sandbox evidence
+        id: evidence
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/jalwa-certification /tmp/jalwa-payment-sandbox
+
+          cert_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CERTIFICATION_RUN_ID")"
+          jq -e '.name == "Staging certification" and .conclusion == "success"' <<<"$cert_run" >/dev/null \
+            || { echo 'The supplied staging certification run is not a successful Staging certification run.' >&2; exit 1; }
+          cert_artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CERTIFICATION_RUN_ID/artifacts?per_page=100")"
+          cert_artifact_id="$(jq -r --arg sha "$RELEASE_SHA" '.artifacts[] | select(.expired == false and (.name | startswith("staging-certification-" + $sha + "-"))) | .id' <<<"$cert_artifacts" | head -n1)"
+          [[ "$cert_artifact_id" =~ ^[0-9]+$ ]] || { echo 'No retained certification artifact exists for the selected release.' >&2; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$cert_artifact_id/zip" > /tmp/jalwa-certification.zip
+          unzip -q /tmp/jalwa-certification.zip -d /tmp/jalwa-certification
+          cert_report="$(find /tmp/jalwa-certification -name certification-report.json -type f -print -quit)"
+          identity="$(find /tmp/jalwa-certification -name release-identity.json -type f -print -quit)"
+          test -s "$cert_report" && test -s "$identity"
+          jq -e --arg sha "$RELEASE_SHA" '.decision == "READY FOR UAT" and .release_sha == $sha' "$cert_report" >/dev/null \
+            || { echo 'Selected staging evidence is not READY FOR UAT for this exact release.' >&2; exit 1; }
+          staging_build_run_id="$(jq -r '.deployment_pipeline_id // empty' "$cert_report")"
+          [[ "$staging_build_run_id" =~ ^[0-9]+$ ]] || { echo 'Staging deployment provenance is missing from certification.' >&2; exit 1; }
+          node scripts/verify-release-identity.mjs "$identity" "$RELEASE_SHA" "$staging_build_run_id" "$staging_build_run_id" >/tmp/verified-staging-identity.json
+          web_image="$(jq -r '.services.web.repo_digest // empty' "$identity")"
+          worker_image="$(jq -r '.services.worker.repo_digest // empty' "$identity")"
+          [[ "$web_image" =~ ^ghcr\.io/watch-jalwa/jalwa-platform-web@sha256:[0-9a-f]{64}$ ]]
+          [[ "$worker_image" =~ ^ghcr\.io/watch-jalwa/jalwa-platform-worker@sha256:[0-9a-f]{64}$ ]]
+
+          sandbox_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PAYMENT_SANDBOX_RUN_ID")"
+          jq -e '.name == "Payment provider sandbox certification" and .conclusion == "success"' <<<"$sandbox_run" >/dev/null \
+            || { echo 'The supplied payment sandbox run is not a successful provider sandbox certification.' >&2; exit 1; }
+          sandbox_artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$PAYMENT_SANDBOX_RUN_ID/artifacts?per_page=100")"
+          sandbox_artifact_id="$(jq -r --arg sha "$RELEASE_SHA" '.artifacts[] | select(.expired == false and (.name | startswith("payment-sandbox-" + $sha + "-"))) | .id' <<<"$sandbox_artifacts" | head -n1)"
+          [[ "$sandbox_artifact_id" =~ ^[0-9]+$ ]] || { echo 'No retained payment sandbox artifact exists for the selected release.' >&2; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$sandbox_artifact_id/zip" > /tmp/jalwa-payment-sandbox.zip
+          unzip -q /tmp/jalwa-payment-sandbox.zip -d /tmp/jalwa-payment-sandbox
+          sandbox_report="$(find /tmp/jalwa-payment-sandbox -name payment-sandbox-report.json -type f -print -quit)"
+          test -s "$sandbox_report"
+          jq -e \
+            --arg sha "$RELEASE_SHA" \
+            --arg run "$staging_build_run_id" \
+            --arg provider "$PAYMENT_PROVIDER" \
+            '.status == "PASS" and .release_sha == $sha and .staging_deployment_run_id == $run and .provider == $provider and .signed_webhook_lifecycle == "succeeded"' \
+            "$sandbox_report" >/dev/null \
+            || { echo 'Real-provider sandbox evidence does not match the exact release, staging build or production provider.' >&2; exit 1; }
+
+          echo "web_image=$web_image" >> "$GITHUB_OUTPUT"
+          echo "worker_image=$worker_image" >> "$GITHUB_OUTPUT"
+          echo "staging_build_run_id=$staging_build_run_id" >> "$GITHUB_OUTPUT"
+          echo "payment_provider=$PAYMENT_PROVIDER" >> "$GITHUB_OUTPUT"
 
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    needs: build
+    needs: validate
     environment:
       name: production
       url: https://${{ vars.PRODUCTION_DOMAIN }}
     env:
       RELEASE_SHA: ${{ inputs.release_sha }}
+      STAGING_BUILD_RUN_ID: ${{ needs.validate.outputs.staging_build_run_id }}
+      JALWA_WEB_IMAGE: ${{ needs.validate.outputs.web_image }}
+      JALWA_WORKER_IMAGE: ${{ needs.validate.outputs.worker_image }}
       HOST: ${{ vars.PRODUCTION_HOST }}
       USER: ${{ vars.PRODUCTION_USER || 'jalwa' }}
       DOMAIN: ${{ vars.PRODUCTION_DOMAIN }}
+      PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           ref: ${{ inputs.release_sha }}
+
       - name: Configure pinned production SSH identity
         env:
           SSH_KEY: ${{ secrets.PRODUCTION_SSH_KEY }}
@@ -182,7 +210,8 @@ jobs:
           chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
-      - name: Generate production runtime environment
+
+      - name: Generate production runtime environment with certified immutable images
         env:
           POSTGRES_PASSWORD: ${{ secrets.SELF_HOSTED_POSTGRES_PASSWORD }}
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
@@ -208,7 +237,6 @@ jobs:
           ACCOUNT_REQUEST_PROCESSOR_SECRET: ${{ secrets.ACCOUNT_REQUEST_PROCESSOR_SECRET }}
           ACCOUNT_DELETION_HASH_SECRET: ${{ secrets.ACCOUNT_DELETION_HASH_SECRET }}
           DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-          PAYMENT_PROVIDER: ${{ vars.PAYMENT_PROVIDER }}
           PAYMENT_WEBHOOK_SECRET: ${{ secrets.PAYMENT_WEBHOOK_SECRET }}
           PAYFAST_CHECKOUT_URL: ${{ vars.PAYFAST_CHECKOUT_URL }}
           PAYFAST_MERCHANT_ID: ${{ secrets.PAYFAST_MERCHANT_ID }}
@@ -287,10 +315,13 @@ jobs:
           EASYPAISA_STORE_ID=$EASYPAISA_STORE_ID
           EASYPAISA_SECRET=$EASYPAISA_SECRET
           JALWA_IMAGE_TAG=$RELEASE_SHA
+          JALWA_WEB_IMAGE=$JALWA_WEB_IMAGE
+          JALWA_WORKER_IMAGE=$JALWA_WORKER_IMAGE
           GIT_SHA=$RELEASE_SHA
-          BUILD_RUN_ID=${{ github.run_id }}
+          BUILD_RUN_ID=$STAGING_BUILD_RUN_ID
           EOF
           chmod 600 /tmp/jalwa.env
+
       - name: Install production release assets
         env:
           BACKUP_AGE_IDENTITY: ${{ secrets.BACKUP_AGE_IDENTITY }}
@@ -314,27 +345,40 @@ jobs:
             "docker login ghcr.io -u '$GHCR_USERNAME' --password-stdin >/dev/null"
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
             'chmod 600 /opt/jalwa/.env.production /opt/jalwa/secrets/backup-age.key && chmod 750 /opt/jalwa/scripts/*.sh'
-      - name: Back up, migrate and deploy exact production release
+
+      - name: Back up, migrate and promote exact staging-certified images
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "set -euo pipefail
             cd /opt/jalwa
             docker compose --env-file .env.production config --quiet
+            docker pull '$JALWA_WEB_IMAGE'
+            docker pull '$JALWA_WORKER_IMAGE'
             docker compose --env-file .env.production up -d postgres --wait
             if docker exec jalwa-postgres psql -U postgres -d postgres -Atqc \"select to_regclass('public.jalwa_schema_migrations') is not null\" | grep -qx t; then BACKUP_REASON=pre-migration ./scripts/backup-postgres.sh; fi
             ./scripts/apply-migrations.sh
             ./scripts/install-operations.sh
-            ./scripts/deploy-release.sh '$RELEASE_SHA' '$DOMAIN'
-            ./scripts/capture-release-identity.sh '$RELEASE_SHA' '${{ github.run_id }}'
+            ./scripts/deploy-release.sh '$RELEASE_SHA' '$DOMAIN' '$JALWA_WEB_IMAGE' '$JALWA_WORKER_IMAGE'
+            ./scripts/capture-release-identity.sh '$RELEASE_SHA' '$STAGING_BUILD_RUN_ID' '${{ github.run_id }}'
+            jq -e --arg web '$JALWA_WEB_IMAGE' --arg worker '$JALWA_WORKER_IMAGE' '.services.web.repo_digest == \$web and .services.worker.repo_digest == \$worker' deployments/$RELEASE_SHA.identity.json >/dev/null
             BACKUP_REASON=post-release ./scripts/backup-postgres.sh
             ./scripts/restore-drill.sh
             ./scripts/host-acceptance.sh 'https://$DOMAIN'"
+
       - name: Deployment summary
         run: |
           {
-            echo '### Production deployment passed'
+            echo '### Production promotion passed'
             echo "- Release: \`$RELEASE_SHA\`"
+            echo "- Staging build run: \`$STAGING_BUILD_RUN_ID\`"
+            echo "- Staging certification: \`${{ inputs.certification_run_id }}\`"
+            echo "- Payment sandbox certification: \`${{ inputs.payment_sandbox_run_id }}\`"
+            echo "- Human UAT reference: \`${{ inputs.uat_approval_reference }}\`"
+            echo "- Provider: \`$PAYMENT_PROVIDER\`"
+            echo "- Web image: \`$JALWA_WEB_IMAGE\`"
+            echo "- Worker image: \`$JALWA_WORKER_IMAGE\`"
             echo '- Architecture: direct PostgreSQL + Better Auth + SMTP + R2'
             echo '- Mock payments: disabled'
+            echo '- Production images: exact staging-certified digests; no rebuild performed'
             echo '- Encrypted backup and restore drill: passed'
           } >> "$GITHUB_STEP_SUMMARY"
