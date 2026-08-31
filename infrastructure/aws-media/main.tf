@@ -619,11 +619,11 @@ resource "aws_lambda_function" "submit_mediaconvert" {
 
   environment {
     variables = {
-      INCOMING_BUCKET        = aws_s3_bucket.incoming.bucket
-      PROCESSED_BUCKET       = aws_s3_bucket.processed.bucket
-      MEDIACONVERT_QUEUE_ARN = aws_media_convert_queue.alpha.arn
-      MEDIACONVERT_ROLE_ARN  = aws_iam_role.mediaconvert.arn
-      APPLICATION_CALLBACK_SECRET_ARN    = aws_secretsmanager_secret.application_callback.arn
+      INCOMING_BUCKET                 = aws_s3_bucket.incoming.bucket
+      PROCESSED_BUCKET                = aws_s3_bucket.processed.bucket
+      MEDIACONVERT_QUEUE_ARN          = aws_media_convert_queue.alpha.arn
+      MEDIACONVERT_ROLE_ARN           = aws_iam_role.mediaconvert.arn
+      APPLICATION_CALLBACK_SECRET_ARN = aws_secretsmanager_secret.application_callback.arn
     }
   }
 
