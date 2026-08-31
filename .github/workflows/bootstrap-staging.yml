@@ -95,6 +95,8 @@ jobs:
             -backend-config="endpoints={s3=\"https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com\"}"
           terraform apply -auto-approve \
             -var="digitalocean_token=$DIGITALOCEAN_TOKEN" \
+            -var="project_name=jalwa-staging" \
+            -var="deployment_environment=staging" \
             -var="region=$REGION" \
             -var="droplet_size=$DROPLET_SIZE" \
             -var="ssh_public_key=$SSH_PUBLIC_KEY" \
