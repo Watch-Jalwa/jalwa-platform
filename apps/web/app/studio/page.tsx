@@ -2,11 +2,11 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/studio/auth";
 
 export default async function StudioPage() {
-  const { supabase } = await requireStaff();
+  const { database } = await requireStaff();
   const [drafts, review, published] = await Promise.all([
-    supabase.from("content_items").select("id", { count: "exact", head: true }).eq("status", "draft"),
-    supabase.from("content_items").select("id", { count: "exact", head: true }).in("status", ["rights_review", "editorial_review"]),
-    supabase.from("content_items").select("id", { count: "exact", head: true }).eq("status", "published"),
+    database.from("content_items").select("id", { count: "exact", head: true }).eq("status", "draft"),
+    database.from("content_items").select("id", { count: "exact", head: true }).in("status", ["rights_review", "editorial_review"]),
+    database.from("content_items").select("id", { count: "exact", head: true }).eq("status", "published"),
   ]);
   return (
     <div>

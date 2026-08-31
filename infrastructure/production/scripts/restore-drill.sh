@@ -4,7 +4,7 @@ umask 077
 
 ENV_FILE="${ENV_FILE:-/opt/jalwa/.env.production}"
 BACKUP_DIR="${BACKUP_DIR:-/opt/jalwa/backups/postgres}"
-DB_CONTAINER="${DB_CONTAINER:-supabase-db}"
+DB_CONTAINER="${DB_CONTAINER:-jalwa-postgres}"
 R2_BACKUP_BUCKET="${R2_BACKUP_BUCKET:-jalwa-backups}"
 BACKUP_AGE_IDENTITY_FILE="${BACKUP_AGE_IDENTITY_FILE:-/opt/jalwa/secrets/backup-age.key}"
 

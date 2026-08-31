@@ -1,11 +1,11 @@
 import { SupportForm } from "@/components/support-form";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/database/server";
 
 export const metadata = { title: "Support", description: "Get help with Jalwa accounts, billing, playback, content and AI safety." };
 
 export default async function SupportPage() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
   return (
     <div className="page-shell support-page">
       <header className="policy-header">

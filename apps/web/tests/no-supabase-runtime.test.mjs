@@ -10,7 +10,8 @@ const ignored = new Set([
   "apps/web/tests/no-supabase-runtime.test.mjs",
   "package-lock.json",
 ]);
-const extensions = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".json", ".yml", ".yaml", ".sh", ".sql", ".env"]);
+const extensions = new Set([".ts", ".tsx", ".js", ".mjs", ".cjs", ".json", ".yml", ".yaml", ".sh", ".sql", ".env", ".tf", ".tftpl"]);
+const explicitFiles = ["Dockerfile", "package.json", ".env.example"];
 
 async function filesUnder(relative) {
   const absolute = path.join(root, relative);
@@ -30,8 +31,12 @@ test("active runtime, deployment and QA code has no Supabase dependency", async 
     for (const relative of await filesUnder(directory)) {
       if (ignored.has(relative)) continue;
       const source = await readFile(path.join(root, relative), "utf8");
-      if (/supabase/i.test(source)) offenders.push(relative);
+      if (/supabase|@supabase/i.test(source)) offenders.push(relative);
     }
+  }
+  for (const relative of explicitFiles) {
+    const source = await readFile(path.join(root, relative), "utf8");
+    if (/supabase|@supabase/i.test(source)) offenders.push(relative);
   }
   assert.deepEqual(offenders, [], `Supabase references remain in active code/config:\n${offenders.join("\n")}`);
 });

@@ -5,7 +5,7 @@ import {
   expectNoHorizontalOverflow,
   qaConfig,
   requiredEnv,
-  serviceFetch,
+  qaFetch,
 } from "./helpers/staging.mjs";
 
 let config;
@@ -127,10 +127,7 @@ test.describe.serial("Studio authorization and Premium reporting", () => {
     expect(csv).toMatch(/Payment ID/);
     expect(csv).not.toMatch(/service_role|JWT_SECRET|PAYMENT_WEBHOOK_SECRET|raw_event|payload_hash/i);
 
-    const auditResponse = await serviceFetch(
-      config,
-      `/rest/v1/audit_logs?select=actor_id,action,entity_id,metadata,created_at&actor_id=eq.${encodeURIComponent(finance.id)}&action=eq.premium_report_exported&entity_id=eq.payments&order=created_at.desc&limit=1`,
-    );
+    const auditResponse = await qaFetch(config, "audit-export", { actorId: finance.id, entityId: "payments" });
     expect(auditResponse.ok).toBeTruthy();
     const [audit] = await auditResponse.json();
     expect(audit?.actor_id).toBe(finance.id);

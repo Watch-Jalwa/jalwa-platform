@@ -25,9 +25,8 @@ Never commit credentials. Supply them from the GitHub `staging` environment or a
 Common runtime inputs:
 
 - `STAGING_BASE_URL`
-- `STAGING_SUPABASE_URL`
-- `STAGING_SUPABASE_ANON_KEY`
-- `STAGING_SUPABASE_SERVICE_ROLE_KEY`
+- `STAGING_QA_SECRET`
+- `STAGING_QA_ALLOWED_EMAILS` is configured on the staging application/server
 - `RELEASE_SHA` or `JALWA_EXPECTED_VERSION`
 
 Synthetic QA identities:
@@ -45,14 +44,14 @@ Feature controls:
 - `JALWA_EXPECT_LIVE_SOURCES=true` only when the governed live catalogue is enabled for that staging run
 - `VISUAL_BASELINE_MANIFEST` only when overriding `qa/visual-baselines/manifest.json`
 
-The current product uses email magic-link authentication. The tests therefore do not store or require account passwords: they prove the user-facing email-link request and use the protected Supabase admin boundary to generate deterministic QA magic links for authenticated test setup.
+The current product uses email magic-link authentication. The tests therefore do not store or require account passwords: they prove the user-facing email-link request and use Jalwa's protected, staging-only QA boundary to generate deterministic Better Auth magic links for authenticated test setup.
 
 ## Install the pinned browser harness
 
 The staging GitHub workflow already installs the pinned browser harness. For an equivalent local shell:
 
 ```bash
-npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1 @supabase/supabase-js@2.111.0
+npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
 npx playwright install --with-deps chromium
 ```
 

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizeDrmRequest } from "@/lib/drm/authorize";
 import { requestDrmLicence } from "@/lib/drm/provider";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/database/admin";
 import { requestRateKey } from "@/lib/security/request-key";
 
 export const runtime = "nodejs";

@@ -19,17 +19,11 @@ fi
 
 cd /opt/jalwa
 docker compose --env-file .env.production stop web worker || true
+docker compose --env-file .env.production up -d postgres --wait
 
-cd /opt/jalwa/supabase/runtime
-compose=(docker compose -f docker-compose.yml -f docker-compose.jalwa.yml)
-"${compose[@]}" stop
-"${compose[@]}" up -d db --wait
-
-docker exec -i supabase-db pg_restore \
+docker exec -i jalwa-postgres pg_restore \
   -U postgres -d postgres --clean --if-exists --no-owner --no-acl < "$backup"
 
-"${compose[@]}" up -d --wait
-cd /opt/jalwa
 docker compose --env-file .env.production up -d --remove-orphans
 
 echo "Restore completed. Run smoke-test.sh before reopening traffic."

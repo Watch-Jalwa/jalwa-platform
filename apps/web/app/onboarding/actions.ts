@@ -4,7 +4,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ACTIVE_PROFILE_COOKIE } from "@/lib/customer/active-profile";
 import { localeCookieOptions, LOCALE_COOKIE, normalizeLocale } from "@/lib/customer/locale";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/database/server";
 import { isFrontendPreview } from "@/lib/runtime";
 
 const languages = new Set(["en", "ur", "roman_ur"]);
@@ -23,11 +23,11 @@ export async function completeOnboarding(formData: FormData) {
   }
   if (isFrontendPreview()) redirect(plan === "free" ? "/profile?onboarding=preview" : `/pricing?selected=${encodeURIComponent(plan)}`);
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(`/onboarding?plan=${plan}`)}`);
 
-  const { error: profileError } = await supabase.from("profiles").update({
+  const { error: profileError } = await database.from("profiles").update({
     display_name: displayName,
     preferred_language: preferredLanguage,
     accepted_terms_at: new Date().toISOString(),
@@ -36,7 +36,7 @@ export async function completeOnboarding(formData: FormData) {
   }).eq("id", user.id);
   if (profileError) redirect(`/onboarding?error=save&plan=${encodeURIComponent(plan)}`);
 
-  const { data: viewer } = await supabase.from("viewer_profiles")
+  const { data: viewer } = await database.from("viewer_profiles")
     .update({ name: viewerName, preferred_language: preferredLanguage })
     .eq("user_id", user.id).eq("is_default", true).select("id").maybeSingle();
   const cookieStore = await cookies();

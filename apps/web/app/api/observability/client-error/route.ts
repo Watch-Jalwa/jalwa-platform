@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { emitObservabilityEvent, anonymousFingerprint, requestId } from "@/lib/observability/event";
 import { requestRateKey } from "@/lib/security/request-key";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/database/admin";
 
 export const runtime = "nodejs";
 

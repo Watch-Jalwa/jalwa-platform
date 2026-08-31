@@ -13,13 +13,9 @@ function blocked(message) {
   process.exitCode = 2;
 }
 
-async function serviceFetch(config, pathName) {
-  return fetch(`${config.supabaseUrl}${pathName}`, {
-    headers: {
-      apikey: config.serviceRoleKey,
-      authorization: `Bearer ${config.serviceRoleKey}`,
-    },
-  });
+async function qaFetch(config, kind, params = {}) {
+  const query = new URLSearchParams({ kind, ...Object.fromEntries(Object.entries(params).map(([key, value]) => [key, String(value)])) });
+  return fetch(`${config.baseUrl}/api/internal/qa/state?${query}`, { headers: { "x-jalwa-qa-token": config.qaSecret } });
 }
 
 async function checkout(page, priceId, idempotencyKey) {
@@ -34,29 +30,21 @@ async function checkout(page, priceId, idempotencyKey) {
 }
 
 async function assertSubscriptionAndEntitlements(config, userId, price) {
-  const planResponse = await serviceFetch(config, `/rest/v1/plans?select=id,benefits&id=eq.${encodeURIComponent(price.plan_id)}`);
+  const planResponse = await qaFetch(config, "plan", { id: price.plan_id });
   if (!planResponse.ok) throw new Error(`Premium plan lookup failed with HTTP ${planResponse.status}.`);
-  const [plan] = await planResponse.json();
+  const { data: plan } = await planResponse.json();
   if (!plan?.id || !Array.isArray(plan.benefits) || plan.benefits.length === 0) throw new Error("Premium plan benefits are unavailable for entitlement verification.");
 
-  const subscriptionResponse = await serviceFetch(
-    config,
-    `/rest/v1/subscriptions?select=id,user_id,plan_id,provider,status,current_period_start,current_period_end&user_id=eq.${encodeURIComponent(userId)}&plan_id=eq.${encodeURIComponent(price.plan_id)}&status=eq.active&order=current_period_end.desc&limit=1`,
-  );
-  if (!subscriptionResponse.ok) throw new Error(`Active subscription lookup failed with HTTP ${subscriptionResponse.status}.`);
-  const [subscription] = await subscriptionResponse.json();
+  const stateResponse = await qaFetch(config, "subscription-entitlements", { userId, planId: price.plan_id });
+  if (!stateResponse.ok) throw new Error(`Subscription/entitlement lookup failed with HTTP ${stateResponse.status}.`);
+  const { data } = await stateResponse.json();
+  const subscription = data?.subscription;
+  const entitlements = data?.entitlements ?? [];
   if (!subscription) throw new Error("Successful payment did not create or extend an active subscription.");
   if (subscription.user_id !== userId || subscription.plan_id !== price.plan_id || subscription.provider !== "mock" || subscription.status !== "active") {
     throw new Error("Active subscription does not correlate with the QA customer, Premium plan and staging payment provider.");
   }
   if (!subscription.current_period_end || Date.parse(subscription.current_period_end) <= Date.now()) throw new Error("Active subscription has no valid future period end.");
-
-  const entitlementResponse = await serviceFetch(
-    config,
-    `/rest/v1/entitlements?select=benefit_code,status,starts_at,ends_at,source_type,source_id&user_id=eq.${encodeURIComponent(userId)}&source_type=eq.subscription&source_id=eq.${encodeURIComponent(subscription.id)}`,
-  );
-  if (!entitlementResponse.ok) throw new Error(`Entitlement lookup failed with HTTP ${entitlementResponse.status}.`);
-  const entitlements = await entitlementResponse.json();
   if (!Array.isArray(entitlements) || entitlements.length === 0) throw new Error("Successful payment produced no subscription entitlements.");
   for (const entitlement of entitlements) {
     if (entitlement.status !== "active" || entitlement.source_type !== "subscription" || entitlement.source_id !== subscription.id) {
@@ -64,13 +52,9 @@ async function assertSubscriptionAndEntitlements(config, userId, price) {
     }
     if (!entitlement.ends_at || Date.parse(entitlement.ends_at) <= Date.now()) throw new Error("Subscription entitlement has no valid future expiry.");
   }
-
   const expectedBenefits = [...plan.benefits].sort();
   const actualBenefits = entitlements.map((item) => item.benefit_code).sort();
-  if (JSON.stringify(actualBenefits) !== JSON.stringify(expectedBenefits)) {
-    throw new Error("Active subscription entitlements do not exactly match the configured Premium plan benefits.");
-  }
-
+  if (JSON.stringify(actualBenefits) !== JSON.stringify(expectedBenefits)) throw new Error("Active subscription entitlements do not exactly match the configured Premium plan benefits.");
   return { subscription, entitlements };
 }
 
@@ -84,9 +68,9 @@ async function main() {
   await mkdir(evidenceDir, { recursive: true });
   const user = await ensureQaUser(config, customerEmail);
 
-  const priceResponse = await serviceFetch(config, "/rest/v1/prices?select=id,plan_id,code,amount_minor,currency&is_active=eq.true&order=amount_minor.asc&limit=1");
+  const priceResponse = await qaFetch(config, "active-price");
   if (!priceResponse.ok) return blocked(`BLOCKED: active staging price lookup failed with HTTP ${priceResponse.status}.`);
-  const [price] = await priceResponse.json();
+  const { data: price } = await priceResponse.json();
   if (!price?.id || !price?.plan_id) return blocked("BLOCKED: no active staging Premium price fixture exists.");
 
   const browser = await chromium.launch({ headless: true });
@@ -119,9 +103,9 @@ async function main() {
     if (!first.body?.orderId || first.body.orderId !== second.body?.orderId) throw new Error("Duplicate checkout requests created different order IDs.");
     if (first.body.redirectUrl !== second.body.redirectUrl) throw new Error("Duplicate checkout requests produced different provider checkout references.");
 
-    const orderResponse = await serviceFetch(config, `/rest/v1/checkout_orders?select=id,user_id,amount_minor,currency,status&id=eq.${encodeURIComponent(first.body.orderId)}`);
+    const orderResponse = await qaFetch(config, "checkout-order", { id: first.body.orderId });
     if (!orderResponse.ok) throw new Error(`Authoritative checkout lookup failed with HTTP ${orderResponse.status}.`);
-    const [order] = await orderResponse.json();
+    const { data: order } = await orderResponse.json();
     if (!order) throw new Error("Checkout order was not persisted.");
     if (order.user_id !== user.id) throw new Error("Checkout order belongs to the wrong user.");
     if (Number(order.amount_minor) !== Number(price.amount_minor) || order.currency !== price.currency) throw new Error("Checkout amount/currency differs from the authoritative price.");
@@ -135,8 +119,8 @@ async function main() {
     ]);
     if (!(await page.getByText(/Premium|payment|subscription/i).first().isVisible().catch(() => false))) throw new Error("Billing success page did not expose a success state.");
 
-    const paidResponse = await serviceFetch(config, `/rest/v1/checkout_orders?select=id,amount_minor,currency,status&id=eq.${encodeURIComponent(first.body.orderId)}`);
-    const [paidOrder] = paidResponse.ok ? await paidResponse.json() : [];
+    const paidResponse = await qaFetch(config, "checkout-order", { id: first.body.orderId });
+    const { data: paidOrder } = paidResponse.ok ? await paidResponse.json() : { data: null };
     if (!paidOrder || paidOrder.status !== "succeeded") throw new Error("Successful staging payment did not produce an authoritative succeeded checkout order.");
     if (Number(paidOrder.amount_minor) !== Number(price.amount_minor) || paidOrder.currency !== price.currency) throw new Error("Succeeded order amount/currency changed after checkout.");
     const desktopEntitlementState = await assertSubscriptionAndEntitlements(config, user.id, price);
@@ -154,8 +138,8 @@ async function main() {
       mobilePage.waitForURL(/\/billing\/success\?order=/),
       mobilePage.getByRole("button", { name: "Complete test payment" }).click(),
     ]);
-    const mobilePaidResponse = await serviceFetch(config, `/rest/v1/checkout_orders?select=id,status,amount_minor,currency&id=eq.${encodeURIComponent(mobileCheckout.body.orderId)}`);
-    const [mobilePaidOrder] = mobilePaidResponse.ok ? await mobilePaidResponse.json() : [];
+    const mobilePaidResponse = await qaFetch(config, "checkout-order", { id: mobileCheckout.body.orderId });
+    const { data: mobilePaidOrder } = mobilePaidResponse.ok ? await mobilePaidResponse.json() : { data: null };
     if (!mobilePaidOrder || mobilePaidOrder.status !== "succeeded") throw new Error("Mobile purchase did not reach authoritative succeeded state.");
     if (Number(mobilePaidOrder.amount_minor) !== Number(price.amount_minor) || mobilePaidOrder.currency !== price.currency) throw new Error("Mobile succeeded order amount/currency differs from the authoritative price.");
     const mobileEntitlementState = await assertSubscriptionAndEntitlements(config, user.id, price);

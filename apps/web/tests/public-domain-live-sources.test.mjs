@@ -8,9 +8,9 @@ const imageRouteUrl = new URL("../app/api/live-sources/[sourceKey]/image/route.t
 const healthUrl = new URL("../app/api/cron/source-health/route.ts", import.meta.url);
 const watchUrl = new URL("../app/watch/[slug]/page.tsx", import.meta.url);
 const livePageUrl = new URL("../app/live/page.tsx", import.meta.url);
-const contractMigrationUrl = new URL("../../../supabase/migrations/202608010001_public_domain_live_sources.sql", import.meta.url);
-const approvedMigrationUrl = new URL("../../../supabase/migrations/202608010002_approved_public_domain_live_inventory.sql", import.meta.url);
-const manifestUrl = new URL("../../../supabase/migrations/202608010005_approved_live_catalogue_manifest.sql", import.meta.url);
+const contractMigrationUrl = new URL("../../../database/migrations/202608010001_public_domain_live_sources.sql", import.meta.url);
+const approvedMigrationUrl = new URL("../../../database/migrations/202608010002_approved_public_domain_live_inventory.sql", import.meta.url);
+const manifestUrl = new URL("../../../database/migrations/202608010005_approved_live_catalogue_manifest.sql", import.meta.url);
 const seedUrl = new URL("../../../scripts/seed-public-domain-live-sources.sql", import.meta.url);
 const stateUrl = new URL("../../../scripts/set-public-domain-live-catalogue-state.sql", import.meta.url);
 const acceptanceUrl = new URL("../../../scripts/public-domain-live-acceptance.mjs", import.meta.url);
@@ -112,5 +112,5 @@ test("staging acceptance covers 46 entries and secured images", async () => {
   assert.match(acceptance, /Expected at least forty-four direct live watch links/);
   assert.match(acceptance, /nps-devils-tower-entrance/);
   assert.match(workflow, /seed-public-domain-live-sources\.sql/);
-  assert.match(workflow, /public-domain-live-acceptance\.mjs/);
+  assert.match(workflow, /test:staging:playwright:media/);
 });

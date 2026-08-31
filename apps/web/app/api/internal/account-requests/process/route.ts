@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { NextResponse } from "next/server";
 import { deleteAccountExport, putAccountExport } from "@/lib/privacy/storage";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/database/admin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";

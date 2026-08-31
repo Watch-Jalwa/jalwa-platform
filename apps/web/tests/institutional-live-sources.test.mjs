@@ -7,7 +7,7 @@ const securityUrl = new URL("../lib/live-sources/security.ts", import.meta.url);
 const linkPlayerUrl = new URL("../components/official-live-link-player.tsx", import.meta.url);
 const watchUrl = new URL("../app/watch/[slug]/page.tsx", import.meta.url);
 const livePageUrl = new URL("../app/live/page.tsx", import.meta.url);
-const migrationUrl = new URL("../../../supabase/migrations/202608010003_institutional_public_affairs_live_sources.sql", import.meta.url);
+const migrationUrl = new URL("../../../database/migrations/202608010003_institutional_public_affairs_live_sources.sql", import.meta.url);
 const stateUrl = new URL("../../../scripts/set-public-domain-live-catalogue-state.sql", import.meta.url);
 const acceptanceUrl = new URL("../../../scripts/public-domain-live-acceptance.mjs", import.meta.url);
 

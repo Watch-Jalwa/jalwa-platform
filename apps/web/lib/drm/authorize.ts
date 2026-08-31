@@ -1,5 +1,5 @@
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/database/admin";
+import { createClient } from "@/lib/database/server";
 
 export type AuthorizedDrm = {
   userId: string;
@@ -19,18 +19,18 @@ export type AuthorizedDrm = {
 };
 
 export async function authorizeDrmRequest(request: Request, contentId: string): Promise<{ ok: true; value: AuthorizedDrm } | { ok: false; status: number; code: string; error: string }> {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
   if (!user) return { ok: false, status: 401, code: "sign_in_required", error: "Sign in required for protected playback." };
-  const { data: content } = await supabase.from("content_items").select("id,status,access_level").eq("id", contentId).maybeSingle();
+  const { data: content } = await database.from("content_items").select("id,status,access_level").eq("id", contentId).maybeSingle();
   if (!content || content.status !== "published") return { ok: false, status: 404, code: "content_unavailable", error: "Content unavailable." };
   if (content.access_level === "premium") {
-    const { data: entitled } = await supabase.rpc("has_active_benefit", { p_benefit: "premium_catalogue" });
+    const { data: entitled } = await database.rpc("has_active_benefit", { p_benefit: "premium_catalogue" });
     if (!entitled) return { ok: false, status: 402, code: "payment_required", error: "Premium entitlement is required." };
   }
   const deviceKey = request.headers.get("x-jalwa-device-key")?.trim();
   if (!deviceKey) return { ok: false, status: 428, code: "device_required", error: "Register this browser before protected playback." };
-  const { data: deviceId, error: deviceError } = await supabase.rpc("register_device", { p_device_key: deviceKey, p_display_name: "DRM browser", p_platform: request.headers.get("sec-ch-ua-platform") ?? "", p_user_agent: request.headers.get("user-agent") ?? "" });
+  const { data: deviceId, error: deviceError } = await database.rpc("register_device", { p_device_key: deviceKey, p_display_name: "DRM browser", p_platform: request.headers.get("sec-ch-ua-platform") ?? "", p_user_agent: request.headers.get("user-agent") ?? "" });
   if (deviceError || !deviceId) return { ok: false, status: 403, code: deviceError?.message === "active device limit reached" ? "device_limit" : "device_blocked", error: deviceError?.message ?? "Browser device unavailable." };
   const admin = createAdminClient();
   const { data: asset, error } = await admin.from("drm_assets").select("id,content_id,media_asset_id,provider_asset_ref,key_id,manifest_hls_path,manifest_dash_path,certificate_url,key_systems,drm_policies(key_systems,licence_duration_seconds,max_concurrent_devices,minimum_security_level)").eq("content_id", contentId).eq("status", "ready").maybeSingle();

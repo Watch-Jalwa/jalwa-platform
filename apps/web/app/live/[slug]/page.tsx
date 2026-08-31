@@ -1,15 +1,15 @@
 import { notFound } from "next/navigation";
 import { LivePlayer } from "@/components/live-player";
-import { hasSupabaseConfig } from "@/lib/runtime";
-import { createClient } from "@/lib/supabase/server";
+import { hasBackendConfiguration } from "@/lib/runtime";
+import { createClient } from "@/lib/database/server";
 
 type Params = Promise<{ slug: string }>;
 type Channel = { id: string; slug: string; title_en: string; title_ur: string | null; description_en: string | null; poster_url: string | null; access_level: string; status: string; live_events?: Array<{ id: string; title_en: string; title_ur: string | null; description_en: string | null; scheduled_start: string; scheduled_end: string | null; status: string }> };
 
 async function getChannel(slug: string): Promise<Channel | null> {
-  if (!hasSupabaseConfig()) return slug === "jalwa-live-preview" ? { id: "demo-live", slug, title_en: "Jalwa Live channel preview", title_ur: "جلوہ لائیو", description_en: "The browser channel page, schedule and player states are ready. Connect an authorized live input to begin broadcasting.", poster_url: null, access_level: "public", status: "scheduled", live_events: [{ id: "demo-event", title_en: "First Jalwa broadcast", title_ur: "پہلی جلوہ نشریات", description_en: "A scheduled preview event.", scheduled_start: "2026-08-01T15:00:00+05:00", scheduled_end: null, status: "scheduled" }] } : null;
-  const supabase = await createClient();
-  const { data } = await supabase.from("live_channels").select("id,slug,title_en,title_ur,description_en,poster_url,access_level,status,live_events(id,title_en,title_ur,description_en,scheduled_start,scheduled_end,status)").eq("slug", slug).eq("is_published", true).maybeSingle();
+  if (!hasBackendConfiguration()) return slug === "jalwa-live-preview" ? { id: "demo-live", slug, title_en: "Jalwa Live channel preview", title_ur: "جلوہ لائیو", description_en: "The browser channel page, schedule and player states are ready. Connect an authorized live input to begin broadcasting.", poster_url: null, access_level: "public", status: "scheduled", live_events: [{ id: "demo-event", title_en: "First Jalwa broadcast", title_ur: "پہلی جلوہ نشریات", description_en: "A scheduled preview event.", scheduled_start: "2026-08-01T15:00:00+05:00", scheduled_end: null, status: "scheduled" }] } : null;
+  const database = await createClient();
+  const { data } = await database.from("live_channels").select("id,slug,title_en,title_ur,description_en,poster_url,access_level,status,live_events(id,title_en,title_ur,description_en,scheduled_start,scheduled_end,status)").eq("slug", slug).eq("is_published", true).maybeSingle();
   return data as Channel | null;
 }
 

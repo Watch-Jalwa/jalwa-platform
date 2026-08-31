@@ -9,16 +9,16 @@ export const metadata = { title: "Finance" };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function FinancePage({ searchParams }: { searchParams: SearchParams }) {
-  const { supabase, profile } = await requireStaff();
+  const { database, profile } = await requireStaff();
   if (profile.role !== "finance" && profile.role !== "admin") redirect("/studio");
   const params = await searchParams;
   const canViewReports = roleHasCapability(profile.role, "premium:reports:read");
 
   const [ordersResult, webhooksResult, operationsResult, exceptionsResult] = await Promise.all([
-    supabase.from("checkout_orders").select("id,status,amount_minor,currency,provider,created_at").order("created_at", { ascending: false }).limit(50),
-    supabase.from("webhook_events").select("id,provider,provider_event_id,status,received_at,error_message").order("received_at", { ascending: false }).limit(30),
-    supabase.from("payment_operations").select("id,provider,provider_event_id,operation_kind,processing_status,amount_minor,currency,created_at").order("created_at", { ascending: false }).limit(50),
-    supabase.from("payment_exceptions").select("id,case_kind,status,amount_minor,currency,reason,created_at,resolution_note").order("created_at", { ascending: false }).limit(50),
+    database.from("checkout_orders").select("id,status,amount_minor,currency,provider,created_at").order("created_at", { ascending: false }).limit(50),
+    database.from("webhook_events").select("id,provider,provider_event_id,status,received_at,error_message").order("received_at", { ascending: false }).limit(30),
+    database.from("payment_operations").select("id,provider,provider_event_id,operation_kind,processing_status,amount_minor,currency,created_at").order("created_at", { ascending: false }).limit(50),
+    database.from("payment_exceptions").select("id,case_kind,status,amount_minor,currency,reason,created_at,resolution_note").order("created_at", { ascending: false }).limit(50),
   ]);
   const queryError = ordersResult.error ?? webhooksResult.error ?? operationsResult.error ?? exceptionsResult.error;
   if (queryError) throw queryError;

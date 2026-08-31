@@ -2,7 +2,8 @@
 set -Eeuo pipefail
 
 MIGRATIONS_DIR="${MIGRATIONS_DIR:-/opt/jalwa/migrations}"
-DB_CONTAINER="${DB_CONTAINER:-supabase-db}"
+BOOTSTRAP_SQL="${BOOTSTRAP_SQL:-/opt/jalwa/bootstrap.sql}"
+DB_CONTAINER="${DB_CONTAINER:-jalwa-postgres}"
 DB_NAME="${POSTGRES_DB:-postgres}"
 DB_USER="${POSTGRES_USER:-postgres}"
 LOCK_FILE="${MIGRATION_LOCK_FILE:-/opt/jalwa/.migration.lock}"
@@ -15,6 +16,12 @@ fi
 exec 9>"$LOCK_FILE"
 flock -n 9 || { echo "Another database migration runner is active." >&2; exit 1; }
 docker exec "$DB_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null
+
+if [[ ! -f "$BOOTSTRAP_SQL" ]]; then
+  echo "Database bootstrap file not found: $BOOTSTRAP_SQL" >&2
+  exit 1
+fi
+docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$BOOTSTRAP_SQL"
 
 docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<'SQL'
 create table if not exists public.jalwa_schema_migrations (
@@ -80,5 +87,13 @@ for migration in "${migrations[@]}"; do
     -v filename="$filename" \
     -c "update public.jalwa_schema_migrations set status='applied',applied_at=now(),error_message=null where filename=:'filename' and status='applying';"
 done
+
+# Vanilla PostgreSQL does not install the table/sequence grants supplied by the former gateway stack.
+# Mirror that role model while leaving function execution constrained by the explicit migration grants.
+docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<'SQL'
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete, truncate, references, trigger on all tables in schema public to anon, authenticated, service_role;
+grant usage, select, update on all sequences in schema public to anon, authenticated, service_role;
+SQL
 
 echo "Database migrations are current."

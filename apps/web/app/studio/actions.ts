@@ -31,13 +31,13 @@ function contentPath(id: string, error?: string) {
 }
 
 async function recordAudit(
-  supabase: Awaited<ReturnType<typeof requireStaff>>["supabase"],
+  database: Awaited<ReturnType<typeof requireStaff>>["database"],
   actorId: string,
   action: string,
   entityId: string,
   metadata: Record<string, unknown> = {},
 ) {
-  await supabase.from("audit_logs").insert({
+  await database.from("audit_logs").insert({
     actor_id: actorId,
     action,
     entity_type: "content_item",
@@ -46,14 +46,14 @@ async function recordAudit(
   });
 }
 
-async function primaryPlaybackId(supabase: Awaited<ReturnType<typeof requireStaff>>["supabase"], contentId: string) {
-  const { data, error } = await supabase.from("playback_sources").select("id").eq("content_id", contentId).eq("is_primary", true).maybeSingle();
+async function primaryPlaybackId(database: Awaited<ReturnType<typeof requireStaff>>["database"], contentId: string) {
+  const { data, error } = await database.from("playback_sources").select("id").eq("content_id", contentId).eq("is_primary", true).maybeSingle();
   if (error) throw error;
   return data?.id ?? null;
 }
 
 export async function importYouTubeAction(formData: FormData) {
-  const { supabase } = await requireStaff();
+  const { database } = await requireStaff();
   const rawUrl = value(formData, "url");
   const videoId = parseYouTubeVideoId(rawUrl);
   if (!videoId) redirect(`/studio/content/new?error=${encodeURIComponent("Enter a valid YouTube video URL.")}`);
@@ -69,7 +69,7 @@ export async function importYouTubeAction(formData: FormData) {
   } catch {
     redirect(`/studio/content/new?error=${encodeURIComponent("YouTube metadata could not be retrieved. Confirm the video is public and embeddable.")}`);
   }
-  const { data, error } = await supabase.rpc("import_youtube_draft", {
+  const { data, error } = await database.rpc("import_youtube_draft", {
     p_video_id: videoId,
     p_source_url: canonicalUrl,
     p_title: metadata.title,
@@ -82,12 +82,12 @@ export async function importYouTubeAction(formData: FormData) {
 }
 
 export async function createContentDraftAction(formData: FormData) {
-  const { supabase, user } = await requireStaff();
+  const { database, user } = await requireStaff();
   const title = value(formData, "title");
   const categorySlug = value(formData, "category");
   if (!title) redirect(`/studio/content/new?error=${encodeURIComponent("Title is required.")}`);
-  const { data: category } = await supabase.from("categories").select("id").eq("slug", categorySlug).maybeSingle();
-  const { data, error } = await supabase.from("content_items").insert({
+  const { data: category } = await database.from("categories").select("id").eq("slug", categorySlug).maybeSingle();
+  const { data, error } = await database.from("content_items").insert({
     slug: safeSlug(title),
     title_en: title,
     title_ur: value(formData, "titleUrdu") || null,
@@ -100,7 +100,7 @@ export async function createContentDraftAction(formData: FormData) {
     updated_by: user.id,
   }).select("id").single();
   if (error || !data) redirect(`/studio/content/new?error=${encodeURIComponent(error?.message ?? "Draft creation failed.")}`);
-  await supabase.from("rights_records").insert({
+  await database.from("rights_records").insert({
     content_id: data.id,
     source_url: `jalwa://content/${data.id}`,
     creator: "Jalwa",
@@ -116,10 +116,10 @@ export async function createContentDraftAction(formData: FormData) {
 }
 
 export async function updateRightsAction(formData: FormData) {
-  const { supabase, user } = await requireStaff();
+  const { database, user } = await requireStaff();
   const id = value(formData, "id");
   const rightsId = value(formData, "rightsId");
-  const { error } = await supabase.from("rights_records").update({
+  const { error } = await database.from("rights_records").update({
     source_url: value(formData, "sourceUrl"),
     creator: value(formData, "creator") || null,
     licence_code: value(formData, "licenceCode") || null,
@@ -139,45 +139,45 @@ export async function updateRightsAction(formData: FormData) {
   }).eq("id", rightsId).eq("content_id", id);
   if (error) redirect(contentPath(id, error.message));
   try {
-    const playbackId = await primaryPlaybackId(supabase, id);
-    if (playbackId) await supabase.from("live_source_configs").update({ enabled: false, rights_verified_at: null, next_review_at: null }).eq("playback_source_id", playbackId);
+    const playbackId = await primaryPlaybackId(database, id);
+    if (playbackId) await database.from("live_source_configs").update({ enabled: false, rights_verified_at: null, next_review_at: null }).eq("playback_source_id", playbackId);
   } catch (liveError) {
     console.error("live_source_rights_reset_failed", liveError);
   }
-  await recordAudit(supabase, user.id, "rights_record_updated", id, { rights_id: rightsId });
+  await recordAudit(database, user.id, "rights_record_updated", id, { rights_id: rightsId });
   revalidatePath(contentPath(id));
   revalidatePath("/studio/content");
   redirect(contentPath(id));
 }
 
 export async function submitRightsReviewAction(formData: FormData) {
-  const { supabase, user } = await requireStaff();
+  const { database, user } = await requireStaff();
   const id = value(formData, "id");
-  const { error } = await supabase.from("content_items").update({ status: "rights_review", updated_by: user.id }).eq("id", id).in("status", ["draft", "unavailable"]);
+  const { error } = await database.from("content_items").update({ status: "rights_review", updated_by: user.id }).eq("id", id).in("status", ["draft", "unavailable"]);
   if (error) redirect(contentPath(id, error.message));
-  await recordAudit(supabase, user.id, "rights_review_requested", id);
+  await recordAudit(database, user.id, "rights_review_requested", id);
   revalidatePath(contentPath(id));
   revalidatePath("/studio/content");
 }
 
 export async function approveRightsAction(formData: FormData) {
-  const { supabase, user, profile } = await requireStaff();
+  const { database, user, profile } = await requireStaff();
   if (profile.role !== "rights_reviewer" && profile.role !== "admin") redirect("/studio");
   const id = value(formData, "id");
   const rightsId = value(formData, "rightsId");
   const verifiedAt = new Date();
   const nextReviewAt = new Date(verifiedAt);
   nextReviewAt.setUTCDate(nextReviewAt.getUTCDate() + 90);
-  const { error } = await supabase.from("rights_records").update({
+  const { error } = await database.from("rights_records").update({
     status: "approved",
     verified_by: user.id,
     verified_at: verifiedAt.toISOString(),
   }).eq("id", rightsId).eq("content_id", id);
   if (error) redirect(contentPath(id, error.message));
   try {
-    const playbackId = await primaryPlaybackId(supabase, id);
+    const playbackId = await primaryPlaybackId(database, id);
     if (playbackId) {
-      const { error: liveError } = await supabase.from("live_source_configs").update({
+      const { error: liveError } = await database.from("live_source_configs").update({
         enabled: false,
         rights_verified_at: verifiedAt.toISOString(),
         next_review_at: nextReviewAt.toISOString(),
@@ -187,23 +187,23 @@ export async function approveRightsAction(formData: FormData) {
   } catch (liveError) {
     redirect(contentPath(id, liveError instanceof Error ? liveError.message : "Live source review could not be recorded."));
   }
-  const { error: contentError } = await supabase.from("content_items").update({ status: "editorial_review", updated_by: user.id }).eq("id", id);
+  const { error: contentError } = await database.from("content_items").update({ status: "editorial_review", updated_by: user.id }).eq("id", id);
   if (contentError) redirect(contentPath(id, contentError.message));
-  await recordAudit(supabase, user.id, "rights_approved", id, { rights_id: rightsId, live_source_review_days: 90 });
+  await recordAudit(database, user.id, "rights_approved", id, { rights_id: rightsId, live_source_review_days: 90 });
   revalidatePath(contentPath(id));
   revalidatePath("/studio/content");
 }
 
 export async function setLiveSourceEnabledAction(formData: FormData) {
-  const { supabase, user, profile } = await requireStaff();
+  const { database, user, profile } = await requireStaff();
   if (profile.role !== "rights_reviewer" && profile.role !== "admin") redirect("/studio");
   const id = value(formData, "id");
   const enabled = value(formData, "enabled") === "true";
-  const playbackId = await primaryPlaybackId(supabase, id);
+  const playbackId = await primaryPlaybackId(database, id);
   if (!playbackId) redirect(contentPath(id, "Primary playback source unavailable."));
   const [{ data: rights }, { data: config }] = await Promise.all([
-    supabase.from("rights_records").select("status").eq("content_id", id).maybeSingle(),
-    supabase.from("live_source_configs").select("next_review_at,rights_verified_at").eq("playback_source_id", playbackId).maybeSingle(),
+    database.from("rights_records").select("status").eq("content_id", id).maybeSingle(),
+    database.from("live_source_configs").select("next_review_at,rights_verified_at").eq("playback_source_id", playbackId).maybeSingle(),
   ]);
   if (!config) redirect(contentPath(id, "Live source configuration unavailable."));
   if (enabled) {
@@ -211,9 +211,9 @@ export async function setLiveSourceEnabledAction(formData: FormData) {
     const reviewAt = config.next_review_at ? new Date(config.next_review_at) : null;
     if (!config.rights_verified_at || !reviewAt || reviewAt.getTime() <= Date.now()) redirect(contentPath(id, "Current live-source terms review is required."));
   }
-  const { error } = await supabase.from("live_source_configs").update({ enabled }).eq("playback_source_id", playbackId);
+  const { error } = await database.from("live_source_configs").update({ enabled }).eq("playback_source_id", playbackId);
   if (error) redirect(contentPath(id, error.message));
-  await recordAudit(supabase, user.id, enabled ? "live_source_enabled" : "live_source_disabled", id, { playback_source_id: playbackId });
+  await recordAudit(database, user.id, enabled ? "live_source_enabled" : "live_source_disabled", id, { playback_source_id: playbackId });
   revalidatePath(contentPath(id));
   revalidatePath("/live");
   revalidatePath("/explore");
@@ -221,16 +221,16 @@ export async function setLiveSourceEnabledAction(formData: FormData) {
 }
 
 export async function publishContentAction(formData: FormData) {
-  const { supabase, user } = await requireStaff();
+  const { database, user } = await requireStaff();
   const id = value(formData, "id");
-  const { error } = await supabase.from("content_items").update({
+  const { error } = await database.from("content_items").update({
     status: "published",
     publish_at: new Date().toISOString(),
     unpublish_at: null,
     updated_by: user.id,
   }).eq("id", id);
   if (error) redirect(contentPath(id, error.message));
-  await recordAudit(supabase, user.id, "content_published", id);
+  await recordAudit(database, user.id, "content_published", id);
   revalidatePath(contentPath(id));
   revalidatePath("/studio/content");
   revalidatePath("/");
@@ -239,22 +239,22 @@ export async function publishContentAction(formData: FormData) {
 }
 
 export async function unpublishContentAction(formData: FormData) {
-  const { supabase, user } = await requireStaff();
+  const { database, user } = await requireStaff();
   const id = value(formData, "id");
   const reason = value(formData, "reason") || "Manual operational takedown";
-  const { error } = await supabase.from("content_items").update({
+  const { error } = await database.from("content_items").update({
     status: "unavailable",
     unpublish_at: new Date().toISOString(),
     updated_by: user.id,
   }).eq("id", id);
   if (error) redirect(contentPath(id, error.message));
   try {
-    const playbackId = await primaryPlaybackId(supabase, id);
-    if (playbackId) await supabase.from("live_source_configs").update({ enabled: false }).eq("playback_source_id", playbackId);
+    const playbackId = await primaryPlaybackId(database, id);
+    if (playbackId) await database.from("live_source_configs").update({ enabled: false }).eq("playback_source_id", playbackId);
   } catch (liveError) {
     console.error("live_source_kill_switch_failed", liveError);
   }
-  await recordAudit(supabase, user.id, "content_unpublished", id, { reason });
+  await recordAudit(database, user.id, "content_unpublished", id, { reason });
   revalidatePath(contentPath(id));
   revalidatePath("/studio/content");
   revalidatePath("/");

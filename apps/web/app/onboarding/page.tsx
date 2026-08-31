@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { hasSupabaseConfig, isFrontendPreview } from "@/lib/runtime";
+import { createClient } from "@/lib/database/server";
+import { hasBackendConfiguration, isFrontendPreview } from "@/lib/runtime";
 import { completeOnboarding } from "./actions";
 
 export const metadata = { title: "Set up Jalwa" };
@@ -8,14 +8,14 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 export default async function OnboardingPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
-  const preview = isFrontendPreview() || !hasSupabaseConfig();
+  const preview = isFrontendPreview() || !hasBackendConfiguration();
   let displayName = "";
   let preferredLanguage = "en";
   if (!preview) {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const database = await createClient();
+    const { data: { user } } = await database.auth.getUser();
     if (!user) redirect(`/login?next=${encodeURIComponent("/onboarding")}`);
-    const { data: profile } = await supabase.from("profiles").select("display_name,preferred_language,onboarding_completed").eq("id", user.id).maybeSingle();
+    const { data: profile } = await database.from("profiles").select("display_name,preferred_language,onboarding_completed").eq("id", user.id).maybeSingle();
     if (profile?.onboarding_completed) redirect("/profile");
     displayName = profile?.display_name ?? String(user.user_metadata?.display_name ?? "");
     preferredLanguage = profile?.preferred_language ?? String(user.user_metadata?.preferred_language ?? "en");

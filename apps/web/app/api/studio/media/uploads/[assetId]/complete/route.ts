@@ -10,7 +10,7 @@ export async function POST(_: Request, { params }: { params: Params }) {
   if ("error" in context) return context.error;
   const { assetId } = await params;
 
-  const { data: asset } = await context.supabase
+  const { data: asset } = await context.database
     .from("media_assets")
     .select("id,storage_key,size_bytes,metadata,status")
     .eq("id", assetId)
@@ -23,14 +23,14 @@ export async function POST(_: Request, { params }: { params: Params }) {
     const uploaded = await verifyUploadedObject(asset.storage_key);
     if (!uploaded.sizeBytes) throw new Error("Object is empty");
     const pipeline = asset.metadata?.pipeline === "short_mp4" ? "short_mp4" : "hls";
-    const { error } = await context.supabase.from("media_assets").update({
+    const { error } = await context.database.from("media_assets").update({
       status: "queued",
       size_bytes: uploaded.sizeBytes,
       mime_type: uploaded.contentType ?? undefined,
     }).eq("id", asset.id);
     if (error) throw error;
 
-    const { error: jobError } = await context.supabase.from("media_jobs").insert({
+    const { error: jobError } = await context.database.from("media_jobs").insert({
       media_asset_id: asset.id,
       job_type: pipeline,
       status: "queued",

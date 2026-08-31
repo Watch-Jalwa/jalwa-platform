@@ -5,36 +5,32 @@ import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-sec
 const s3 = new S3Client({});
 const mediaConvert = new MediaConvertClient({});
 const secrets = new SecretsManagerClient({});
-let supabaseSecret;
+let callbackSecret;
 
 async function streamText(body) {
   if (!body) throw new Error("S3 marker has no body.");
   return body.transformToString();
 }
 
-async function getSupabaseSecret() {
-  if (supabaseSecret) return supabaseSecret;
-  const response = await secrets.send(new GetSecretValueCommand({ SecretId: process.env.SUPABASE_SECRET_ARN }));
+async function getCallbackSecret() {
+  if (callbackSecret) return callbackSecret;
+  const response = await secrets.send(new GetSecretValueCommand({ SecretId: process.env.APPLICATION_CALLBACK_SECRET_ARN }));
   const raw = response.SecretString ?? Buffer.from(response.SecretBinary ?? []).toString("utf8");
   const parsed = JSON.parse(raw);
-  if (!parsed.url || !parsed.serviceRoleKey) throw new Error("Supabase secret requires url and serviceRoleKey.");
-  supabaseSecret = parsed;
+  if (!parsed.url || !parsed.secret) throw new Error("Application callback secret requires url and secret.");
+  callbackSecret = parsed;
   return parsed;
 }
 
-async function rpc(name, body) {
-  const secret = await getSupabaseSecret();
-  const response = await fetch(`${secret.url.replace(/\/$/, "")}/rest/v1/rpc/${name}`, {
+async function callback(action, body) {
+  const target = await getCallbackSecret();
+  const response = await fetch(target.url, {
     method: "POST",
-    headers: {
-      apikey: secret.serviceRoleKey,
-      Authorization: `Bearer ${secret.serviceRoleKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
+    headers: { "content-type": "application/json", "x-jalwa-media-callback-secret": target.secret },
+    body: JSON.stringify({ action, ...body }),
     signal: AbortSignal.timeout(15_000),
   });
-  if (!response.ok) throw new Error(`${name} failed: ${response.status} ${await response.text()}`);
+  if (!response.ok) throw new Error(`Jalwa media callback failed: ${response.status} ${await response.text()}`);
 }
 
 function videoDescription(width, height, maxBitrate) {
@@ -165,10 +161,7 @@ async function submitMarker(bucket, key) {
   }));
 
   if (!response.Job?.Id) throw new Error("MediaConvert did not return a job ID.");
-  await rpc("mark_external_media_job_submitted", {
-    p_job_id: marker.jobId,
-    p_provider_job_id: response.Job.Id,
-  });
+  await callback("submitted", { jobId: marker.jobId, providerJobId: response.Job.Id });
   console.log(JSON.stringify({ event: "mediaconvert_submitted", jobId: marker.jobId, providerJobId: response.Job.Id }));
 }
 

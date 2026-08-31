@@ -84,7 +84,7 @@ test("all mandatory certification areas are fail closed", async () => {
 
 test("visual review approval is bound to the exact candidate release", async () => {
   const finalizer = await read(paths.finalizer);
-  assert.match(finalizer, /visualAcceptedSha === requestedReleaseSha/);
+  assert.match(finalizer, /visualAcceptedSha === releaseSha/);
   assert.match(finalizer, /\^\[0-9a-f\]\{40\}\$/);
   assert.match(finalizer, /visualAcceptanceReference/);
   assert.match(finalizer, /exact release SHA is required before UAT/);
@@ -97,8 +97,8 @@ test("customer certification covers auth denial, duplicate checkout, authoritati
   assert.match(customer, /Duplicate checkout requests created different order IDs/);
   assert.match(customer, /amount_minor/);
   assert.match(customer, /paidOrder\.status !== "succeeded"/);
-  assert.match(customer, /\/rest\/v1\/subscriptions/);
-  assert.match(customer, /\/rest\/v1\/entitlements/);
+  assert.match(customer, /subscription-entitlements/);
+  assert.match(customer, /x-jalwa-qa-token/);
   assert.match(customer, /Active subscription entitlements do not exactly match/);
   assert.match(customer, /Mobile purchase did not reach authoritative succeeded state/);
   assert.match(customer, /guest_cart_checkout: "N\/A"/);
@@ -204,7 +204,7 @@ test("Playwright Studio suite covers admin, rights review, finance, export audit
   assert.match(studio, /"rights_reviewer"/);
   assert.match(studio, /"viewer"/);
   assert.match(studio, /"finance"/);
-  assert.match(studio, /premium_report_exported/);
+  assert.match(studio, /audit-export/);
   assert.match(studio, /x-jalwa-report-sha256/);
   assert.match(studio, /Permission denied/);
 });

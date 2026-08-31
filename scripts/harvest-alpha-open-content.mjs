@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 
+import { createDatabaseClient, createPool } from "@jalwa/postgres";
+
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
@@ -368,54 +370,33 @@ function adapterFor(source) {
 }
 
 async function importCandidates(candidates) {
-  const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
-  const serviceRole = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!baseUrl || !serviceRole) throw new Error("Supabase service-role configuration is required for --import.");
-  const headers = {
-    apikey: serviceRole,
-    Authorization: `Bearer ${serviceRole}`,
-    "Content-Type": "application/json",
-  };
-  const sourceIds = [...new Set(candidates.map((candidate) => candidate.sourceId))];
-  const params = new URLSearchParams({
-    select: "id,source_key",
-    source_key: `in.(${sourceIds.join(",")})`,
-  });
-  const sourceResponse = await fetch(`${baseUrl}/rest/v1/source_accounts?${params}`, { headers });
-  if (!sourceResponse.ok) throw new Error(`Source lookup failed: ${sourceResponse.status}`);
-  const sourceRows = await sourceResponse.json();
-  const sourceMap = new Map(sourceRows.map((row) => [row.source_key, row.id]));
-  const normalized = candidates.map((candidate) => {
-    const sourceAccountId = sourceMap.get(candidate.sourceId);
-    if (!sourceAccountId) throw new Error(`Source ${candidate.sourceId} is not installed.`);
-    return {
-      source_account_id: sourceAccountId,
-      external_id: candidate.externalId,
-      source_url: candidate.sourceUrl,
-      title: candidate.title,
-      description: candidate.description || null,
-      media_type: candidate.mediaType || null,
-      language: candidate.language || null,
-      creator: candidate.creator || null,
-      licence_code: candidate.licenceCode || null,
-      licence_url: candidate.licenceUrl || null,
-      direct_media_url: candidate.directMediaUrl || null,
-      thumbnail_url: candidate.thumbnailUrl || null,
-      rights_state: "candidate",
-      ingestion_status: "discovered",
-      metadata: candidate.metadata ?? {},
-    };
-  });
-  for (let index = 0; index < normalized.length; index += 100) {
-    const response = await fetch(`${baseUrl}/rest/v1/source_items?on_conflict=source_account_id,external_id`, {
-      method: "POST",
-      headers: {
-        ...headers,
-        Prefer: "resolution=merge-duplicates,return=minimal",
-      },
-      body: JSON.stringify(normalized.slice(index, index + 100)),
+  const connectionString = process.env.DATABASE_URL?.trim();
+  if (!connectionString) throw new Error("DATABASE_URL is required for --import.");
+  const pool = createPool(connectionString, { max: 4 });
+  const database = createDatabaseClient(pool, { role: "service_role" });
+  try {
+    const sourceIds = [...new Set(candidates.map((candidate) => candidate.sourceId))];
+    const { data: sourceRows, error: sourceError } = await database.from("source_accounts").select("id,source_key").in("source_key", sourceIds);
+    if (sourceError) throw sourceError;
+    const sourceMap = new Map((sourceRows ?? []).map((row) => [row.source_key, row.id]));
+    const normalized = candidates.map((candidate) => {
+      const sourceAccountId = sourceMap.get(candidate.sourceId);
+      if (!sourceAccountId) throw new Error(`Source ${candidate.sourceId} is not installed.`);
+      return {
+        source_account_id: sourceAccountId, external_id: candidate.externalId, source_url: candidate.sourceUrl,
+        title: candidate.title, description: candidate.description || null, media_type: candidate.mediaType || null,
+        language: candidate.language || null, creator: candidate.creator || null, licence_code: candidate.licenceCode || null,
+        licence_url: candidate.licenceUrl || null, direct_media_url: candidate.directMediaUrl || null,
+        thumbnail_url: candidate.thumbnailUrl || null, rights_state: "candidate", ingestion_status: "discovered",
+        metadata: candidate.metadata ?? {},
+      };
     });
-    if (!response.ok) throw new Error(`Source-item import failed: ${response.status} ${await response.text()}`);
+    for (let index = 0; index < normalized.length; index += 100) {
+      const { error } = await database.from("source_items").upsert(normalized.slice(index, index + 100), { onConflict: "source_account_id,external_id" });
+      if (error) throw error;
+    }
+  } finally {
+    await pool.end();
   }
 }
 

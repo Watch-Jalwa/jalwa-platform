@@ -5,7 +5,7 @@
 /.github/ @waseem99
 /infrastructure/ @waseem99
 /scripts/ @waseem99
-/supabase/migrations/ @waseem99
+/database/migrations/ @waseem99
 /SECURITY.md @waseem99
 
 # Product surfaces

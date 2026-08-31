@@ -83,7 +83,7 @@ apps/
   worker/                      ingestion, media processing and scheduled work
 evals/                         synthetic, versioned AI evaluation cases
 qa/visual-baselines/           human-approved public visual baseline manifest and policy
-supabase/migrations/           forward-only database migrations
+database/migrations/           forward-only database migrations
 content/                       approved source registers and governed inputs
 infrastructure/
   aws-media/                   private AWS video processing and delivery plane

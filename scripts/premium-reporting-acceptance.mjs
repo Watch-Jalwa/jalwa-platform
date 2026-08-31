@@ -1,11 +1,9 @@
 import assert from "node:assert/strict";
 import { writeFile } from "node:fs/promises";
-import { createClient } from "@supabase/supabase-js";
 import { chromium } from "playwright";
+import { authenticatePage, ensureQaUser, qaConfig } from "./lib/staging-qa-auth.mjs";
 
-const baseUrl = process.env.JALWA_BROWSER_BASE_URL?.replace(/\/$/, "");
-const supabaseUrl = process.env.JALWA_SUPABASE_URL?.replace(/\/$/, "");
-const serviceRoleKey = process.env.JALWA_SUPABASE_SERVICE_ROLE_KEY;
+const baseUrl = (process.env.JALWA_BROWSER_BASE_URL ?? process.env.STAGING_BASE_URL ?? "").replace(/\/$/, "");
 const financeEmail = process.env.JALWA_FINANCE_EMAIL;
 const viewerEmail = process.env.JALWA_VIEWER_EMAIL;
 const expectedVersion = process.env.JALWA_EXPECTED_VERSION;
@@ -13,46 +11,12 @@ const reportFile = process.env.JALWA_PREMIUM_REPORT_FILE || "premium-reporting-a
 
 for (const [name, value] of Object.entries({
   JALWA_BROWSER_BASE_URL: baseUrl,
-  JALWA_SUPABASE_URL: supabaseUrl,
-  JALWA_SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey,
   JALWA_FINANCE_EMAIL: financeEmail,
   JALWA_VIEWER_EMAIL: viewerEmail,
-})) {
-  assert.ok(value, `${name} is required`);
-}
+})) assert.ok(value, `${name} is required`);
 
-const admin = createClient(supabaseUrl, serviceRoleKey, {
-  auth: { autoRefreshToken: false, persistSession: false, detectSessionInUrl: false },
-});
-
-function actionLink(data) {
-  return data?.properties?.action_link || data?.properties?.actionLink || data?.action_link || data?.actionLink;
-}
-
-async function magicLink(email, nextPath) {
-  const redirectTo = `${baseUrl}/auth/callback?next=${encodeURIComponent(nextPath)}`;
-  const { data, error } = await admin.auth.admin.generateLink({
-    type: "magiclink",
-    email,
-    options: { redirectTo },
-  });
-  assert.ifError(error);
-  const link = actionLink(data);
-  assert.ok(link, `No action link returned for ${email}`);
-  return link;
-}
-
-async function signIn(context, email, nextPath) {
-  const page = await context.newPage();
-  const link = await magicLink(email, nextPath);
-  const response = await page.goto(link, { waitUntil: "networkidle", timeout: 45_000 });
-  assert.ok(response, `No authentication response for ${email}`);
-  assert.ok(response.status() < 400, `Authentication failed for ${email}: ${response.status()}`);
-  if (!new URL(page.url()).pathname.startsWith(nextPath)) {
-    await page.goto(`${baseUrl}${nextPath}`, { waitUntil: "networkidle" });
-  }
-  return page;
-}
+const config = qaConfig();
+assert.equal(config.baseUrl, baseUrl, "QA base URL must match the browser acceptance base URL");
 
 async function bodyIncludes(page, pattern) {
   const body = await page.locator("body").innerText();
@@ -67,25 +31,30 @@ async function sharedRuntimeChecks(page) {
   if (expectedVersion) assert.equal(healthJson.version, expectedVersion);
 }
 
+async function qaState(kind, params = {}) {
+  const query = new URLSearchParams({ kind, ...Object.fromEntries(Object.entries(params).map(([key, value]) => [key, String(value)])) });
+  const response = await fetch(`${baseUrl}/api/internal/qa/state?${query}`, { headers: { "x-jalwa-qa-token": config.qaSecret } });
+  assert.equal(response.status(), 200, `QA state ${kind} failed with HTTP ${response.status}`);
+  return response.json();
+}
+
 const browser = await chromium.launch({ headless: true });
-const evidence = {
-  generatedAt: new Date().toISOString(),
-  baseUrl,
-  expectedVersion: expectedVersion || null,
-  checks: [],
-};
+const evidence = { generatedAt: new Date().toISOString(), baseUrl, expectedVersion: expectedVersion || null, checks: [] };
 
 try {
+  const financeUser = await ensureQaUser(config, financeEmail, "finance");
+  await ensureQaUser(config, viewerEmail, "viewer");
+
   const anonymous = await browser.newContext();
-  const anonymousReport = await anonymous.request.get(`${baseUrl}/api/studio/premium-reports/payments`);
-  assert.equal(anonymousReport.status(), 401);
-  const anonymousExport = await anonymous.request.get(`${baseUrl}/api/studio/premium-reports/export/payments`);
-  assert.equal(anonymousExport.status(), 401);
+  assert.equal((await anonymous.request.get(`${baseUrl}/api/studio/premium-reports/payments`)).status(), 401);
+  assert.equal((await anonymous.request.get(`${baseUrl}/api/studio/premium-reports/export/payments`)).status(), 401);
   evidence.checks.push("anonymous report and export APIs return 401");
   await anonymous.close();
 
   const finance = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
-  const financePage = await signIn(finance, financeEmail, "/studio/finance/reports");
+  const financePage = await finance.newPage();
+  await authenticatePage(financePage, config, financeEmail, "/studio/finance/reports");
+  await financePage.goto(`${baseUrl}/studio/finance/reports`, { waitUntil: "networkidle" });
   await sharedRuntimeChecks(financePage);
   await bodyIncludes(financePage, /Premium reports/i);
 
@@ -131,22 +100,10 @@ try {
   assert.match(csv, /Payment ID/);
   assert.doesNotMatch(csv, /service_role|JWT_SECRET|PAYMENT_WEBHOOK_SECRET|raw_event|payload_hash/i);
 
-  const { data: financeUsers, error: financeUserError } = await admin.auth.admin.listUsers({ page: 1, perPage: 1000 });
-  assert.ifError(financeUserError);
-  const financeUser = financeUsers.users.find((user) => user.email === financeEmail);
-  assert.ok(financeUser, "Finance acceptance user not found");
-  const { data: auditRows, error: auditError } = await admin
-    .from("audit_logs")
-    .select("actor_id,action,entity_id,metadata,created_at")
-    .eq("actor_id", financeUser.id)
-    .eq("action", "premium_report_exported")
-    .eq("entity_id", "payments")
-    .order("created_at", { ascending: false })
-    .limit(1);
-  assert.ifError(auditError);
-  assert.equal(auditRows?.length, 1, "Export audit row was not written");
-  assert.equal(auditRows[0].metadata?.content_sha256, exportHash);
-  assert.equal(typeof auditRows[0].metadata?.row_count, "number");
+  const { data: auditRow } = await qaState("audit-export", { actorId: financeUser.id, entityId: "payments" });
+  assert.ok(auditRow, "Export audit row was not written");
+  assert.equal(auditRow.metadata?.content_sha256, exportHash);
+  assert.equal(typeof auditRow.metadata?.row_count, "number");
   evidence.checks.push("Finance CSV export is private, safe and audit-linked by SHA-256");
 
   await financePage.setViewportSize({ width: 390, height: 844 });
@@ -158,12 +115,12 @@ try {
   await finance.close();
 
   const viewer = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-  const viewerPage = await signIn(viewer, viewerEmail, "/studio/finance/reports");
+  const viewerPage = await viewer.newPage();
+  await authenticatePage(viewerPage, config, viewerEmail, "/studio/finance/reports");
+  await viewerPage.goto(`${baseUrl}/studio/finance/reports`, { waitUntil: "networkidle" });
   await bodyIncludes(viewerPage, /Permission denied/i);
-  const viewerReport = await viewer.request.get(`${baseUrl}/api/studio/premium-reports/payments`);
-  assert.equal(viewerReport.status(), 403);
-  const viewerExport = await viewer.request.get(`${baseUrl}/api/studio/premium-reports/export/payments`);
-  assert.equal(viewerExport.status(), 403);
+  assert.equal((await viewer.request.get(`${baseUrl}/api/studio/premium-reports/payments`)).status(), 403);
+  assert.equal((await viewer.request.get(`${baseUrl}/api/studio/premium-reports/export/payments`)).status(), 403);
   evidence.checks.push("non-Finance user receives denied UI and 403 APIs");
   await viewer.close();
 

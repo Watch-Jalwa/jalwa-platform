@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/database/admin";
 import { verifyPaymentSignature } from "@/lib/payments/signature.mjs";
 
 export type PaymentEventStatus = "succeeded" | "failed" | "refunded" | "partially_refunded" | "disputed";

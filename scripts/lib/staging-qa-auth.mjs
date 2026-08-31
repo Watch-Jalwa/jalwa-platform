@@ -6,81 +6,36 @@ const required = (name) => {
 
 export function qaConfig() {
   return {
-    baseUrl: required("STAGING_BASE_URL").replace(/\/$/, ""),
-    supabaseUrl: required("STAGING_SUPABASE_URL").replace(/\/$/, ""),
-    anonKey: required("STAGING_SUPABASE_ANON_KEY"),
-    serviceRoleKey: required("STAGING_SUPABASE_SERVICE_ROLE_KEY"),
+    baseUrl: ((process.env.STAGING_BASE_URL ?? process.env.JALWA_BROWSER_BASE_URL ?? "").trim() || required("STAGING_BASE_URL")).replace(/\/$/, ""),
+    qaSecret: ((process.env.STAGING_QA_SECRET ?? process.env.JALWA_STAGING_QA_SECRET ?? "").trim() || required("STAGING_QA_SECRET")),
+    qaRunId: (process.env.QA_RUN_ID ?? `qa-${Date.now()}`).slice(0, 160),
   };
 }
 
-async function adminFetch(config, path, init = {}) {
-  const response = await fetch(`${config.supabaseUrl}${path}`, {
-    ...init,
-    headers: {
-      apikey: config.serviceRoleKey,
-      authorization: `Bearer ${config.serviceRoleKey}`,
-      "content-type": "application/json",
-      ...(init.headers ?? {}),
-    },
+async function qaPost(config, body) {
+  return fetch(`${config.baseUrl}/api/internal/qa/session`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-jalwa-qa-token": config.qaSecret },
+    body: JSON.stringify(body),
   });
-  return response;
 }
 
 export async function ensureQaUser(config, email, role = null) {
   const normalizedEmail = email.trim().toLowerCase();
   if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) throw new Error("Invalid staging QA email address.");
-
-  let userId = null;
-  const list = await adminFetch(config, "/auth/v1/admin/users?page=1&per_page=1000");
-  if (!list.ok) throw new Error(`Supabase QA user lookup failed with HTTP ${list.status}.`);
-  const users = (await list.json()).users ?? [];
-  userId = users.find((user) => user.email?.toLowerCase() === normalizedEmail)?.id ?? null;
-
-  if (!userId) {
-    const create = await adminFetch(config, "/auth/v1/admin/users", {
-      method: "POST",
-      body: JSON.stringify({ email: normalizedEmail, email_confirm: true, user_metadata: { qa_identity: true } }),
-    });
-    if (!create.ok) throw new Error(`Supabase QA user creation failed with HTTP ${create.status}.`);
-    userId = (await create.json()).id;
-  }
-
-  if (!userId) throw new Error("Supabase QA user ID was not returned.");
-
-  if (role) {
-    let updated = false;
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const response = await adminFetch(config, `/rest/v1/profiles?id=eq.${encodeURIComponent(userId)}`, {
-        method: "PATCH",
-        headers: { Prefer: "return=representation" },
-        body: JSON.stringify({ role }),
-      });
-      if (response.ok) {
-        const rows = await response.json();
-        if (Array.isArray(rows) && rows.length > 0) {
-          updated = true;
-          break;
-        }
-      }
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
-    if (!updated) throw new Error(`Could not assign staging QA role ${role}.`);
-  }
-
-  return { id: userId, email: normalizedEmail };
+  const response = await qaPost(config, { email: normalizedEmail, role, issueLink: false, qaRunId: config.qaRunId });
+  if (!response.ok) throw new Error(`Jalwa QA identity setup failed with HTTP ${response.status}.`);
+  const payload = await response.json();
+  if (!payload?.user?.id) throw new Error("Jalwa QA user ID was not returned.");
+  return payload.user;
 }
 
 export async function generateMagicLink(config, email, nextPath = "/") {
-  const redirectTo = `${config.baseUrl}/auth/callback?next=${encodeURIComponent(nextPath)}`;
-  const response = await adminFetch(config, "/auth/v1/admin/generate_link", {
-    method: "POST",
-    body: JSON.stringify({ type: "magiclink", email: email.trim().toLowerCase(), options: { redirect_to: redirectTo } }),
-  });
-  if (!response.ok) throw new Error(`Supabase QA magic-link generation failed with HTTP ${response.status}.`);
+  const response = await qaPost(config, { email: email.trim().toLowerCase(), nextPath, qaRunId: `${config.qaRunId}-${crypto.randomUUID()}` });
+  if (!response.ok) throw new Error(`Jalwa QA magic-link generation failed with HTTP ${response.status}.`);
   const payload = await response.json();
-  const actionLink = payload?.properties?.action_link ?? payload?.action_link;
-  if (!actionLink || !/^https?:\/\//.test(actionLink)) throw new Error("Supabase QA magic link was not returned.");
-  return actionLink;
+  if (!payload?.actionLink || !/^https?:\/\//.test(payload.actionLink)) throw new Error("Jalwa QA magic link was not returned.");
+  return payload.actionLink;
 }
 
 export async function authenticatePage(page, config, email, nextPath = "/") {

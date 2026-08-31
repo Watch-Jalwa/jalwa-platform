@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/database/admin";
 import { REPORT_SCHEMA_VERSION, REPORT_TIMEZONE, maskUserId } from "@/lib/reports/premium.mjs";
 import { collectRows, planCode, reportContext, type ReportInput } from "@/lib/studio/premium-report-data";
 

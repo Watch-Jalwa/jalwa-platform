@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/database/admin";
 import { requireStaff } from "@/lib/studio/auth";
 
 const statuses = new Set(["open", "in_progress", "waiting", "resolved", "closed"]);

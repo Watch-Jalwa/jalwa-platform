@@ -1,22 +1,22 @@
 import { redirect } from "next/navigation";
 import { OfflineLibrary } from "@/components/offline-library";
 import { getActiveViewerProfile } from "@/lib/customer/active-profile";
-import { createClient } from "@/lib/supabase/server";
-import { canUseDemoData, hasSupabaseConfig } from "@/lib/runtime";
+import { createClient } from "@/lib/database/server";
+import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 
 export const metadata = { title: "Offline downloads" };
 
 export default async function OfflinePage() {
   const preview = canUseDemoData();
-  if (!preview && !hasSupabaseConfig()) throw new Error("Offline library database is not configured.");
+  if (!preview && !hasBackendConfiguration()) throw new Error("Offline library database is not configured.");
   let items: { id: string; contentId: string; title: string; cacheKey: string; downloadedAt: string; bytesDownloaded: number; expiresAt: string }[] = [];
   if (!preview) {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const database = await createClient();
+    const { data: { user } } = await database.auth.getUser();
     if (!user) redirect("/login?next=/offline");
     const profile = await getActiveViewerProfile(user.id);
     const { data, error } = profile
-      ? await supabase.from("offline_items")
+      ? await database.from("offline_items")
         .select("id,content_id,cache_key,bytes_downloaded,downloaded_at,expires_at,content_items(title_en)")
         .eq("user_id", user.id)
         .eq("viewer_profile_id", profile.id)

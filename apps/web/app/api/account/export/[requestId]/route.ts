@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { accountExportUrl } from "@/lib/privacy/storage";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/database/server";
 
 type Params = Promise<{ requestId: string }>;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -8,10 +8,10 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 export async function GET(_: Request, { params }: { params: Params }) {
   const { requestId } = await params;
   if (!uuidPattern.test(requestId)) return NextResponse.json({ error: "Invalid export request." }, { status: 400 });
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
   if (!user) return NextResponse.redirect(new URL(`/login?next=/api/account/export/${requestId}`, process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"), 303);
-  const { data, error } = await supabase.from("account_requests")
+  const { data, error } = await database.from("account_requests")
     .select("id,status,request_type,result_storage_key,result_expires_at")
     .eq("id", requestId).eq("user_id", user.id).maybeSingle();
   if (error) return NextResponse.json({ error: "Export request unavailable." }, { status: 503 });

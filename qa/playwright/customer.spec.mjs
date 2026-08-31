@@ -7,7 +7,7 @@ import {
   getActivePrice,
   qaConfig,
   requiredEnv,
-  serviceFetch,
+  qaFetch,
 } from "./helpers/staging.mjs";
 
 const baseURL = (process.env.STAGING_BASE_URL ?? process.env.JALWA_BROWSER_BASE_URL ?? "").trim().replace(/\/$/, "");
@@ -65,10 +65,7 @@ test.describe.serial("authenticated Premium customer", () => {
     expect(second.body?.orderId).toBe(first.body.orderId);
     expect(second.body?.redirectUrl).toBe(first.body.redirectUrl);
 
-    const orderResponse = await serviceFetch(
-      config,
-      `/rest/v1/checkout_orders?select=id,user_id,amount_minor,currency,status&id=eq.${encodeURIComponent(first.body.orderId)}`,
-    );
+    const orderResponse = await qaFetch(config, "checkout-order", { id: first.body.orderId });
     expect(orderResponse.ok).toBeTruthy();
     const [order] = await orderResponse.json();
     expect(order?.user_id).toBe(customer.id);
@@ -94,10 +91,7 @@ test.describe.serial("authenticated Premium customer", () => {
     ]);
     await expect(page.getByText(/Premium|payment|subscription/i).first()).toBeVisible();
 
-    const paidResponse = await serviceFetch(
-      config,
-      `/rest/v1/checkout_orders?select=id,user_id,amount_minor,currency,status&id=eq.${encodeURIComponent(created.body.orderId)}`,
-    );
+    const paidResponse = await qaFetch(config, "checkout-order", { id: created.body.orderId });
     expect(paidResponse.ok).toBeTruthy();
     const [paid] = await paidResponse.json();
     expect(paid?.status).toBe("succeeded");
@@ -134,10 +128,7 @@ test.describe.serial("authenticated Premium customer", () => {
         page.getByRole("button", { name: "Complete test payment" }).click(),
       ]);
 
-      const paidResponse = await serviceFetch(
-        config,
-        `/rest/v1/checkout_orders?select=id,status,amount_minor,currency&id=eq.${encodeURIComponent(created.body.orderId)}`,
-      );
+      const paidResponse = await qaFetch(config, "checkout-order", { id: created.body.orderId });
       expect(paidResponse.ok).toBeTruthy();
       const [paid] = await paidResponse.json();
       expect(paid?.status).toBe("succeeded");

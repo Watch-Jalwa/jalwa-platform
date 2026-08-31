@@ -20,7 +20,7 @@ function dateLabel(value: string | null | undefined) {
 
 export default async function InternalAlphaPage({ searchParams }: { searchParams: SearchParams }) {
   const { error } = await searchParams;
-  const { supabase, profile } = await requireStaff();
+  const { database, profile } = await requireStaff();
   const canAdmin = profile.role === "admin";
   const canReview = ["rights_reviewer", "admin"].includes(profile.role);
 
@@ -32,25 +32,25 @@ export default async function InternalAlphaPage({ searchParams }: { searchParams
     { data: grants },
     { data: candidates },
   ] = await Promise.all([
-    supabase.from("platform_runtime_flags").select("key,enabled,notes,updated_at").in("key", ["internal_alpha_enabled", "internal_alpha_invite_only"]),
-    supabase.from("source_accounts")
+    database.from("platform_runtime_flags").select("key,enabled,notes,updated_at").in("key", ["internal_alpha_enabled", "internal_alpha_invite_only"]),
+    database.from("source_accounts")
       .select("id,source_key,provider,name,content_lane,primary_media,accepted_rights_basis,item_level_check_required,is_enabled,next_review_at,disabled_reason")
       .order("provider")
       .order("name")
       .limit(200),
-    supabase.from("content_items")
+    database.from("content_items")
       .select("id,title_en,status,hosting_mode,is_available,disabled_reason,source_account_id")
       .in("status", ["published", "scheduled", "editorial_review", "rights_review", "unavailable"])
       .order("updated_at", { ascending: false })
       .limit(100),
-    supabase.from("rights_records")
+    database.from("rights_records")
       .select("content_id,status,rights_hold,rights_hold_reason,expires_at")
       .limit(500),
-    supabase.from("alpha_access_grants")
+    database.from("alpha_access_grants")
       .select("user_id,enabled,expires_at,reason,granted_at,revoked_at")
       .order("updated_at", { ascending: false })
       .limit(100),
-    supabase.from("source_items")
+    database.from("source_items")
       .select("id,source_account_id,title,creator,licence_code,source_url,media_type,language,rights_state,ingestion_status,content_id,discovered_at")
       .neq("ingestion_status", "rejected")
       .order("discovered_at", { ascending: false })

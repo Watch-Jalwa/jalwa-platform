@@ -3,10 +3,9 @@ set -Eeuo pipefail
 
 APP_DIR="${APP_DIR:-/opt/jalwa}"
 ENV_FILE="${APP_DIR}/.env.production"
-SUPABASE_RUNTIME="${SUPABASE_RUNTIME:-${APP_DIR}/supabase/runtime}"
 BACKUP_DIR="${BACKUP_DIR:-${APP_DIR}/backups/postgres}"
 BASE_URL="${1:-${APP_URL:-https://watch-jalwa.com}}"
-API_URL="${2:-https://api.watch-jalwa.com}"
+API_URL="${2:-}" # positional compatibility only; no separate data/auth gateway exists.
 MAX_DISK_PERCENT="${MAX_DISK_PERCENT:-85}"
 MAX_BACKUP_AGE_SECONDS="${MAX_BACKUP_AGE_SECONDS:-108000}"
 MAX_RESTORE_DRILL_AGE_SECONDS="${MAX_RESTORE_DRILL_AGE_SECONDS:-691200}"
@@ -22,8 +21,8 @@ marker_age() {
 }
 
 [[ -s "$ENV_FILE" ]] || fail "Missing ${ENV_FILE}"
-[[ -s "${SUPABASE_RUNTIME}/.env" ]] || fail "Missing self-hosted Supabase runtime"
 set -a
+# shellcheck disable=SC1090
 source "$ENV_FILE"
 set +a
 cd "$APP_DIR"
@@ -34,7 +33,7 @@ cd "$APP_DIR"
 docker compose --env-file "$ENV_FILE" config --quiet
 pass "Compose and public smoke checks"
 
-for service in web worker caddy; do
+for service in postgres web worker caddy; do
   id="$(docker compose --env-file "$ENV_FILE" ps -q "$service")"
   [[ -n "$id" ]] || fail "Missing app service: $service"
   [[ "$(docker inspect -f '{{.State.Running}}' "$id")" == "true" ]] || fail "Service not running: $service"
@@ -43,17 +42,12 @@ for service in web worker caddy; do
   pass "$service ($health)"
 done
 
-for container in supabase-db supabase-auth supabase-rest; do
-  [[ "$(docker inspect -f '{{.State.Health.Status}}' "$container")" == "healthy" ]] || fail "Container not healthy: $container"
-  pass "$container"
-done
-
-docker exec supabase-db pg_isready -U postgres -d postgres >/dev/null
-migration_failures="$(docker exec supabase-db psql -U postgres -d postgres -Atqc "select count(*) from public.jalwa_schema_migrations where status is distinct from 'applied';")"
+docker exec jalwa-postgres pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" >/dev/null
+migration_failures="$(docker exec jalwa-postgres psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -Atqc "select count(*) from public.jalwa_schema_migrations where status is distinct from 'applied';")"
 [[ "$migration_failures" == "0" ]] || fail "$migration_failures migration records are not applied"
 pass "PostgreSQL and migration ledger"
 
-stuck_jobs="$(docker exec supabase-db psql -U postgres -d postgres -Atqc "
+stuck_jobs="$(docker exec jalwa-postgres psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -Atqc "
 select
   (select count(*) from public.media_jobs where (status='queued' and available_at < now()-interval '2 hours') or (status='processing' and locked_at < now()-interval '3 hours'))
  + (select count(*) from public.drm_packaging_jobs where (status='queued' and available_at < now()-interval '2 hours') or (status='processing' and locked_at < now()-interval '3 hours'))
@@ -78,7 +72,7 @@ disk_percent="$(df -P "$APP_DIR" | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
 (( disk_percent < MAX_DISK_PERCENT )) || fail "Disk utilization is ${disk_percent}%"
 pass "Disk utilization (${disk_percent}%)"
 
-for setting in R2_BACKUP_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY; do [[ -n "${!setting:-}" ]] || fail "$setting is missing"; done
+for setting in R2_BACKUP_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY BETTER_AUTH_SECRET SMTP_HOST; do [[ -n "${!setting:-}" ]] || fail "$setting is missing"; done
 if [[ "${PAYMENT_PROVIDER:-mock}" == "mock" ]]; then
   [[ "${DEPLOYMENT_ENVIRONMENT:-production}" == "staging" && "${ALLOW_MOCK_PAYMENTS:-false}" == "true" ]] \
     || fail "Mock payments are allowed only in an explicit staging deployment"
@@ -86,7 +80,7 @@ if [[ "${PAYMENT_PROVIDER:-mock}" == "mock" ]]; then
 else
   [[ "${PAYMENT_PROVIDER}" =~ ^(payfast|jazzcash|easypaisa)$ ]] || fail "Unsupported payment provider"
 fi
-if [[ "${NEXT_PUBLIC_ENABLE_PHONE_AUTH:-false}" == "true" ]]; then grep -q '^SMS_PROVIDER=.' "${APP_DIR}/.env.supabase" || fail "SMS provider is missing"; fi
+if [[ "${NEXT_PUBLIC_ENABLE_PHONE_AUTH:-false}" == "true" ]]; then fail "Phone authentication is not enabled in the Better Auth deployment contract"; fi
 
 headers="$(mktemp)"
 trap 'rm -f "$headers"' EXIT

@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY apps/worker/package.json apps/worker/package.json
+COPY packages/postgres/package.json packages/postgres/package.json
 RUN npm ci --ignore-scripts --no-audit --no-fund \
   && mkdir -p apps/web/node_modules apps/worker/node_modules
 
@@ -11,6 +12,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY apps/worker/package.json apps/worker/package.json
+COPY packages/postgres/package.json packages/postgres/package.json
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
       --workspace @jalwa/worker --include-workspace-root=false \
   && mkdir -p apps/worker/node_modules \
@@ -24,8 +26,6 @@ COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY . .
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
-ARG NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co
-ARG NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_build_placeholder
 ARG NEXT_PUBLIC_ENABLE_PHONE_AUTH=false
 ARG NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=false
 ARG NEXT_PUBLIC_ENABLE_APPLE_AUTH=false
@@ -34,8 +34,6 @@ ARG NEXT_PUBLIC_ENABLE_LIVE_STREAMING=false
 ARG NEXT_PUBLIC_ENABLE_WEB_DRM=false
 ARG NEXT_PUBLIC_STAGING=false
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
-ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-ENV NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 ENV NEXT_PUBLIC_ENABLE_PHONE_AUTH=$NEXT_PUBLIC_ENABLE_PHONE_AUTH
 ENV NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=$NEXT_PUBLIC_ENABLE_GOOGLE_AUTH
 ENV NEXT_PUBLIC_ENABLE_APPLE_AUTH=$NEXT_PUBLIC_ENABLE_APPLE_AUTH
@@ -90,6 +88,7 @@ COPY --chown=node:node --from=worker-deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=worker-deps /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY --chown=node:node package.json package-lock.json ./
 COPY --chown=node:node apps/worker ./apps/worker
+COPY --chown=node:node packages/postgres ./packages/postgres
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /root/.npm \
   && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
   && test ! -e /usr/local/bin/npm \
