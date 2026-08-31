@@ -20,7 +20,7 @@ The provided bootstrap provisions DigitalOcean. Another owner-controlled Linux h
 
 ## SSH/firewall model
 
-The persistent DigitalOcean firewall permits SSH only from the owner-provided `admin_cidr`. GitHub-hosted runners are not permanently allow-listed.
+By default the DigitalOcean firewall has no persistent SSH source at all. The optional bootstrap input `admin_cidr` may be supplied when a deliberately controlled break-glass office/VPN/public IPv4 CIDR should retain SSH access; if it is empty, no persistent TCP/22 rule is created.
 
 For bootstrap and deployment, the workflow discovers the current runner's public IPv4 address, adds one temporary TCP/22 `/32` rule through the DigitalOcean firewall Rules API, performs the required pinned-host-key SSH/scp operation, and removes the rule on exit, including command failure. The bootstrap persists the firewall ID as `STAGING_FIREWALL_ID` so later deployments can repeat that narrow access grant. The DigitalOcean token therefore requires the firewall update scope in addition to the scopes required for provisioning.
 
@@ -33,7 +33,7 @@ Prepare the host with:
 - a dedicated non-root deployment user, default `jalwa`;
 - SSH key authentication and an independently verified host key;
 - persistent PostgreSQL storage and `/opt/jalwa/backups`;
-- inbound 80/443 and restricted SSH access;
+- inbound 80/443 and temporary deployment-runner SSH access, plus optional deliberate break-glass SSH access;
 - DNS-ready public addresses for the staging site and media subdomain;
 - `/opt/jalwa/{scripts,systemd,migrations,backups/postgres,operations,secrets,deployments}` with deployment-user ownership;
 - sufficient disk/RAM for web, worker, PostgreSQL and FFmpeg work.
@@ -97,7 +97,7 @@ These cannot be invented by CI or by the application repository.
 - `SMTP_SENDER_NAME`
 - `DEEPSEEK_API_KEY`
 
-The bootstrap workflow input `admin_cidr` is also owner-supplied. It is the persistent trusted SSH source, normally an office/VPN/public `/32` or another deliberately controlled CIDR.
+The bootstrap workflow input `admin_cidr` is optional. Leave it empty for deployment-runner-only SSH, or provide a deliberately controlled IPv4 CIDR for persistent break-glass access.
 
 `GHCR_USERNAME` and `GHCR_DEPLOY_TOKEN` are **not** required. Staging builds and remote image pulls use the workflow's run-scoped GitHub identity/token, and the remote host logs out of GHCR after the deployment operation.
 
@@ -147,12 +147,12 @@ The deployment workflow keeps these controls until a later explicitly approved p
 - web DRM disabled;
 - staging `noindex` enabled;
 - production credentials/resources isolated from staging;
-- owner `admin_cidr` is the only persistent SSH allow rule; GitHub runner access is temporary per operation.
+- persistent SSH is absent by default; optional `admin_cidr` is break-glass only; GitHub runner access is temporary per operation.
 
 ## Deployment and certification sequence
 
 1. Put the external account credentials and `GITHUB_ENV_ADMIN_TOKEN` in the protected GitHub `staging` environment.
-2. Dispatch **Bootstrap staging** with the trusted `admin_cidr`; the workflow generates missing Jalwa-owned secrets, creates isolated R2 buckets, provisions `jalwa-staging`, captures the pinned SSH identity using temporary runner `/32` access, configures DNS and persists host/firewall/bucket outputs.
+2. Dispatch **Bootstrap staging**; leave `admin_cidr` empty for deployment-runner-only SSH or provide a controlled break-glass CIDR. The workflow generates missing Jalwa-owned secrets, creates isolated R2 buckets, provisions `jalwa-staging`, captures the pinned SSH identity using temporary runner `/32` access, configures DNS and persists host/firewall/bucket outputs.
 3. Configure SMTP/DeepSeek values and any optional QA variables that were not part of bootstrap.
 4. Run **Deploy staging** from the exact green `main` SHA.
 5. The workflow builds immutable web/worker GHCR images, deploys the Cloudflare media gateway, writes the direct PostgreSQL/Better Auth runtime environment, uses temporary per-operation runner SSH access, applies migrations, deploys transactionally, captures source-to-running-artifact identity, takes backups and performs the restore drill.
@@ -165,7 +165,7 @@ The deployment workflow keeps these controls until a later explicitly approved p
 
 ## Current external blocker boundary
 
-Repository-owned secrets, SSH keys, firewall handoff variables and GHCR deployment credentials no longer need to be manually constructed. Live staging still cannot truthfully execute without real account-owned DigitalOcean, Cloudflare/R2, SMTP and DeepSeek credentials, the environment-admin token, and a trusted persistent `admin_cidr`.
+Repository-owned secrets, SSH keys, firewall handoff variables, GHCR deployment credentials and a persistent SSH CIDR no longer need to be manually constructed. Live staging still cannot truthfully execute without real account-owned DigitalOcean, Cloudflare/R2, SMTP and DeepSeek credentials plus the environment-admin token.
 
 A real payment-provider sandbox account is additionally required before production promotion can satisfy the provider-sandbox certification gate. Production live charging remains separate from mock staging and requires explicit production approval plus verified live provider credentials.
 

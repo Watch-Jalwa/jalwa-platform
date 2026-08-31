@@ -24,10 +24,13 @@ resource "digitalocean_firewall" "jalwa" {
   name        = "${var.project_name}-firewall"
   droplet_ids = [digitalocean_droplet.jalwa.id]
 
-  inbound_rule {
-    protocol         = "tcp"
-    port_range       = "22"
-    source_addresses = var.admin_cidrs
+  dynamic "inbound_rule" {
+    for_each = length(var.admin_cidrs) > 0 ? [1] : []
+    content {
+      protocol         = "tcp"
+      port_range       = "22"
+      source_addresses = var.admin_cidrs
+    }
   }
 
   inbound_rule {
