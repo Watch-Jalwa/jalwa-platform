@@ -1,4 +1,4 @@
-name: Export verified PostgreSQL rebuild
+name: Publish verified non-workflow source
 
 on:
   push:
@@ -6,14 +6,14 @@ on:
       - chore/permanent-staging-certification
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: jalwa-smart-rebuild
   cancel-in-progress: false
 
 jobs:
-  export:
+  publish:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -26,7 +26,7 @@ jobs:
         with:
           node-version: 22
           package-manager-cache: false
-      - name: Build and verify final source tree
+      - name: Verify and publish non-workflow final source
         shell: bash
         run: |
           set -euo pipefail
@@ -61,9 +61,7 @@ jobs:
           #!/usr/bin/env node
           import { randomBytes } from "node:crypto";
           import { pathToFileURL } from "node:url";
-
           function secret(bytes = 48) { return randomBytes(bytes).toString("base64url"); }
-
           export function generateSelfHostedSecrets() {
             return {
               SELF_HOSTED_POSTGRES_PASSWORD: secret(36),
@@ -79,7 +77,6 @@ jobs:
               ACCOUNT_DELETION_HASH_SECRET: secret(48),
             };
           }
-
           if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
             const values = generateSelfHostedSecrets();
             for (const [name, value] of Object.entries(values)) console.log(`${name}=${value}`);
@@ -87,6 +84,7 @@ jobs:
           EOF
           chmod +x scripts/generate-database-secrets.mjs
 
+          # Test the exact final source state, including final workflow content.
           rm -f .github/jalwa-smart.part*
           rm -f .github/final-refactor.part*
           rm -f .github/refactor-patch.part* .github/refactor-postgres.part*
@@ -103,11 +101,19 @@ jobs:
           node --test apps/web/tests/no-supabase-runtime.test.mjs
           git diff --check
 
-          tar --exclude=.git --exclude=node_modules --exclude='.next' -czf /tmp/jalwa-final-source.tgz .
-      - name: Upload verified final source
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: verified-final-source-${{ github.sha }}
-          path: /tmp/jalwa-final-source.tgz
-          retention-days: 1
-          if-no-files-found: error
+          # GitHub's job token cannot modify workflow files. Restore only that
+          # directory, then push the already-tested application/database/lockfile
+          # source. The connected GitHub app applies the small workflow delta next.
+          git checkout "${GITHUB_SHA}" -- .github/workflows
+          git add -A
+          git reset -- .github/workflows
+          git diff --cached --check
+          test -n "$(git diff --cached --name-only)"
+          if git diff --cached --name-only | grep -q '^\.github/workflows/'; then
+            echo 'Workflow path unexpectedly staged' >&2
+            exit 1
+          fi
+          git config user.name 'jalwa-release-bot'
+          git config user.email 'jalwa-release-bot@users.noreply.github.com'
+          git commit -m 'Complete PostgreSQL and Better Auth source refactor'
+          git push origin HEAD:chore/permanent-staging-certification
