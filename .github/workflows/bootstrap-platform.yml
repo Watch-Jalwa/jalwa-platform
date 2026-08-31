@@ -8,7 +8,7 @@ on:
         required: true
         default: blr1
       admin_cidr:
-        description: Trusted SSH CIDR, such as 203.0.113.10/32
+        description: Trusted persistent SSH CIDR, such as 203.0.113.10/32
         required: true
       domain:
         description: Production domain
@@ -114,20 +114,26 @@ jobs:
             -var="admin_cidrs=[\"$ADMIN_CIDR\"]" \
             -var="domain=$DOMAIN"
           host=$(terraform output -raw ipv4_address)
+          firewall_id=$(terraform output -raw firewall_id)
           echo "host=$host" >> "$GITHUB_OUTPUT"
+          echo "firewall_id=$firewall_id" >> "$GITHUB_OUTPUT"
 
       - name: Capture provisioned SSH host identity
         id: hostkey
         env:
           HOST: ${{ steps.terraform.outputs.host }}
+          FIREWALL_ID: ${{ steps.terraform.outputs.firewall_id }}
         run: |
           set -euo pipefail
+          bash scripts/with-digitalocean-ssh-access.sh "$FIREWALL_ID" bash -s <<'SSHACCESS'
+          set -Eeuo pipefail
           for attempt in $(seq 1 30); do
             if key=$(ssh-keyscan -T 5 -t ed25519 "$HOST" 2>/dev/null) && [[ -n "$key" ]]; then break; fi
             sleep 10
           done
           [[ -n "${key:-}" ]] || { echo 'Could not read the new host Ed25519 key.' >&2; exit 1; }
           printf '%s\n' "$key" > /tmp/production-known-hosts
+          SSHACCESS
           fingerprint=$(ssh-keygen -lf /tmp/production-known-hosts | awk '{print $2}')
           echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
 
@@ -162,11 +168,13 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_ENV_ADMIN_TOKEN }}
           HOST: ${{ steps.terraform.outputs.host }}
+          FIREWALL_ID: ${{ steps.terraform.outputs.firewall_id }}
           DOMAIN: ${{ inputs.domain }}
           HOST_FINGERPRINT: ${{ steps.hostkey.outputs.fingerprint }}
         run: |
           set -euo pipefail
           gh variable set PRODUCTION_HOST --repo "$GITHUB_REPOSITORY" --env production --body "$HOST"
+          gh variable set PRODUCTION_FIREWALL_ID --repo "$GITHUB_REPOSITORY" --env production --body "$FIREWALL_ID"
           gh variable set PRODUCTION_USER --repo "$GITHUB_REPOSITORY" --env production --body "jalwa"
           gh variable set PRODUCTION_DOMAIN --repo "$GITHUB_REPOSITORY" --env production --body "$DOMAIN"
           gh variable set PRODUCTION_SSH_KNOWN_HOSTS --repo "$GITHUB_REPOSITORY" --env production --body "$(cat /tmp/production-known-hosts)"
@@ -177,8 +185,10 @@ jobs:
             echo '### Platform bootstrap complete'
             echo "- DigitalOcean host: $HOST"
             echo "- SSH Ed25519 fingerprint: $HOST_FINGERPRINT"
+            echo '- Owner/admin SSH CIDR remains the only persistent SSH source'
+            echo '- GitHub runner SSH access was temporary and removed after host-key capture'
             echo '- Jalwa-owned secrets were generated only when absent'
             echo '- R2 buckets and Cloudflare DNS configured'
-            echo '- Production SSH host identity and R2 variables pinned for subsequent deploys'
+            echo '- Production SSH host identity, firewall identity and R2 variables pinned for subsequent deploys'
             echo '- Configure SMTP, DeepSeek and approved live payment credentials before production deployment'
           } >> "$GITHUB_STEP_SUMMARY"
