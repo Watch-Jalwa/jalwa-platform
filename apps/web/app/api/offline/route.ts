@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getActiveViewerProfile } from "@/lib/customer/active-profile";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/database/server";
 
 const cacheKeyPattern = /^\/offline-media\/(\d{10})-[a-zA-Z0-9_-]{20,80}$/;
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -8,12 +8,12 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 export async function GET(request: Request) {
   const id = new URL(request.url).searchParams.get("id");
   if (!id || !uuidPattern.test(id)) return NextResponse.json({ error: "Invalid offline item." }, { status: 400 });
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
   if (!user) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   const profile = await getActiveViewerProfile(user.id);
   if (!profile) return NextResponse.json({ error: "Viewer profile unavailable." }, { status: 409 });
-  const { data: item, error } = await supabase.from("offline_items")
+  const { data: item, error } = await database.from("offline_items")
     .select("id,cache_key,expires_at,content_items!inner(status,access_level,playback_sources!inner(format,status,is_primary))")
     .eq("id", id).eq("user_id", user.id).eq("viewer_profile_id", profile.id)
     .gt("expires_at", new Date().toISOString()).maybeSingle();
@@ -41,15 +41,15 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid offline expiry." }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
   if (!user) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   const profile = await getActiveViewerProfile(user.id);
   if (!profile) return NextResponse.json({ error: "Viewer profile unavailable." }, { status: 409 });
 
   const [contentResult, playbackResult] = await Promise.all([
-    supabase.from("content_items").select("id,status,access_level").eq("id", body.contentId).maybeSingle(),
-    supabase.from("playback_sources").select("format,status,is_primary").eq("content_id", body.contentId).eq("is_primary", true).eq("status", "active").maybeSingle(),
+    database.from("content_items").select("id,status,access_level").eq("id", body.contentId).maybeSingle(),
+    database.from("playback_sources").select("format,status,is_primary").eq("content_id", body.contentId).eq("is_primary", true).eq("status", "active").maybeSingle(),
   ]);
   if (contentResult.error || playbackResult.error) return NextResponse.json({ error: "Offline eligibility could not be verified." }, { status: 503 });
   if (contentResult.data?.status !== "published" || contentResult.data.access_level !== "public" || playbackResult.data?.format !== "mp4") {
@@ -58,7 +58,7 @@ export async function POST(request: Request) {
 
   const bytes = Math.max(0, Math.floor(body.bytesDownloaded ?? 0));
   if (bytes > 5 * 1024 * 1024 * 1024) return NextResponse.json({ error: "Offline file is too large." }, { status: 400 });
-  const { error } = await supabase.from("offline_items").upsert({
+  const { error } = await database.from("offline_items").upsert({
     user_id: user.id,
     viewer_profile_id: profile.id,
     content_id: body.contentId,
@@ -73,9 +73,9 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   const id = new URL(request.url).searchParams.get("id");
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
   if (!user) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
-  if (id) await supabase.from("offline_items").delete().eq("id", id).eq("user_id", user.id);
+  if (id) await database.from("offline_items").delete().eq("id", id).eq("user_id", user.id);
   return NextResponse.json({ ok: true });
 }

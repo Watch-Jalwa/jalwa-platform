@@ -2,11 +2,11 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const social = await readFile(new URL("../../../supabase/migrations/202607310002_social_controls.sql", import.meta.url), "utf8");
-const recommendations = await readFile(new URL("../../../supabase/migrations/202607310001_social_recommendations.sql", import.meta.url), "utf8");
-const semantic = await readFile(new URL("../../../supabase/migrations/202607310003_semantic_recommendations.sql", import.meta.url), "utf8");
-const liveDrm = await readFile(new URL("../../../supabase/migrations/202607310004_live_drm.sql", import.meta.url), "utf8");
-const hardening = await readFile(new URL("../../../supabase/migrations/202607310006_social_live_hardening.sql", import.meta.url), "utf8");
+const social = await readFile(new URL("../../../database/migrations/202607310002_social_controls.sql", import.meta.url), "utf8");
+const recommendations = await readFile(new URL("../../../database/migrations/202607310001_social_recommendations.sql", import.meta.url), "utf8");
+const semantic = await readFile(new URL("../../../database/migrations/202607310003_semantic_recommendations.sql", import.meta.url), "utf8");
+const liveDrm = await readFile(new URL("../../../database/migrations/202607310004_live_drm.sql", import.meta.url), "utf8");
+const hardening = await readFile(new URL("../../../database/migrations/202607310006_social_live_hardening.sql", import.meta.url), "utf8");
 const gateway = await readFile(new URL("../../../infrastructure/media-gateway/src/index.ts", import.meta.url), "utf8");
 const player = await readFile(new URL("../components/drm-player.tsx", import.meta.url), "utf8");
 const liveProvider = await readFile(new URL("../lib/live/cloudflare.ts", import.meta.url), "utf8");

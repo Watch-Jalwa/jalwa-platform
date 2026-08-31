@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/database/server";
 import { processPaymentEvent, type PaymentEvent } from "@/lib/payments/webhook";
 import { signPaymentPayload } from "@/lib/payments/signature.mjs";
 
@@ -12,11 +12,11 @@ export async function POST(request: Request) {
 
   const form = await request.formData();
   const orderId = String(form.get("orderId") ?? "");
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
   if (!user) return NextResponse.redirect(new URL("/login?next=/pricing", request.url), 303);
 
-  const { data: order } = await supabase.from("checkout_orders")
+  const { data: order } = await database.from("checkout_orders")
     .select("id,user_id,amount_minor,currency,status")
     .eq("id", orderId).eq("user_id", user.id).maybeSingle();
 

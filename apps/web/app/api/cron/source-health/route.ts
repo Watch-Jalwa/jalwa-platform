@@ -5,7 +5,7 @@ import { NextResponse } from "next/server";
 import { getLiveSourceDefinition } from "@/lib/live-sources/registry";
 import { checkLiveSource } from "@/lib/live-sources/security";
 import { verifyProcessedObject } from "@/lib/media/storage";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/database/admin";
 
 export const runtime = "nodejs";
 

@@ -53,6 +53,22 @@ npm run test:ai
 
 Changes to Docker, production runtime, media processing or deployment scripts must pass the container and browser jobs in GitHub Actions. Changes to migrations must apply successfully against a clean PostgreSQL database in filename order.
 
+## Permanent feature-completion rule
+
+A feature is not complete only because its UI or API implementation works locally. Every change must add the automated coverage appropriate to its risk and product surface:
+
+- unit and API/contract tests for business logic and server boundaries;
+- browser happy-path coverage for user-visible critical journeys;
+- negative/error tests for invalid input, stale state, retries and dependency failure where relevant;
+- authorization tests for protected reads and mutations;
+- Studio/admin coverage when an operational workflow changes;
+- payment/idempotency/replay coverage when commerce changes;
+- mobile/responsive coverage when a customer-facing journey changes.
+
+A bug found during automated QA, staging certification or human UAT must gain a permanent regression test as part of the fix whenever the failure can be automated safely. Do not reset the release suite to manual spot checks on the next release.
+
+The exact deployed staging release must pass the permanent certification described in `docs/27-staging-certification.md` before it can be labelled `READY FOR UAT`.
+
 ## Pull requests
 
 Every pull request must explain:
@@ -128,10 +144,13 @@ The release order is:
 
 1. merge a reviewed, green pull request into `main`;
 2. confirm the exact `main` commit is green;
-3. deploy the isolated staging environment;
-4. retain staging health, migration, backup, browser, transactional and relevant AI-evaluation evidence;
-5. approve production promotion;
-6. deploy immutable images and run post-deployment acceptance;
-7. monitor, then roll forward or use the tested transactional rollback path.
+3. deploy immutable web/worker images into the isolated owner-controlled staging server;
+4. prove `source SHA → deployment run → image digest → running image ID/OCI revision` and retain rollback identity;
+5. run the automatic staging certification for runtime/API plus the directly invoked Playwright public/Auth/responsive, Premium checkout/payment, Studio authorization, media/catalogue and mobile purchase gates, along with visual evidence;
+6. proceed only when the machine-verifiable decision is `READY FOR UAT`;
+7. complete explicit human UAT and retain the approval;
+8. explicitly approve production promotion;
+9. promote the exact tested immutable artifacts to the owner-controlled production server rather than rebuilding a different release;
+10. run non-destructive production smoke, monitor, then roll forward or use the tested rollback path; retire the old production only after the new host is verified healthy.
 
-Vercel preview success alone is not a staging or production release.
+`FAILED` and `BLOCKED` staging certification both block UAT. Human UAT never automatically deploys production. External frontend-hosting previews are not release evidence and are not required by the supported self-hosted release path.

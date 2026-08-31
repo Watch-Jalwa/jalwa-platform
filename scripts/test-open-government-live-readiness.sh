@@ -3,8 +3,8 @@ set -Eeuo pipefail
 
 sources="apps/web/lib/live-sources/open-government-sources.js"
 security="apps/web/lib/live-sources/security.ts"
-migration="supabase/migrations/202608010004_open_government_live_expansion.sql"
-manifest="supabase/migrations/202608010005_approved_live_catalogue_manifest.sql"
+migration="database/migrations/202608010004_open_government_live_expansion.sql"
+manifest="database/migrations/202608010005_approved_live_catalogue_manifest.sql"
 state="scripts/set-public-domain-live-catalogue-state.sql"
 seed="scripts/seed-public-domain-live-sources.sql"
 acceptance="scripts/public-domain-live-acceptance.mjs"

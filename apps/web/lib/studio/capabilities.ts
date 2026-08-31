@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/database/server";
 
 export type AppRole = "viewer" | "subscriber" | "editor" | "rights_reviewer" | "support" | "finance" | "admin";
 export type PremiumCapability =
@@ -44,10 +44,10 @@ export class StudioAccessError extends Error {
 }
 
 export async function requirePremiumApiCapability(capability: PremiumCapability) {
-  const supabase = await createClient();
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user }, error: userError } = await database.auth.getUser();
   if (userError || !user) throw new StudioAccessError(401, "Authentication required.");
-  const { data: profile, error: profileError } = await supabase.from("profiles").select("role,display_name").eq("id", user.id).maybeSingle();
+  const { data: profile, error: profileError } = await database.from("profiles").select("role,display_name").eq("id", user.id).maybeSingle();
   if (profileError || !profile) throw new StudioAccessError(403, "Staff access required.");
   const capabilities = capabilitiesForRole(profile.role);
   if (!capabilities.includes(capability)) throw new StudioAccessError(403, "This report capability is not available to your role.");

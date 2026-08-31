@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/database/admin";
 
 const DIMENSIONS = 96;
 
@@ -25,8 +25,8 @@ export function deterministicEmbedding(input: string) {
 }
 
 export async function refreshSemanticRecommendations() {
-  const supabase = createAdminClient();
-  const { data: items, error } = await supabase.from("content_items").select("id,title_en,title_ur,description_en").eq("status", "published").limit(5000);
+  const database = createAdminClient();
+  const { data: items, error } = await database.from("content_items").select("id,title_en,title_ur,description_en").eq("status", "published").limit(5000);
   if (error) throw error;
   let updated = 0;
   for (let index=0; index<(items ?? []).length; index+=100) {
@@ -35,13 +35,13 @@ export async function refreshSemanticRecommendations() {
       return { content_id: item.id, embedding: `[${deterministicEmbedding(text).join(",")}]`, model: "jalwa-hash-96-v1", source_hash: createHash("sha256").update(text).digest("hex"), refreshed_at: new Date().toISOString() };
     });
     if (!rows.length) continue;
-    const { error: upsertError } = await supabase.from("content_embeddings").upsert(rows, { onConflict: "content_id" });
+    const { error: upsertError } = await database.from("content_embeddings").upsert(rows, { onConflict: "content_id" });
     if (upsertError) throw upsertError;
     updated += rows.length;
   }
   const [{ data: semantic, error: semanticError }, { data: behavioural, error: behaviouralError }] = await Promise.all([
-    supabase.rpc("refresh_semantic_similarity", { p_limit_per_item: 20 }),
-    supabase.rpc("refresh_recommendation_models"),
+    database.rpc("refresh_semantic_similarity", { p_limit_per_item: 20 }),
+    database.rpc("refresh_recommendation_models"),
   ]);
   if (semanticError) throw semanticError;
   if (behaviouralError) throw behaviouralError;

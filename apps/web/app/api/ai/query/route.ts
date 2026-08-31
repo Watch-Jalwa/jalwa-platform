@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/database/server";
 import { buildRetrievalQuery } from "@/lib/ai/grounding.mjs";
 import { createGroundedAnswer, moderateQuestion, type GroundedSource } from "@/lib/ai/openai";
 import { AiRequestBodyError, isAiEnabled, readAiRequestBody } from "@/lib/ai/request.mjs";
@@ -35,11 +35,11 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Question must be between 3 and 1,200 characters." }, { status: 400 });
     }
 
-    const supabase = await createClient();
+    const database = await createClient();
     const deploymentEnvironment = process.env.DEPLOYMENT_ENVIRONMENT
       ?? (process.env.NODE_ENV === "production" ? "production" : "local");
     if (deploymentEnvironment !== "local") {
-      const { data: sharedAiEnabled, error: aiFlagError } = await supabase.rpc("alpha_flag_enabled", { p_key: "ai_enabled" });
+      const { data: sharedAiEnabled, error: aiFlagError } = await database.rpc("alpha_flag_enabled", { p_key: "ai_enabled" });
       if (aiFlagError) {
         console.error("ask_jalwa_runtime_state_unavailable", aiFlagError.message);
         return NextResponse.json({ error: "Ask Jalwa is temporarily unavailable.", code: "ai_state_unavailable" }, { status: 503 });
@@ -49,15 +49,15 @@ export async function POST(request: Request) {
       }
     }
 
-    const { data: { user } } = await supabase.auth.getUser();
+    const { data: { user } } = await database.auth.getUser();
     if (!user) return NextResponse.json({ error: "Sign in to use Ask Jalwa.", code: "sign_in_required" }, { status: 401 });
 
     const selectedLanguage = language(body.language);
-    const { data: hasAiPlus } = await supabase.rpc("has_active_benefit", { p_benefit: "ai_plus" });
+    const { data: hasAiPlus } = await database.rpc("has_active_benefit", { p_benefit: "ai_plus" });
     const dailyLimit = hasAiPlus
       ? Number(process.env.AI_PREMIUM_DAILY_LIMIT ?? 50)
       : Number(process.env.AI_FREE_DAILY_LIMIT ?? 5);
-    const { data: quotaAccepted, error: quotaError } = await supabase.rpc("consume_ai_quota", {
+    const { data: quotaAccepted, error: quotaError } = await database.rpc("consume_ai_quota", {
       p_feature: "ask_jalwa",
       p_limit: dailyLimit,
     });
@@ -71,7 +71,7 @@ export async function POST(request: Request) {
     }
 
     const query = buildRetrievalQuery(question);
-    const { data: searchRows, error: searchError } = await supabase.rpc("search_catalogue", {
+    const { data: searchRows, error: searchError } = await database.rpc("search_catalogue", {
       p_query: query || question.slice(0, 120),
       p_category: null,
       p_limit: 6,
@@ -81,7 +81,7 @@ export async function POST(request: Request) {
     const rows = ((searchRows ?? []) as Array<Record<string, unknown>>).filter((row) => typeof row.id === "string");
     const contextContentId = typeof body.contentId === "string" ? body.contentId : null;
     if (contextContentId && !rows.some((row) => row.id === contextContentId)) {
-      const { data: context } = await supabase
+      const { data: context } = await database
         .from("content_items")
         .select("id,slug,title_en,description_en,language,primary_category_id")
         .eq("id", contextContentId)
@@ -100,7 +100,7 @@ export async function POST(request: Request) {
     const ids = rows.map((row) => String(row.id)).slice(0, 6);
     const rightsByContent = new Map<string, string>();
     if (ids.length) {
-      const { data: rights } = await supabase
+      const { data: rights } = await database
         .from("rights_records")
         .select("content_id,attribution_text")
         .in("content_id", ids)
@@ -122,7 +122,7 @@ export async function POST(request: Request) {
 
     const answer = await createGroundedAnswer({ question, language: selectedLanguage, sources });
     const usage = answer.usage as { input_tokens?: unknown; output_tokens?: unknown } | null;
-    const { error: storeError } = await supabase.rpc("store_ai_exchange", {
+    const { error: storeError } = await database.rpc("store_ai_exchange", {
       p_language: selectedLanguage,
       p_context_content_id: contextContentId,
       p_question: question,

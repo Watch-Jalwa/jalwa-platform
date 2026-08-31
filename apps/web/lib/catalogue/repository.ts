@@ -1,6 +1,6 @@
 import { liveSourcesEnabled } from "@/lib/live-sources/registry";
-import { canUseDemoData, hasSupabaseConfig } from "@/lib/runtime";
-import { createClient } from "@/lib/supabase/server";
+import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
+import { createClient } from "@/lib/database/server";
 import { categories as demoCategories, featuredContent } from "./demo-data";
 import type { CatalogueCategory, CatalogueItem, LiveCatalogueCollection, PlaybackSource } from "./types";
 
@@ -24,7 +24,7 @@ function mapSearchRow(row: Record<string, unknown>): CatalogueItem {
 }
 
 function requireDatabase() {
-  if (!hasSupabaseConfig()) throw new Error("Catalogue database is not configured.");
+  if (!hasBackendConfiguration()) throw new Error("Catalogue database is not configured.");
 }
 
 function catalogueFailure(scope: string, error: unknown): never {
@@ -36,8 +36,8 @@ export async function getCategories(): Promise<CatalogueCategory[]> {
   if (canUseDemoData()) return demoCategories;
   requireDatabase();
   try {
-    const supabase = await createClient();
-    const { data, error } = await supabase.from("categories").select("slug,name_en,name_ur,name_roman_ur,icon").eq("is_active", true).order("sort_order");
+    const database = await createClient();
+    const { data, error } = await database.from("categories").select("slug,name_en,name_ur,name_roman_ur,icon").eq("is_active", true).order("sort_order");
     if (error) throw error;
     return (data ?? []).map((row) => ({ slug: row.slug, label: row.name_en, urdu: row.name_ur, romanUrdu: row.name_roman_ur, icon: row.icon }));
   } catch (error) {
@@ -58,8 +58,8 @@ export async function searchCatalogue(input: { query?: string; category?: string
   }
   requireDatabase();
   try {
-    const supabase = await createClient();
-    const { data, error } = await supabase.rpc("search_catalogue", { p_query: query || null, p_category: category || null, p_limit: input.limit ?? 40 });
+    const database = await createClient();
+    const { data, error } = await database.rpc("search_catalogue", { p_query: query || null, p_category: category || null, p_limit: input.limit ?? 40 });
     if (error) throw error;
     const items = ((data ?? []) as Record<string, unknown>[]).map(mapSearchRow);
     return liveSourcesEnabled() ? items : items.filter((item) => item.contentType !== "live");
@@ -73,8 +73,8 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
   if (canUseDemoData()) return featuredContent.find((item) => item.slug === slug) ?? null;
   requireDatabase();
   try {
-    const supabase = await createClient();
-    const { data, error } = await supabase.from("content_items")
+    const database = await createClient();
+    const { data, error } = await database.from("content_items")
       .select("id,slug,title_en,title_ur,description_en,content_type,hosting_mode,access_level,duration_seconds,thumbnail_url,primary_category_id")
       .eq("slug", slug).maybeSingle();
     if (error) throw error;
@@ -83,11 +83,11 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
 
     const [categoryResult, playbackResult, rightsResult] = await Promise.all([
       data.primary_category_id
-        ? supabase.from("categories").select("slug,name_en").eq("id", data.primary_category_id).maybeSingle()
+        ? database.from("categories").select("slug,name_en").eq("id", data.primary_category_id).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
-      supabase.from("playback_sources").select("id,provider,provider_content_id,embed_url,media_url,external_url,media_asset_id,drm_asset_id,format")
+      database.from("playback_sources").select("id,provider,provider_content_id,embed_url,media_url,external_url,media_asset_id,drm_asset_id,format")
         .eq("content_id", data.id).eq("is_primary", true).maybeSingle(),
-      supabase.from("rights_records").select("source_url,attribution_text")
+      database.from("rights_records").select("source_url,attribution_text")
         .eq("content_id", data.id).eq("status", "approved").maybeSingle(),
     ]);
     if (categoryResult.error) throw categoryResult.error;
@@ -101,10 +101,10 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
     let liveHealth: Record<string, unknown> | null = null;
     if (data.content_type === "live" && playback?.id) {
       const [configResult, healthResult] = await Promise.all([
-        supabase.from("live_source_configs")
+        database.from("live_source_configs")
           .select("source_key,delivery_adapter,official_source_url,terms_url,required_attribution,refresh_interval_seconds,enabled,next_review_at")
           .eq("playback_source_id", playback.id).maybeSingle(),
-        supabase.from("playback_source_health")
+        database.from("playback_source_health")
           .select("status,availability,checked_at,last_success_at,source_timestamp,message,availability_reason")
           .eq("playback_source_id", playback.id).maybeSingle(),
       ]);
@@ -170,20 +170,20 @@ export async function getLiveCatalogue(): Promise<{ items: CatalogueItem[]; coll
       .filter((item): item is CatalogueItem => Boolean(item));
     const topLevel = detailed.filter((item) => !item.slug.startsWith("usgs-mauna-loa-") && !item.slug.startsWith("usgs-river-") && item.slug !== "usgs-lake-hopatcong");
     const bySlug = new Map(detailed.map((item) => [item.slug, item]));
-    const supabase = await createClient();
-    const { data: collectionRows, error: collectionError } = await supabase.from("collections")
+    const database = await createClient();
+    const { data: collectionRows, error: collectionError } = await database.from("collections")
       .select("id,slug,title_en,description_en")
       .in("slug", ["usgs-mauna-loa-live", "usgs-rivers-lakes-live"])
       .eq("status", "published");
     if (collectionError) throw collectionError;
     const ids = (collectionRows ?? []).map((row) => row.id);
     const { data: membershipRows, error: membershipError } = ids.length
-      ? await supabase.from("collection_items").select("collection_id,content_id,sort_order").in("collection_id", ids).order("sort_order")
+      ? await database.from("collection_items").select("collection_id,content_id,sort_order").in("collection_id", ids).order("sort_order")
       : { data: [], error: null };
     if (membershipError) throw membershipError;
     const contentIds = (membershipRows ?? []).map((row) => row.content_id);
     const { data: childRows, error: childError } = contentIds.length
-      ? await supabase.from("content_items").select("id,slug").in("id", contentIds)
+      ? await database.from("content_items").select("id,slug").in("id", contentIds)
       : { data: [], error: null };
     if (childError) throw childError;
     const slugById = new Map((childRows ?? []).map((row) => [row.id, row.slug]));

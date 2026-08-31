@@ -42,9 +42,9 @@ output "mediaconvert_role_arn" {
   value = aws_iam_role.mediaconvert.arn
 }
 
-output "supabase_callback_secret_arn" {
-  value       = aws_secretsmanager_secret.supabase.arn
-  description = "Populate this secret with JSON: {\"url\":\"https://...\",\"serviceRoleKey\":\"...\"}."
+output "application_callback_secret_arn" {
+  value       = aws_secretsmanager_secret.application_callback.arn
+  description = "Populate this secret with JSON containing the Jalwa callback URL and callback secret."
 }
 
 output "media_control_url" {

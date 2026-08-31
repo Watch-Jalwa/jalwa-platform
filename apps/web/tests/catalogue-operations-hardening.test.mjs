@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const migrationUrl = new URL("../../../supabase/migrations/202607310001_catalogue_rights_operations.sql", import.meta.url);
+const migrationUrl = new URL("../../../database/migrations/202607310001_catalogue_rights_operations.sql", import.meta.url);
 const actionsUrl = new URL("../app/studio/actions.ts", import.meta.url);
 const detailPageUrl = new URL("../app/studio/content/[id]/page.tsx", import.meta.url);
 const listPageUrl = new URL("../app/studio/content/page.tsx", import.meta.url);
@@ -43,7 +43,7 @@ test("Studio records evidence and can immediately stop publication", async () =>
 test("batch intake accepts CSV but preserves human-approved rights", async () => {
   const importer = await readFile(importerUrl, "utf8");
   assert.match(importer, /loadCatalogueFile/);
-  assert.match(importer, /existingRights\[0\]\.status !== "approved"/);
+  assert.match(importer, /existingRights\.status !== "approved"/);
   assert.match(importer, /preservedApprovedRights/);
   assert.match(importer, /takedown_contact/);
   assert.match(importer, /evidenceFields/);

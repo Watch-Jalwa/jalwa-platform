@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/database/server";
 import { formatPkr } from "@/lib/payments/plans";
 
 type SearchParams = Promise<{ order?: string }>;
@@ -9,11 +9,11 @@ export default async function MockCheckoutPage({ searchParams }: { searchParams:
   const { order: orderId } = await searchParams;
   if (!orderId) notFound();
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
   if (!user) redirect(`/login?next=${encodeURIComponent(`/checkout/mock?order=${orderId}`)}`);
 
-  const { data: order } = await supabase.from("checkout_orders")
+  const { data: order } = await database.from("checkout_orders")
     .select("id,amount_minor,currency,status,prices(code,billing_period)")
     .eq("id", orderId).eq("user_id", user.id).maybeSingle();
   if (!order) notFound();

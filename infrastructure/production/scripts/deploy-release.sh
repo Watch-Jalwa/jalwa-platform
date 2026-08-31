@@ -6,6 +6,7 @@ domain="${2:?production domain is required}"
 root="${JALWA_ROOT:-/opt/jalwa}"
 env_file="$root/.env.production"
 last_good_file="$root/.last-good-image"
+previous_good_file="$root/.previous-good-image"
 
 [[ "$new_tag" =~ ^[0-9a-f]{40}$ ]] || { echo "Image tag must be a 40-character lowercase Git commit SHA." >&2; exit 1; }
 [[ -s "$env_file" ]] || { echo "Missing production environment: $env_file" >&2; exit 1; }
@@ -87,6 +88,9 @@ if ! "$root/scripts/smoke-test.sh" "https://${domain}" "https://api.${domain}" "
   exit 1
 fi
 
+if [[ -n "$previous_tag" && "$previous_tag" != "$new_tag" ]]; then
+  write_marker "$previous_good_file" "$previous_tag"
+fi
 write_marker "$last_good_file" "$new_tag"
 write_marker "$root/.last-successful-deploy" "$(date -u +%FT%TZ) $new_tag"
 echo "Jalwa release ${new_tag} is healthy."

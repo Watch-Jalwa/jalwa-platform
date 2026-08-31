@@ -55,8 +55,8 @@ async function packagingKey(asset) {
   };
 }
 
-export async function processDrmPackagingJob({ supabase, job }) {
-  const { data: asset, error } = await supabase.from("drm_assets").select("id,content_id,media_asset_id,provider,provider_asset_ref,media_assets(storage_key)").eq("id", job.drm_asset_id).single();
+export async function processDrmPackagingJob({ database, job }) {
+  const { data: asset, error } = await database.from("drm_assets").select("id,content_id,media_asset_id,provider,provider_asset_ref,media_assets(storage_key)").eq("id", job.drm_asset_id).single();
   if (error || !asset) throw error ?? new Error("DRM asset missing.");
   const relatedMedia = Array.isArray(asset.media_assets) ? asset.media_assets[0] : asset.media_assets;
   const sourceKey = relatedMedia?.storage_key;
@@ -67,7 +67,7 @@ export async function processDrmPackagingJob({ supabase, job }) {
   const source = join(root, "source");
   await mkdir(encoded, { recursive: true });
   await mkdir(output, { recursive: true });
-  await supabase.from("drm_assets").update({ status: "packaging" }).eq("id", asset.id);
+  await database.from("drm_assets").update({ status: "packaging" }).eq("id", asset.id);
   try {
     await downloadObject(sourceKey, source, "incoming");
     const probe = await probeMedia(source);
@@ -81,7 +81,7 @@ export async function processDrmPackagingJob({ supabase, job }) {
     const uploaded = await uploadDirectory(output, prefix);
     const manifestHls = `${prefix}master.m3u8`;
     const manifestDash = `${prefix}manifest.mpd`;
-    await supabase.from("drm_assets").update({
+    await database.from("drm_assets").update({
       status: "ready",
       key_id: material.keyId,
       provider_asset_ref: material.providerAssetRef,
@@ -89,9 +89,9 @@ export async function processDrmPackagingJob({ supabase, job }) {
       manifest_dash_path: manifestDash,
       packaging_metadata: { outputs: uploaded, packager: "shaka", audio: hasAudio, probe, sourceHash: createHash("sha256").update(sourceKey).digest("hex") },
     }).eq("id", asset.id);
-    await supabase.from("playback_sources").update({ is_primary: false }).eq("content_id", asset.content_id);
-    await supabase.from("playback_sources").insert({ content_id: asset.content_id, provider: "original", media_asset_id: asset.media_asset_id, drm_asset_id: asset.id, media_url: manifestHls, format: "drm_hls", is_primary: true, status: "active" });
-    await supabase.from("drm_packaging_jobs").update({ status: "completed", completed_at: new Date().toISOString(), locked_at: null, locked_by: null, error_message: null, output: { manifestHls, manifestDash, uploaded, probe } }).eq("id", job.id);
+    await database.from("playback_sources").update({ is_primary: false }).eq("content_id", asset.content_id);
+    await database.from("playback_sources").insert({ content_id: asset.content_id, provider: "original", media_asset_id: asset.media_asset_id, drm_asset_id: asset.id, media_url: manifestHls, format: "drm_hls", is_primary: true, status: "active" });
+    await database.from("drm_packaging_jobs").update({ status: "completed", completed_at: new Date().toISOString(), locked_at: null, locked_by: null, error_message: null, output: { manifestHls, manifestDash, uploaded, probe } }).eq("id", job.id);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -20,16 +20,16 @@ function isFutureReview(value: string | null | undefined) {
 
 export default async function StudioContentDetailPage({ params, searchParams }: { params: Params; searchParams: SearchParams }) {
   const [{ id }, { error }] = await Promise.all([params, searchParams]);
-  const { supabase, profile } = await requireStaff();
+  const { database, profile } = await requireStaff();
   const [{ data: item }, { data: rights }, { data: playback }, { data: assets }] = await Promise.all([
-    supabase.from("content_items").select("id,slug,title_en,title_ur,status,content_type,hosting_mode,access_level,description_en").eq("id", id).maybeSingle(),
-    supabase.from("rights_records").select("id,status,source_url,creator,licence_code,attribution_text,evidence_url,evidence_note,takedown_contact,expires_at,review_notes,embedding_confirmed,self_hosting_confirmed,commercial_use_confirmed,modification_confirmed,verified_at").eq("content_id", id).maybeSingle(),
-    supabase.from("playback_sources").select("id,provider,external_url,format,status").eq("content_id", id).eq("is_primary", true).maybeSingle(),
-    supabase.from("media_assets").select("id,kind,status,size_bytes,created_at").eq("content_id", id).order("created_at", { ascending: false }).limit(10),
+    database.from("content_items").select("id,slug,title_en,title_ur,status,content_type,hosting_mode,access_level,description_en").eq("id", id).maybeSingle(),
+    database.from("rights_records").select("id,status,source_url,creator,licence_code,attribution_text,evidence_url,evidence_note,takedown_contact,expires_at,review_notes,embedding_confirmed,self_hosting_confirmed,commercial_use_confirmed,modification_confirmed,verified_at").eq("content_id", id).maybeSingle(),
+    database.from("playback_sources").select("id,provider,external_url,format,status").eq("content_id", id).eq("is_primary", true).maybeSingle(),
+    database.from("media_assets").select("id,kind,status,size_bytes,created_at").eq("content_id", id).order("created_at", { ascending: false }).limit(10),
   ]);
   if (!item) notFound();
   const { data: liveConfig } = playback?.id
-    ? await supabase.from("live_source_configs").select("source_key,delivery_adapter,official_source_url,terms_url,required_attribution,rights_verified_at,next_review_at,enabled,operations_owner").eq("playback_source_id", playback.id).maybeSingle()
+    ? await database.from("live_source_configs").select("source_key,delivery_adapter,official_source_url,terms_url,required_attribution,rights_verified_at,next_review_at,enabled,operations_owner").eq("playback_source_id", playback.id).maybeSingle()
     : { data: null };
 
   const canApprove = profile.role === "rights_reviewer" || profile.role === "admin";

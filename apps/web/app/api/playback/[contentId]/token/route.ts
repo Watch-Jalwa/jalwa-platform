@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/database/server";
 import { createCloudFrontSignedCookies } from "@/lib/media/cloudfront-signing.mjs";
 import { signPlaybackToken } from "@/lib/media/token.mjs";
 
@@ -31,16 +31,16 @@ function cookieOptions(expires: Date) {
 
 export async function POST(request: Request, { params }: { params: Params }) {
   const { contentId } = await params;
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
 
-  const { data: available, error: availabilityError } = await supabase.rpc("is_content_effectively_available", {
+  const { data: available, error: availabilityError } = await database.rpc("is_content_effectively_available", {
     p_content_id: contentId,
   });
   if (availabilityError) return NextResponse.json({ error: "Playback availability could not be verified." }, { status: 503 });
   if (!available) return NextResponse.json({ error: "Content unavailable." }, { status: 404 });
 
-  const { data: content } = await supabase.from("content_items").select("id,access_level,status").eq("id", contentId).maybeSingle();
+  const { data: content } = await database.from("content_items").select("id,access_level,status").eq("id", contentId).maybeSingle();
   if (!content || content.status !== "published") return NextResponse.json({ error: "Content unavailable." }, { status: 404 });
   if (content.access_level === "registered" && !user) return NextResponse.json({ error: "Sign in required.", code: "sign_in_required" }, { status: 401 });
 
@@ -48,7 +48,7 @@ export async function POST(request: Request, { params }: { params: Params }) {
   if (user && content.access_level !== "public") {
     const deviceKey = request.headers.get("x-jalwa-device-key")?.trim();
     if (!deviceKey) return NextResponse.json({ error: "Register this browser before protected playback.", code: "device_required" }, { status: 428 });
-    const { data, error } = await supabase.rpc("register_device", {
+    const { data, error } = await database.rpc("register_device", {
       p_device_key: deviceKey,
       p_display_name: "Playback browser",
       p_platform: request.headers.get("sec-ch-ua-platform") ?? "",
@@ -65,11 +65,11 @@ export async function POST(request: Request, { params }: { params: Params }) {
 
   if (content.access_level === "premium") {
     if (!user) return NextResponse.json({ error: "Sign in required.", code: "sign_in_required" }, { status: 401 });
-    const { data: entitled } = await supabase.rpc("has_active_benefit", { p_benefit: "premium_catalogue" });
+    const { data: entitled } = await database.rpc("has_active_benefit", { p_benefit: "premium_catalogue" });
     if (!entitled) return NextResponse.json({ error: "Premium entitlement is required.", code: "payment_required" }, { status: 402 });
   }
 
-  const { data: playback } = await supabase.from("playback_sources")
+  const { data: playback } = await database.from("playback_sources")
     .select("media_asset_id,media_url,format,is_available")
     .eq("content_id", contentId)
     .eq("is_primary", true)

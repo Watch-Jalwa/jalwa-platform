@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/database/admin";
 import { requestRateKey } from "@/lib/security/request-key";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/database/server";
 
 type Params = Promise<{ channelId: string }>;
 
@@ -9,11 +9,11 @@ export async function POST(request: Request, { params }: { params: Params }) {
   const { channelId } = await params;
   const body = await request.json().catch(() => ({})) as { sessionKey?: string; viewerProfileId?: string | null; watchSeconds?: number; quality?: string | null };
   if (!body.sessionKey || !/^[a-zA-Z0-9_-]{8,120}$/.test(body.sessionKey)) return NextResponse.json({ error: "Invalid live session." }, { status: 400 });
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  const { data: channel } = await supabase.from("live_channels").select("id,is_published").eq("id",channelId).eq("is_published",true).maybeSingle();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
+  const { data: channel } = await database.from("live_channels").select("id,is_published").eq("id",channelId).eq("is_published",true).maybeSingle();
   if (!channel) return NextResponse.json({ error: "Live channel unavailable." }, { status: 404 });
-  if (body.viewerProfileId && (!user || !(await supabase.from("viewer_profiles").select("id").eq("id",body.viewerProfileId).eq("user_id",user.id).maybeSingle()).data)) return NextResponse.json({ error: "Viewer profile unavailable." }, { status: 403 });
+  if (body.viewerProfileId && (!user || !(await database.from("viewer_profiles").select("id").eq("id",body.viewerProfileId).eq("user_id",user.id).maybeSingle()).data)) return NextResponse.json({ error: "Viewer profile unavailable." }, { status: 403 });
 
   const admin = createAdminClient();
   const bucket = requestRateKey(request, `live-session:${channelId}`, user?.id ?? body.sessionKey);

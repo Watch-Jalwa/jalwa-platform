@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-DB_CONTAINER="${DB_CONTAINER:-supabase-db}"
+DB_CONTAINER="${DB_CONTAINER:-jalwa-postgres}"
 exec 9>/var/lock/jalwa-maintenance.lock
 flock -n 9 || { echo "Jalwa maintenance is already running." >&2; exit 1; }
 

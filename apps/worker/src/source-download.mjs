@@ -168,8 +168,8 @@ async function downloadToFile({ url, sourceKey, provider, target }) {
   return { sizeBytes: info.size, contentType, checksum: limiter.digest(), finalUrl };
 }
 
-export async function processSourceDownloadJob({ supabase, job }) {
-  const { data: sourceItem, error: sourceError } = await supabase.from("source_items")
+export async function processSourceDownloadJob({ database, job }) {
+  const { data: sourceItem, error: sourceError } = await database.from("source_items")
     .select("id,content_id,direct_media_url,media_type,source_account_id,source_accounts(source_key,provider)")
     .eq("id", job.source_item_id)
     .maybeSingle();
@@ -179,14 +179,14 @@ export async function processSourceDownloadJob({ supabase, job }) {
 
   const sourceAccount = Array.isArray(sourceItem.source_accounts) ? sourceItem.source_accounts[0] : sourceItem.source_accounts;
   if (!sourceAccount?.source_key) throw new Error("Source account metadata is unavailable.");
-  const { data: asset, error: assetError } = await supabase.from("media_assets")
+  const { data: asset, error: assetError } = await database.from("media_assets")
     .select("id,content_id,storage_key,status")
     .eq("id", job.media_asset_id)
     .maybeSingle();
   if (assetError) throw assetError;
   if (!asset || asset.content_id !== sourceItem.content_id) throw new Error("Source download asset mismatch.");
 
-  const { data: allowed, error: allowedError } = await supabase.rpc("is_content_processing_allowed", { p_content_id: asset.content_id });
+  const { data: allowed, error: allowedError } = await database.rpc("is_content_processing_allowed", { p_content_id: asset.content_id });
   if (allowedError) throw allowedError;
   if (!allowed) throw new Error("Source download blocked by rights, source or content state.");
 
@@ -201,7 +201,7 @@ export async function processSourceDownloadJob({ supabase, job }) {
     await uploadSourceFile(target, asset.storage_key, downloaded.contentType, downloaded.sizeBytes);
     const verified = await verifyObject("incoming", asset.storage_key);
     if (verified.sizeBytes !== downloaded.sizeBytes) throw new Error("Uploaded source media size does not match the downloaded file.");
-    const { error: completeError } = await supabase.rpc("complete_source_download_job", {
+    const { error: completeError } = await database.rpc("complete_source_download_job", {
       p_job_id: job.id,
       p_size_bytes: downloaded.sizeBytes,
       p_mime_type: downloaded.contentType,

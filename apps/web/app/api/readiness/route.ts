@@ -1,13 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/database/admin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const required = [
-  "NEXT_PUBLIC_APP_URL", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY",
-  "SUPABASE_SERVICE_ROLE_KEY", "AI_PROVIDER", "AI_API_KEY", "AI_MODEL",
+  "NEXT_PUBLIC_APP_URL", "DATABASE_URL", "BETTER_AUTH_URL", "BETTER_AUTH_SECRET",
+  "SMTP_HOST", "SMTP_FROM", "AI_PROVIDER", "AI_API_KEY", "AI_MODEL",
   "R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_ENDPOINT",
   "R2_INCOMING_BUCKET", "R2_PROCESSED_BUCKET", "R2_BACKUP_BUCKET",
   "MEDIA_SIGNING_SECRET", "NEXT_PUBLIC_MEDIA_GATEWAY_URL", "MEDIA_GATEWAY_ALLOWED_ORIGINS",
@@ -43,15 +43,21 @@ export async function GET(request: Request) {
   let database = "unavailable";
   let migrations = "unavailable";
   let migrationIssues: Array<{ filename: string; status: string }> = [];
+  let publishedContent = 0;
+  let activeCategories = 0;
 
-  if (!missing.includes("NEXT_PUBLIC_SUPABASE_URL") && !missing.includes("SUPABASE_SERVICE_ROLE_KEY")) {
+  if (!missing.includes("DATABASE_URL")) {
     try {
       const admin = createAdminClient();
-      const [databaseResult, migrationResult] = await Promise.all([
+      const [databaseResult, migrationResult, publishedResult, categoryResult] = await Promise.all([
         admin.from("content_items").select("id", { head: true, count: "exact" }).limit(1),
         admin.from("jalwa_schema_migrations").select("filename,status").neq("status", "applied").limit(10),
+        admin.from("content_items").select("id", { head: true, count: "exact" }).eq("status", "published"),
+        admin.from("categories").select("id", { head: true, count: "exact" }).eq("is_active", true),
       ]);
       database = databaseResult.error ? "unavailable" : "ready";
+      if (!publishedResult.error) publishedContent = publishedResult.count ?? 0;
+      if (!categoryResult.error) activeCategories = categoryResult.count ?? 0;
       if (!migrationResult.error) {
         migrationIssues = (migrationResult.data ?? []) as Array<{ filename: string; status: string }>;
         migrations = migrationIssues.length ? "blocked" : "ready";
@@ -68,12 +74,11 @@ export async function GET(request: Request) {
   const paymentReady = process.env.NODE_ENV !== "production" || frontendPreview || stagingMock || realPaymentReady;
   const liveReady = !liveEnabled || liveRequired.every((name) => Boolean(process.env[name]));
   const drmReady = !drmEnabled || drmRequired.every((name) => Boolean(process.env[name]));
-  const ready = missing.length === 0 && database === "ready" && migrations === "ready" && paymentReady && liveReady && drmReady;
+  const authReady = Boolean(process.env.BETTER_AUTH_SECRET && (process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL) && process.env.SMTP_HOST);
+  const ready = missing.length === 0 && database === "ready" && migrations === "ready" && authReady && paymentReady && liveReady && drmReady;
   const base = { service: "jalwa-web", status: ready ? "ready" : "not_ready", version: process.env.GIT_SHA ?? "local", time: new Date().toISOString() };
 
-  if (!authorized(request)) {
-    return NextResponse.json(base, { status: ready ? 200 : 503, headers: { "Cache-Control": "no-store" } });
-  }
+  if (!authorized(request)) return NextResponse.json(base, { status: ready ? 200 : 503, headers: { "Cache-Control": "no-store" } });
 
   return NextResponse.json({
     ...base,
@@ -81,11 +86,13 @@ export async function GET(request: Request) {
     database,
     migrations,
     migrationIssues,
+    auth: { provider: "better-auth", ready: authReady, magicLink: true },
     storage: { incoming: Boolean(process.env.R2_INCOMING_BUCKET), processed: Boolean(process.env.R2_PROCESSED_BUCKET), backups: Boolean(process.env.R2_BACKUP_BUCKET) },
     lifecycle: { sourceHealth: Boolean(process.env.CRON_SECRET), privacyProcessor: Boolean(process.env.ACCOUNT_REQUEST_PROCESSOR_SECRET), recommendationRefresh: Boolean(process.env.RECOMMENDATION_REFRESH_SECRET) },
     aiProvider: process.env.AI_PROVIDER ?? "unconfigured",
     paymentProvider,
     paymentReady,
+    catalogue: { publishedContent, activeCategories },
     frontendPreview,
     features: { social: true, recommendations: true, live: { enabled: liveEnabled, ready: liveReady }, drm: { enabled: drmEnabled, ready: drmReady, offline: false }, publicOfflineMp4: true },
     authProviders: { email: true, phone: process.env.NEXT_PUBLIC_ENABLE_PHONE_AUTH === "true", google: process.env.NEXT_PUBLIC_ENABLE_GOOGLE_AUTH === "true", apple: process.env.NEXT_PUBLIC_ENABLE_APPLE_AUTH === "true", facebook: process.env.NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH === "true" },

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-migration="supabase/migrations/202608010003_institutional_public_affairs_live_sources.sql"
+migration="database/migrations/202608010003_institutional_public_affairs_live_sources.sql"
 registry="apps/web/lib/live-sources/registry.ts"
 player="apps/web/components/official-live-link-player.tsx"
 state="scripts/set-public-domain-live-catalogue-state.sql"

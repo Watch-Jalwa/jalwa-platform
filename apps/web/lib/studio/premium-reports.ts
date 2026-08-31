@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { createHash } from "node:crypto";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/database/admin";
 import { REPORT_SCHEMA_VERSION, REPORT_TIMEZONE, METRIC_DEFINITIONS, buildCsv } from "@/lib/reports/premium.mjs";
 import { getPaymentLedger, getPremiumSummary, getSubscriptionLedger, reportContext, type ReportInput } from "@/lib/studio/premium-report-data";
 import { getBenefitCostReport, getReconciliationReport, getRecurringCustomers } from "@/lib/studio/premium-report-special";

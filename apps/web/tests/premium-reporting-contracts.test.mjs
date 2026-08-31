@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 
-const migrationUrl = new URL("../../../supabase/migrations/202607310011_premium_reporting.sql", import.meta.url);
-const hardeningUrl = new URL("../../../supabase/migrations/202607310012_premium_reporting_hardening.sql", import.meta.url);
+const migrationUrl = new URL("../../../database/migrations/202607310011_premium_reporting.sql", import.meta.url);
+const hardeningUrl = new URL("../../../database/migrations/202607310012_premium_reporting_hardening.sql", import.meta.url);
 const serviceUrl = new URL("../lib/studio/premium-reports.ts", import.meta.url);
 const dataUrl = new URL("../lib/studio/premium-report-data.ts", import.meta.url);
 const specialUrl = new URL("../lib/studio/premium-report-special.ts", import.meta.url);
@@ -105,11 +105,10 @@ test("staging acceptance seeds representative cases and proves role, export and 
   assert.match(seed, /failed-webhook/);
   assert.match(workflow, /seed-reporting-fixtures/);
   assert.match(workflow, /seed-premium-reporting-staging\.sql/);
-  assert.match(workflow, /premium-reporting-acceptance\.mjs/);
-  assert.match(acceptance, /anonymousReport\.status\(\), 401/);
-  assert.match(acceptance, /viewerReport\.status\(\), 403/);
-  assert.match(acceptance, /viewerExport\.status\(\), 403/);
-  assert.match(acceptance, /premium_report_exported/);
+  assert.match(workflow, /test:staging:playwright:studio/);
+  assert.match(acceptance, /status\(\), 401/);
+  assert.match(acceptance, /status\(\), 403/);
+  assert.match(acceptance, /audit-export/);
   assert.match(acceptance, /x-jalwa-report-sha256/);
   assert.match(acceptance, /Asia\\\/Karachi/);
   assert.match(acceptance, /width: 390, height: 844/);

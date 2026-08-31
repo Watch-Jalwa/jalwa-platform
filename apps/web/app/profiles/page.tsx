@@ -1,8 +1,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { ACTIVE_PROFILE_COOKIE } from "@/lib/customer/active-profile";
-import { createClient } from "@/lib/supabase/server";
-import { hasSupabaseConfig, isFrontendPreview } from "@/lib/runtime";
+import { createClient } from "@/lib/database/server";
+import { hasBackendConfiguration, isFrontendPreview } from "@/lib/runtime";
 import { createViewerProfile, deleteViewerProfile, selectViewerProfile } from "./actions";
 
 export const metadata = { title: "Viewer profiles" };
@@ -15,14 +15,14 @@ const demoProfiles = [
 
 export default async function ProfilesPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
-  const preview = isFrontendPreview() || !hasSupabaseConfig();
+  const preview = isFrontendPreview() || !hasBackendConfiguration();
   let profiles = demoProfiles;
   let activeId = "demo-main";
   if (!preview) {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const database = await createClient();
+    const { data: { user } } = await database.auth.getUser();
     if (!user) redirect("/login?next=/profiles");
-    const { data } = await supabase.from("viewer_profiles").select("id,name,profile_type,avatar_key,preferred_language,kids_mode,is_default").eq("user_id", user.id).order("is_default", { ascending: false }).order("created_at");
+    const { data } = await database.from("viewer_profiles").select("id,name,profile_type,avatar_key,preferred_language,kids_mode,is_default").eq("user_id", user.id).order("is_default", { ascending: false }).order("created_at");
     profiles = data ?? [];
     activeId = (await cookies()).get(ACTIVE_PROFILE_COOKIE)?.value ?? profiles.find((profile) => profile.is_default)?.id ?? "";
   }

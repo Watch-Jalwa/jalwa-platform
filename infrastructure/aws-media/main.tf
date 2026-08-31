@@ -495,9 +495,9 @@ resource "aws_iam_role_policy" "mediaconvert" {
   policy = data.aws_iam_policy_document.mediaconvert.json
 }
 
-resource "aws_secretsmanager_secret" "supabase" {
-  name                    = "${local.prefix}/supabase-service-role"
-  description             = "Populate with JSON containing url and serviceRoleKey for MediaConvert callbacks."
+resource "aws_secretsmanager_secret" "application_callback" {
+  name                    = "${local.prefix}/application-callback"
+  description             = "Populate with JSON containing the Jalwa callback URL and shared callback secret."
   recovery_window_in_days = var.environment == "staging" ? 0 : 30
   kms_key_id              = aws_kms_key.media.arn
 }
@@ -583,7 +583,7 @@ data "aws_iam_policy_document" "media_lambda" {
   statement {
     sid       = "ReadCallbackSecret"
     actions   = ["secretsmanager:GetSecretValue"]
-    resources = [aws_secretsmanager_secret.supabase.arn, aws_secretsmanager_secret.media_control.arn]
+    resources = [aws_secretsmanager_secret.application_callback.arn, aws_secretsmanager_secret.media_control.arn]
   }
   statement {
     sid       = "UseMediaKey"
@@ -619,11 +619,11 @@ resource "aws_lambda_function" "submit_mediaconvert" {
 
   environment {
     variables = {
-      INCOMING_BUCKET        = aws_s3_bucket.incoming.bucket
-      PROCESSED_BUCKET       = aws_s3_bucket.processed.bucket
-      MEDIACONVERT_QUEUE_ARN = aws_media_convert_queue.alpha.arn
-      MEDIACONVERT_ROLE_ARN  = aws_iam_role.mediaconvert.arn
-      SUPABASE_SECRET_ARN    = aws_secretsmanager_secret.supabase.arn
+      INCOMING_BUCKET                 = aws_s3_bucket.incoming.bucket
+      PROCESSED_BUCKET                = aws_s3_bucket.processed.bucket
+      MEDIACONVERT_QUEUE_ARN          = aws_media_convert_queue.alpha.arn
+      MEDIACONVERT_ROLE_ARN           = aws_iam_role.mediaconvert.arn
+      APPLICATION_CALLBACK_SECRET_ARN = aws_secretsmanager_secret.application_callback.arn
     }
   }
 
@@ -642,7 +642,7 @@ resource "aws_lambda_function" "complete_mediaconvert" {
 
   environment {
     variables = {
-      SUPABASE_SECRET_ARN = aws_secretsmanager_secret.supabase.arn
+      APPLICATION_CALLBACK_SECRET_ARN = aws_secretsmanager_secret.application_callback.arn
     }
   }
 

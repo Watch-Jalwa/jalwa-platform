@@ -200,10 +200,10 @@ export async function hasAudioStream(input) {
   return Boolean(result);
 }
 
-async function assertJobStillAllowed(supabase, jobId, contentId) {
+async function assertJobStillAllowed(database, jobId, contentId) {
   const [{ data: jobState, error: jobError }, { data: allowed, error: allowedError }] = await Promise.all([
-    supabase.from("media_jobs").select("cancel_requested,cancellation_reason").eq("id", jobId).single(),
-    supabase.rpc("is_content_processing_allowed", { p_content_id: contentId }),
+    database.from("media_jobs").select("cancel_requested,cancellation_reason").eq("id", jobId).single(),
+    database.rpc("is_content_processing_allowed", { p_content_id: contentId }),
   ]);
   if (jobError) throw jobError;
   if (allowedError) throw allowedError;
@@ -217,11 +217,11 @@ function transcodeBackend() {
   return (process.env.TRANSCODE_BACKEND ?? "ffmpeg").trim().toLowerCase();
 }
 
-async function dispatchMediaConvertJob({ supabase, job, asset }) {
+async function dispatchMediaConvertJob({ database, job, asset }) {
   if (mediaBackend() !== "aws") throw new Error("MediaConvert requires MEDIA_BACKEND=aws.");
-  await assertJobStillAllowed(supabase, job.id, asset.content_id);
+  await assertJobStillAllowed(database, job.id, asset.content_id);
   const markerKey = `jobs/${job.id}.json`;
-  const { error } = await supabase.from("media_jobs").update({
+  const { error } = await database.from("media_jobs").update({
     status: "processing",
     locked_at: null,
     locked_by: null,
@@ -241,15 +241,15 @@ async function dispatchMediaConvertJob({ supabase, job, asset }) {
   return { provider: "mediaconvert", deferred: true, markerKey };
 }
 
-export async function processMediaJob({ supabase, job }) {
-  const { data: asset, error } = await supabase.from("media_assets")
+export async function processMediaJob({ database, job }) {
+  const { data: asset, error } = await database.from("media_assets")
     .select("id,content_id,storage_key,metadata")
     .eq("id", job.media_asset_id)
     .single();
   if (error || !asset) throw error ?? new Error("Source asset missing");
 
   if (transcodeBackend() === "mediaconvert") {
-    return dispatchMediaConvertJob({ supabase, job, asset });
+    return dispatchMediaConvertJob({ database, job, asset });
   }
   if (transcodeBackend() !== "ffmpeg") throw new Error("Unsupported transcode backend.");
 
@@ -259,7 +259,7 @@ export async function processMediaJob({ supabase, job }) {
   await mkdir(output, { recursive: true });
 
   try {
-    await assertJobStillAllowed(supabase, job.id, asset.content_id);
+    await assertJobStillAllowed(database, job.id, asset.content_id);
     await downloadObject(asset.storage_key, source, "incoming");
     const probe = await probeMedia(source);
     const ffmpeg = process.env.FFMPEG_PATH ?? "ffmpeg";
@@ -270,7 +270,7 @@ export async function processMediaJob({ supabase, job }) {
     if (job.job_type === "short_mp4") {
       const target = join(output, "short-720.mp4");
       await run(ffmpeg, buildShortArgs(source, target));
-      await assertJobStillAllowed(supabase, job.id, asset.content_id);
+      await assertJobStillAllowed(database, job.id, asset.content_id);
       const prefix = `processed/${asset.content_id}/${asset.id}/`;
       uploaded = await uploadDirectory(output, prefix);
       mediaPath = `${prefix}short-720.mp4`;
@@ -278,15 +278,15 @@ export async function processMediaJob({ supabase, job }) {
     } else {
       for (const name of ["360p", "480p", "720p"]) await mkdir(join(output, name), { recursive: true });
       await run(ffmpeg, buildHlsArgs(source, output));
-      await assertJobStillAllowed(supabase, job.id, asset.content_id);
+      await assertJobStillAllowed(database, job.id, asset.content_id);
       const prefix = `processed/${asset.content_id}/${asset.id}/`;
       uploaded = await uploadDirectory(output, prefix);
       mediaPath = `${prefix}master.m3u8`;
       format = "hls";
     }
 
-    await assertJobStillAllowed(supabase, job.id, asset.content_id);
-    const { error: assetUpdateError } = await supabase.from("media_assets").update({
+    await assertJobStillAllowed(database, job.id, asset.content_id);
+    const { error: assetUpdateError } = await database.from("media_assets").update({
       status: "ready",
       is_available: false,
       duration_seconds: probe.durationSeconds ? Math.round(probe.durationSeconds) : null,
@@ -299,12 +299,12 @@ export async function processMediaJob({ supabase, job }) {
     }).eq("id", asset.id);
     if (assetUpdateError) throw assetUpdateError;
 
-    await supabase.from("playback_sources").update({
+    await database.from("playback_sources").update({
       is_primary: false,
       is_available: false,
     }).eq("content_id", asset.content_id);
 
-    const { error: playbackError } = await supabase.from("playback_sources").insert({
+    const { error: playbackError } = await database.from("playback_sources").insert({
       content_id: asset.content_id,
       provider: "original",
       media_asset_id: asset.id,
@@ -316,7 +316,7 @@ export async function processMediaJob({ supabase, job }) {
     });
     if (playbackError) throw playbackError;
 
-    const { error: jobUpdateError } = await supabase.from("media_jobs").update({
+    const { error: jobUpdateError } = await database.from("media_jobs").update({
       status: "completed",
       completed_at: new Date().toISOString(),
       locked_at: null,

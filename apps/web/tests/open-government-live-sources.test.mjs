@@ -4,8 +4,8 @@ import { readFile } from "node:fs/promises";
 
 const sourcesUrl = new URL("../lib/live-sources/open-government-sources.js", import.meta.url);
 const securityUrl = new URL("../lib/live-sources/security.ts", import.meta.url);
-const migrationUrl = new URL("../../../supabase/migrations/202608010004_open_government_live_expansion.sql", import.meta.url);
-const manifestUrl = new URL("../../../supabase/migrations/202608010005_approved_live_catalogue_manifest.sql", import.meta.url);
+const migrationUrl = new URL("../../../database/migrations/202608010004_open_government_live_expansion.sql", import.meta.url);
+const manifestUrl = new URL("../../../database/migrations/202608010005_approved_live_catalogue_manifest.sql", import.meta.url);
 const stateUrl = new URL("../../../scripts/set-public-domain-live-catalogue-state.sql", import.meta.url);
 const seedUrl = new URL("../../../scripts/seed-public-domain-live-sources.sql", import.meta.url);
 const acceptanceUrl = new URL("../../../scripts/public-domain-live-acceptance.mjs", import.meta.url);

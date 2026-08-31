@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/database/admin";
 import { requireStaff } from "@/lib/studio/auth";
 import { updateSupportCase } from "./actions";
 

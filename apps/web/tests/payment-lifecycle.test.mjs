@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-const migrationUrl = new URL("../../../supabase/migrations/202607310010_payment_operations.sql", import.meta.url);
+const migrationUrl = new URL("../../../database/migrations/202607310010_payment_operations.sql", import.meta.url);
 const routeUrl = new URL("../app/api/webhooks/payments/[provider]/route.ts", import.meta.url);
 const webhookUrl = new URL("../lib/payments/webhook.ts", import.meta.url);
 const financeUrl = new URL("../app/studio/finance/page.tsx", import.meta.url);

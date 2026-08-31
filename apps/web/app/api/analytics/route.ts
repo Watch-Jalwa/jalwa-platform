@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/database/admin";
+import { createClient } from "@/lib/database/server";
 import { requestRateKey, safeSessionId } from "@/lib/security/request-key";
 
 export const runtime = "nodejs";
@@ -23,8 +23,8 @@ export async function POST(request: Request) {
   const properties = body.properties && typeof body.properties === "object" && !Array.isArray(body.properties) ? body.properties : {};
   if (!allowedEvents.has(eventName) || !path.startsWith("/")) return new NextResponse(null, { status: 400 });
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
   const admin = createAdminClient();
   const { data: allowed } = await admin.rpc("consume_rate_limit", {
     p_bucket_key: requestRateKey(request, "analytics", user?.id ?? sessionId),

@@ -36,7 +36,6 @@ jobs:
       RELEASE_SHA: ${{ inputs.release_sha || github.event.workflow_run.head_sha || github.sha }}
       BASE_URL: ${{ inputs.base_url || format('https://{0}', vars.PRODUCTION_DOMAIN) }}
       MIN_CONTENT_ITEMS: ${{ inputs.minimum_content_items || vars.MINIMUM_LAUNCH_CONTENT_ITEMS || '100' }}
-      SUPABASE_ANON_KEY: ${{ secrets.SELF_HOSTED_SUPABASE_ANON_KEY }}
       OPERATIONS_DIAGNOSTICS_SECRET: ${{ secrets.OPERATIONS_DIAGNOSTICS_SECRET }}
       EXPECTED_ENVIRONMENT: production
       EXPECT_NOINDEX: "false"
@@ -95,4 +94,4 @@ jobs:
       - name: Re-run host and recovery acceptance
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/host-acceptance.sh 'https://$DOMAIN' 'https://api.$DOMAIN'"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/host-acceptance.sh 'https://$DOMAIN'"

@@ -1,11 +1,11 @@
-import { createAdminClient } from "@/lib/supabase/admin";
+import { createAdminClient } from "@/lib/database/admin";
 import { requireStaff } from "@/lib/studio/auth";
 
 export const metadata = { title: "Operations" };
 export const dynamic = "force-dynamic";
 
 const requiredConfiguration = [
-  "NEXT_PUBLIC_SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "R2_ACCOUNT_ID",
+  "DATABASE_URL", "BETTER_AUTH_SECRET", "AI_PROVIDER", "AI_API_KEY", "AI_MODEL", "R2_ACCOUNT_ID",
   "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "MEDIA_SIGNING_SECRET", "PAYMENT_WEBHOOK_SECRET", "RATE_LIMIT_SALT",
 ] as const;
 

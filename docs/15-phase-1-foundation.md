@@ -19,7 +19,7 @@
 ## Required configuration
 
 1. Create a Supabase project.
-2. Apply `supabase/migrations/202607300001_foundation.sql`.
+2. Apply `database/migrations/202607300001_foundation.sql`.
 3. Configure the public URL and publishable key.
 4. Configure the authentication redirect URL as `/auth/callback`.
 5. Copy `.env.example` to `.env.local` for local development.

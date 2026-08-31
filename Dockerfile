@@ -3,6 +3,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY apps/worker/package.json apps/worker/package.json
+COPY packages/postgres/package.json packages/postgres/package.json
 RUN npm ci --ignore-scripts --no-audit --no-fund \
   && mkdir -p apps/web/node_modules apps/worker/node_modules
 
@@ -11,6 +12,7 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 COPY apps/web/package.json apps/web/package.json
 COPY apps/worker/package.json apps/worker/package.json
+COPY packages/postgres/package.json packages/postgres/package.json
 RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund \
       --workspace @jalwa/worker --include-workspace-root=false \
   && mkdir -p apps/worker/node_modules \
@@ -24,8 +26,6 @@ COPY --from=deps /app/apps/web/node_modules ./apps/web/node_modules
 COPY --from=deps /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY . .
 ARG NEXT_PUBLIC_APP_URL=http://localhost:3000
-ARG NEXT_PUBLIC_SUPABASE_URL=https://example.supabase.co
-ARG NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_build_placeholder
 ARG NEXT_PUBLIC_ENABLE_PHONE_AUTH=false
 ARG NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=false
 ARG NEXT_PUBLIC_ENABLE_APPLE_AUTH=false
@@ -34,8 +34,6 @@ ARG NEXT_PUBLIC_ENABLE_LIVE_STREAMING=false
 ARG NEXT_PUBLIC_ENABLE_WEB_DRM=false
 ARG NEXT_PUBLIC_STAGING=false
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
-ENV NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL
-ENV NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
 ENV NEXT_PUBLIC_ENABLE_PHONE_AUTH=$NEXT_PUBLIC_ENABLE_PHONE_AUTH
 ENV NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=$NEXT_PUBLIC_ENABLE_GOOGLE_AUTH
 ENV NEXT_PUBLIC_ENABLE_APPLE_AUTH=$NEXT_PUBLIC_ENABLE_APPLE_AUTH
@@ -48,10 +46,16 @@ RUN npm run build --workspace @jalwa/web
 FROM node:22-alpine AS web
 WORKDIR /app
 ENV NODE_ENV=production HOME=/tmp
+ARG GIT_SHA=unknown
+ARG BUILD_RUN_ID=unknown
+LABEL org.opencontainers.image.source="https://github.com/Watch-Jalwa/jalwa-platform" \
+      org.opencontainers.image.revision="$GIT_SHA" \
+      com.watch-jalwa.build-run-id="$BUILD_RUN_ID"
 COPY --chown=node:node --from=builder /app/apps/web/.next/standalone ./
 COPY --chown=node:node --from=builder /app/apps/web/.next/static ./apps/web/.next/static
 COPY --chown=node:node --from=builder /app/apps/web/public ./apps/web/public
-RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /root/.npm \
+RUN apk upgrade --no-cache libcrypto3 libssl3 \
+  && rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /root/.npm \
   && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
   && test ! -e /usr/local/bin/npm \
   && test ! -e /usr/local/bin/npx
@@ -64,8 +68,13 @@ CMD ["node", "apps/web/server.js"]
 FROM node:22-bookworm-slim AS worker
 WORKDIR /app
 ENV NODE_ENV=production HOME=/tmp
+ARG GIT_SHA=unknown
+ARG BUILD_RUN_ID=unknown
 ARG TARGETARCH
 ARG SHAKA_PACKAGER_VERSION=3.7.2
+LABEL org.opencontainers.image.source="https://github.com/Watch-Jalwa/jalwa-platform" \
+      org.opencontainers.image.revision="$GIT_SHA" \
+      com.watch-jalwa.build-run-id="$BUILD_RUN_ID"
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg && rm -rf /var/lib/apt/lists/* \
   && case "$TARGETARCH" in \
        amd64) binary_arch=x64; checksum=88b022b8cb12602ddb539972efd07a3496ea64f8662a484798c96e95afa41fd8 ;; \
@@ -80,6 +89,7 @@ COPY --chown=node:node --from=worker-deps /app/node_modules ./node_modules
 COPY --chown=node:node --from=worker-deps /app/apps/worker/node_modules ./apps/worker/node_modules
 COPY --chown=node:node package.json package-lock.json ./
 COPY --chown=node:node apps/worker ./apps/worker
+COPY --chown=node:node packages/postgres ./packages/postgres
 RUN rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack /root/.npm \
   && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
   && test ! -e /usr/local/bin/npm \

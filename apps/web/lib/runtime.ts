@@ -2,14 +2,19 @@ export function isFrontendPreview() {
   return process.env.NEXT_PUBLIC_FRONTEND_PREVIEW === "true" || process.env.VERCEL_ENV === "preview";
 }
 
-export function hasSupabaseConfig() {
-  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY);
-}
-
 export function canUseDemoData() {
-  return isFrontendPreview() || (process.env.NODE_ENV !== "production" && !hasSupabaseConfig());
+  return isFrontendPreview();
 }
 
-export function safeInternalPath(value: string | null | undefined, fallback = "/profile") {
-  return value?.startsWith("/") && !value.startsWith("//") ? value : fallback;
+export function hasBackendConfiguration() {
+  return Boolean(process.env.DATABASE_URL && process.env.BETTER_AUTH_SECRET && (process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL));
+}
+
+export function safeInternalPath(value: string | null | undefined, fallback = "/") {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return fallback;
+  try {
+    const url = new URL(value, "http://jalwa.local");
+    if (url.origin !== "http://jalwa.local") return fallback;
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch { return fallback; }
 }

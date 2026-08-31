@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { CheckoutButton } from "@/components/checkout-button";
-import { createClient } from "@/lib/supabase/server";
+import { createClient } from "@/lib/database/server";
 import { formatPkr, PREMIUM_BENEFITS } from "@/lib/payments/plans";
-import { hasSupabaseConfig, isFrontendPreview } from "@/lib/runtime";
+import { hasBackendConfiguration, isFrontendPreview } from "@/lib/runtime";
 
 export const metadata = { title: "Premium" };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -13,11 +13,11 @@ const demoPrices = [
 
 export default async function PricingPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
-  const preview = isFrontendPreview() || !hasSupabaseConfig();
+  const preview = isFrontendPreview() || !hasBackendConfiguration();
   let prices = demoPrices;
   if (!preview) {
-    const supabase = await createClient();
-    const { data } = await supabase.from("prices").select("id,code,amount_minor,currency,billing_period,duration_days,plans!inner(name)").eq("is_active", true).order("amount_minor");
+    const database = await createClient();
+    const { data } = await database.from("prices").select("id,code,amount_minor,currency,billing_period,duration_days,plans!inner(name)").eq("is_active", true).order("amount_minor");
     prices = (data ?? []) as unknown as typeof demoPrices;
   }
   const selected = typeof params.selected === "string" ? params.selected : "";

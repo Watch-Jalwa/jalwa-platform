@@ -1,14 +1,14 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/database/admin";
+import { createClient } from "@/lib/database/server";
 
 async function authenticatedUser() {
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
   if (!user) redirect("/login?next=/profile");
-  return { supabase, user };
+  return { database, user };
 }
 
 async function createAccountRequest(requestType: "export" | "deletion") {
@@ -53,14 +53,14 @@ export async function requestAccountDeletion(formData: FormData) {
 
 export async function cancelAccountDeletion(formData: FormData) {
   const requestId = String(formData.get("requestId") ?? "");
-  const { supabase } = await authenticatedUser();
-  const { error } = await supabase.rpc("cancel_account_deletion", { p_request_id: requestId });
+  const { database } = await authenticatedUser();
+  const { error } = await database.rpc("cancel_account_deletion", { p_request_id: requestId });
   if (error) redirect("/profile?request=deletion-cancel-failed");
   redirect("/profile?request=deletion-cancelled");
 }
 
 export async function signOut() {
-  const { supabase } = await authenticatedUser();
-  await supabase.auth.signOut();
+  const { database } = await authenticatedUser();
+  await database.auth.signOut();
   redirect("/");
 }

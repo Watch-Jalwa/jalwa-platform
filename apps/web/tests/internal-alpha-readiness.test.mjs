@@ -4,8 +4,8 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 import { createCloudFrontSignedCookies } from "../lib/media/cloudfront-signing.mjs";
 
-const controlsMigrationUrl = new URL("../../../supabase/migrations/202608010006_internal_alpha_content_controls.sql", import.meta.url);
-const sourceMigrationUrl = new URL("../../../supabase/migrations/202608010007_alpha_approved_source_register.sql", import.meta.url);
+const controlsMigrationUrl = new URL("../../../database/migrations/202608010006_internal_alpha_content_controls.sql", import.meta.url);
+const sourceMigrationUrl = new URL("../../../database/migrations/202608010007_alpha_approved_source_register.sql", import.meta.url);
 const sourceRegisterUrl = new URL("../../../content/alpha-approved-sources.json", import.meta.url);
 const alphaPageUrl = new URL("../app/studio/alpha/page.tsx", import.meta.url);
 const alphaActionsUrl = new URL("../app/studio/alpha/actions.ts", import.meta.url);

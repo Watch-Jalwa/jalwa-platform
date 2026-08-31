@@ -1,10 +1,10 @@
 # DigitalOcean Production Host
 
-This Terraform module provisions one Ubuntu Droplet for the Jalwa web container, FFmpeg worker, Caddy and the official self-hosted Supabase/PostgreSQL Docker stack.
+This Terraform module provisions one Ubuntu Droplet for the Jalwa web container, FFmpeg worker, Caddy and the direct PostgreSQL service.
 
 ## Capacity
 
-The default is `s-4vcpu-8gb`. Supabase documents 4 cores and 8 GB or more as the recommended baseline for its complete self-hosted stack. Use a separate worker host later if video processing begins to compete with database traffic.
+The default is `s-4vcpu-8gb`. Jalwa uses 4 cores and 8 GB as the default minimum for the combined web, worker and PostgreSQL host. Use a separate worker host later if video processing begins to compete with database traffic.
 
 ## Prerequisites
 
@@ -44,14 +44,14 @@ Terraform creates:
 The GitHub workflows:
 
 1. provision the host and DNS;
-2. install an immutable official Supabase Docker revision;
+2. install Docker, PostgreSQL runtime dependencies and pinned host tooling;
 3. generate the runtime configuration from GitHub environment secrets;
 4. apply checksum-tracked SQL migrations;
 5. build and deploy the Jalwa containers;
 6. deploy the media Worker to its Cloudflare custom domain;
 7. run smoke tests and an initial off-site PostgreSQL backup.
 
-Postgres and Supabase ports are blocked by the DigitalOcean firewall. Public clients reach only the allow-listed Auth/REST routes at `api.<domain>` through Caddy. Studio remains available only through an SSH tunnel to `127.0.0.1:8000`.
+PostgreSQL is private to the Docker network and blocked by the DigitalOcean firewall. Public clients reach only the Jalwa application through Caddy; Better Auth and application APIs are same-origin routes under the app domain.
 
 ## State safety
 

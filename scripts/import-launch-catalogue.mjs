@@ -1,28 +1,11 @@
 import { pathToFileURL } from "node:url";
+import { createDatabaseClient, createPool } from "@jalwa/postgres";
 import { loadCatalogueFile, validateLaunchCatalogue } from "./launch-catalogue.mjs";
 
 function env(name) {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} is required`);
   return value;
-}
-
-async function request(baseUrl, key, path, init = {}) {
-  const response = await fetch(`${baseUrl.replace(/\/$/, "")}${path}`, {
-    ...init,
-    headers: { apikey: key, Authorization: `Bearer ${key}`, "content-type": "application/json", ...(init.headers ?? {}) },
-  });
-  const text = await response.text();
-  const data = text ? JSON.parse(text) : null;
-  if (!response.ok) throw new Error(`${init.method ?? "GET"} ${path} failed (${response.status}): ${text}`);
-  return data;
-}
-
-async function categoryId(baseUrl, key, slug) {
-  const params = new URLSearchParams({ select: "id", slug: `eq.${slug}`, limit: "1" });
-  const rows = await request(baseUrl, key, `/rest/v1/categories?${params}`);
-  if (!rows?.[0]?.id) throw new Error(`Category not found: ${slug}`);
-  return rows[0].id;
 }
 
 function evidenceFields(reference) {
@@ -35,98 +18,59 @@ function evidenceFields(reference) {
   return { evidence_url: null, evidence_note: reference };
 }
 
-async function upsertContentDraft(baseUrl, key, item, category) {
-  const existingParams = new URLSearchParams({ select: "id,status", slug: `eq.${item.slug}`, limit: "1" });
-  const existing = await request(baseUrl, key, `/rest/v1/content_items?${existingParams}`);
+async function upsertContentDraft(database, item, category) {
+  const { data: existing, error: existingError } = await database.from("content_items").select("id,status").eq("slug", item.slug).maybeSingle();
+  if (existingError) throw existingError;
   const payload = {
-    slug: item.slug,
-    content_type: item.contentType,
-    hosting_mode: item.hostingMode,
-    access_level: item.accessLevel,
-    title_en: item.titleEn,
-    title_ur: item.titleUr,
-    title_roman_ur: item.titleRomanUr,
-    description_en: item.descriptionEn,
-    description_ur: item.descriptionUr ?? null,
-    description_roman_ur: item.descriptionRomanUr ?? null,
-    primary_category_id: category,
-    language: item.language,
-    duration_seconds: item.durationSeconds ?? null,
-    audience: item.audience,
-    sensitivity: item.sensitivity,
-    thumbnail_url: item.thumbnailUrl ?? null,
+    slug: item.slug, content_type: item.contentType, hosting_mode: item.hostingMode, access_level: item.accessLevel,
+    title_en: item.titleEn, title_ur: item.titleUr, title_roman_ur: item.titleRomanUr, description_en: item.descriptionEn,
+    description_ur: item.descriptionUr ?? null, description_roman_ur: item.descriptionRomanUr ?? null,
+    primary_category_id: category, language: item.language, duration_seconds: item.durationSeconds ?? null,
+    audience: item.audience, sensitivity: item.sensitivity, thumbnail_url: item.thumbnailUrl ?? null,
   };
-
-  if (existing?.[0]?.id) {
-    const rows = await request(baseUrl, key, `/rest/v1/content_items?id=eq.${existing[0].id}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=representation" },
-      body: JSON.stringify(payload),
-    });
-    return { contentId: rows?.[0]?.id ?? existing[0].id, preservedStatus: existing[0].status };
+  if (existing?.id) {
+    const { data, error } = await database.from("content_items").update(payload).eq("id", existing.id).select("id").single();
+    if (error) throw error;
+    return { contentId: data.id, preservedStatus: existing.status };
   }
-
-  const rows = await request(baseUrl, key, "/rest/v1/content_items", {
-    method: "POST",
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify([{ ...payload, status: "draft" }]),
-  });
-  if (!rows?.[0]?.id) throw new Error(`Content insert returned no id for ${item.slug}`);
-  return { contentId: rows[0].id, preservedStatus: null };
+  const { data, error } = await database.from("content_items").insert({ ...payload, status: "draft" }).select("id").single();
+  if (error) throw error;
+  return { contentId: data.id, preservedStatus: null };
 }
 
-async function importItem(baseUrl, key, item) {
-  const category = await categoryId(baseUrl, key, item.categorySlug);
-  const { contentId, preservedStatus } = await upsertContentDraft(baseUrl, key, item, category);
+async function importItem(database, item) {
+  const { data: category, error: categoryError } = await database.from("categories").select("id").eq("slug", item.categorySlug).maybeSingle();
+  if (categoryError) throw categoryError;
+  if (!category?.id) throw new Error(`Category not found: ${item.categorySlug}`);
+  const { contentId, preservedStatus } = await upsertContentDraft(database, item, category.id);
 
   const source = item.source;
-  await request(baseUrl, key, "/rest/v1/playback_sources?on_conflict=provider,provider_content_id", {
-    method: "POST",
-    headers: { Prefer: "resolution=merge-duplicates,return=minimal" },
-    body: JSON.stringify([{ content_id: contentId, provider: source.provider, provider_content_id: source.providerContentId ?? null, embed_url: source.embedUrl ?? null, media_url: source.mediaUrl ?? null, external_url: source.externalUrl ?? null, is_primary: true, status: "active" }]),
-  });
+  const { error: playbackError } = await database.from("playback_sources").upsert({
+    content_id: contentId, provider: source.provider, provider_content_id: source.providerContentId ?? null,
+    embed_url: source.embedUrl ?? null, media_url: source.mediaUrl ?? null, external_url: source.externalUrl ?? null,
+    is_primary: true, status: "active",
+  }, { onConflict: "provider,provider_content_id" });
+  if (playbackError) throw playbackError;
 
-  const rightsParams = new URLSearchParams({ select: "id,status", content_id: `eq.${contentId}`, source_url: `eq.${item.rights.sourceUrl}`, limit: "1" });
-  const existingRights = await request(baseUrl, key, `/rest/v1/rights_records?${rightsParams}`);
+  const { data: existingRights, error: rightsLookupError } = await database.from("rights_records")
+    .select("id,status").eq("content_id", contentId).eq("source_url", item.rights.sourceUrl).maybeSingle();
+  if (rightsLookupError) throw rightsLookupError;
   const rightsPayload = {
-    content_id: contentId,
-    source_url: item.rights.sourceUrl,
-    creator: item.rights.creator,
-    licence_code: item.rights.licenceCode,
-    attribution_text: item.rights.attributionText,
-    jurisdiction_note: item.rights.jurisdictionNote ?? null,
-    ...evidenceFields(item.rights.evidenceReference),
-    takedown_contact: item.rights.takedownContact,
-    expires_at: item.rights.expiresAt ?? null,
-    commercial_use_confirmed: item.rights.commercialUseConfirmed === true,
-    modification_confirmed: item.rights.modificationConfirmed === true,
-    self_hosting_confirmed: item.rights.selfHostingConfirmed === true,
-    embedding_confirmed: item.rights.embeddingConfirmed === true,
-    status: "pending",
-    verified_by: null,
-    verified_at: null,
+    content_id: contentId, source_url: item.rights.sourceUrl, creator: item.rights.creator, licence_code: item.rights.licenceCode,
+    attribution_text: item.rights.attributionText, jurisdiction_note: item.rights.jurisdictionNote ?? null,
+    ...evidenceFields(item.rights.evidenceReference), takedown_contact: item.rights.takedownContact,
+    expires_at: item.rights.expiresAt ?? null, commercial_use_confirmed: item.rights.commercialUseConfirmed === true,
+    modification_confirmed: item.rights.modificationConfirmed === true, self_hosting_confirmed: item.rights.selfHostingConfirmed === true,
+    embedding_confirmed: item.rights.embeddingConfirmed === true, status: "pending", verified_by: null, verified_at: null,
   };
-
-  if (!existingRights?.length) {
-    await request(baseUrl, key, "/rest/v1/rights_records", {
-      method: "POST",
-      headers: { Prefer: "return=minimal" },
-      body: JSON.stringify([rightsPayload]),
-    });
-  } else if (existingRights[0].status !== "approved") {
-    await request(baseUrl, key, `/rest/v1/rights_records?id=eq.${existingRights[0].id}`, {
-      method: "PATCH",
-      headers: { Prefer: "return=minimal" },
-      body: JSON.stringify(rightsPayload),
-    });
+  if (!existingRights) {
+    const { error } = await database.from("rights_records").insert(rightsPayload);
+    if (error) throw error;
+  } else if (existingRights.status !== "approved") {
+    const { error } = await database.from("rights_records").update(rightsPayload).eq("id", existingRights.id);
+    if (error) throw error;
   }
-
-  return {
-    slug: item.slug,
-    contentId,
-    preservedContentStatus: preservedStatus,
-    preservedApprovedRights: existingRights?.[0]?.status === "approved",
-  };
+  return { slug: item.slug, contentId, preservedContentStatus: preservedStatus, preservedApprovedRights: existingRights?.status === "approved" };
 }
 
 async function main() {
@@ -146,11 +90,15 @@ async function main() {
     return;
   }
 
-  const baseUrl = env("NEXT_PUBLIC_SUPABASE_URL");
-  const key = env("SUPABASE_SERVICE_ROLE_KEY");
-  const imported = [];
-  for (const item of items) imported.push(await importItem(baseUrl, key, item));
-  console.log(JSON.stringify({ mode: "commit", imported }, null, 2));
+  const pool = createPool(env("DATABASE_URL"), { max: 4 });
+  const database = createDatabaseClient(pool, { role: "service_role" });
+  try {
+    const imported = [];
+    for (const item of items) imported.push(await importItem(database, item));
+    console.log(JSON.stringify({ mode: "commit", imported }, null, 2));
+  } finally {
+    await pool.end();
+  }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {

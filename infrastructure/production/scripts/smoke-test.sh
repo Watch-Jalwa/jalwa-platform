@@ -2,10 +2,9 @@
 set -Eeuo pipefail
 
 BASE_URL="${1:-https://watch-jalwa.com}"
-API_URL="${2:-https://api.watch-jalwa.com}"
+API_URL="${2:-}" # retained as a positional compatibility argument; the application has no separate API gateway.
 EXPECTED_VERSION="${3:-${EXPECTED_VERSION:-}}"
 BASE_URL="${BASE_URL%/}"
-API_URL="${API_URL%/}"
 WORK_DIR="$(mktemp -d)"
 trap 'rm -rf "$WORK_DIR"' EXIT
 
@@ -44,6 +43,6 @@ check "${BASE_URL}/" "200" "$WORK_DIR/home.html"
 check "${BASE_URL}/pricing" "200" "$WORK_DIR/pricing.html"
 check "${BASE_URL}/support" "200" "$WORK_DIR/support.html"
 check "${BASE_URL}/legal/privacy" "200" "$WORK_DIR/privacy.html"
-check "${API_URL}/auth/v1/health" "200" "$WORK_DIR/auth-health.json"
+check "${BASE_URL}/api/auth/get-session" "200" "$WORK_DIR/auth-session.json"
 
 echo "Jalwa production smoke test passed for version ${version}."

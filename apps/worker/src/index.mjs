@@ -1,5 +1,5 @@
 import { writeFile } from "node:fs/promises";
-import { createClient } from "@supabase/supabase-js";
+import { createDatabaseClient, createPool } from "@jalwa/postgres";
 import { processDrmPackagingJob } from "./drm.mjs";
 import { processMediaJob } from "./media.mjs";
 import { reportWorkerError } from "./observability.mjs";
@@ -24,18 +24,17 @@ export function buildHealth() {
 
 function configured() {
   return Boolean(
-    process.env.NEXT_PUBLIC_SUPABASE_URL
-    && process.env.SUPABASE_SERVICE_ROLE_KEY
+    process.env.DATABASE_URL
     && storageConfigured()
   );
 }
 
 function adminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL,
-    process.env.SUPABASE_SERVICE_ROLE_KEY,
-    { auth: { persistSession: false, autoRefreshToken: false } },
-  );
+  const pool = createPool(process.env.DATABASE_URL, {
+    max: Number(process.env.POSTGRES_POOL_MAX ?? 8),
+    application_name: "jalwa-worker",
+  });
+  return createDatabaseClient(pool, { role: "service_role" });
 }
 
 async function heartbeat(status, details = {}) {
@@ -43,14 +42,14 @@ async function heartbeat(status, details = {}) {
   await writeFile(heartbeatPath, JSON.stringify(payload), { mode: 0o600 });
 }
 
-async function handleSourceDownload(supabase) {
-  const { data, error } = await supabase.rpc("claim_source_download_job", { p_worker_id: workerId });
+async function handleSourceDownload(database) {
+  const { data, error } = await database.rpc("claim_source_download_job", { p_worker_id: workerId });
   if (error) throw error;
   const job = data?.[0];
   if (!job) return false;
 
   try {
-    const result = await processSourceDownloadJob({ supabase, job });
+    const result = await processSourceDownloadJob({ database, job });
     console.log(JSON.stringify({
       event: "source_download_completed",
       jobId: job.id,
@@ -62,7 +61,7 @@ async function handleSourceDownload(supabase) {
     }));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const { data: retry, error: failError } = await supabase.rpc("fail_source_download_job", {
+    const { data: retry, error: failError } = await database.rpc("fail_source_download_job", {
       p_job_id: job.id,
       p_error_message: message,
     });
@@ -80,14 +79,14 @@ async function handleSourceDownload(supabase) {
   return true;
 }
 
-async function handleMedia(supabase) {
-  const { data, error } = await supabase.rpc("claim_media_job", { p_worker_id: workerId });
+async function handleMedia(database) {
+  const { data, error } = await database.rpc("claim_media_job", { p_worker_id: workerId });
   if (error) throw error;
   const job = data?.[0];
   if (!job) return false;
 
   try {
-    const result = await processMediaJob({ supabase, job });
+    const result = await processMediaJob({ database, job });
     console.log(JSON.stringify({
       event: result?.deferred ? "media_job_dispatched" : "media_job_completed",
       jobId: job.id,
@@ -100,14 +99,14 @@ async function handleMedia(supabase) {
     const message = error instanceof Error ? error.message : String(error);
     const cancelled = /cancel|blocked by rights|blocked by source|blocked by content state/i.test(message);
     const retry = !cancelled && job.attempts < job.max_attempts;
-    await supabase.from("media_jobs").update({
+    await database.from("media_jobs").update({
       status: retry ? "queued" : "failed",
       available_at: new Date(Date.now() + Math.min(job.attempts * 60000, 300000)).toISOString(),
       error_message: message.slice(0, 4000),
       locked_at: null,
       locked_by: null,
     }).eq("id", job.id);
-    await supabase.from("media_assets").update({
+    await database.from("media_assets").update({
       status: retry ? "queued" : "failed",
       is_available: false,
     }).eq("id", job.media_asset_id);
@@ -125,15 +124,15 @@ async function handleMedia(supabase) {
   return true;
 }
 
-async function handleDrm(supabase) {
+async function handleDrm(database) {
   if (process.env.ENABLE_WEB_DRM !== "true") return false;
-  const { data, error } = await supabase.rpc("claim_drm_packaging_job", { p_worker_id: workerId });
+  const { data, error } = await database.rpc("claim_drm_packaging_job", { p_worker_id: workerId });
   if (error) throw error;
   const job = data?.[0];
   if (!job) return false;
 
   try {
-    await processDrmPackagingJob({ supabase, job });
+    await processDrmPackagingJob({ database, job });
     console.log(JSON.stringify({
       event: "drm_packaging_completed",
       jobId: job.id,
@@ -143,14 +142,14 @@ async function handleDrm(supabase) {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     const retry = job.attempts < job.max_attempts;
-    await supabase.from("drm_packaging_jobs").update({
+    await database.from("drm_packaging_jobs").update({
       status: retry ? "queued" : "failed",
       available_at: new Date(Date.now() + Math.min(job.attempts * 60000, 300000)).toISOString(),
       error_message: message.slice(0, 4000),
       locked_at: null,
       locked_by: null,
     }).eq("id", job.id);
-    await supabase.from("drm_assets").update({ status: retry ? "pending" : "failed" }).eq("id", job.drm_asset_id);
+    await database.from("drm_assets").update({ status: retry ? "pending" : "failed" }).eq("id", job.drm_asset_id);
     await reportWorkerError(error, {
       workerId,
       mechanism: "drm_packaging_job",
@@ -175,10 +174,10 @@ async function tick() {
       console.log(JSON.stringify({ ...buildHealth(), mode: "idle", at: new Date().toISOString() }));
       return;
     }
-    const supabase = adminClient();
-    const sourceDownloadClaimed = await handleSourceDownload(supabase);
-    const drmClaimed = await handleDrm(supabase);
-    const mediaClaimed = await handleMedia(supabase);
+    const database = adminClient();
+    const sourceDownloadClaimed = await handleSourceDownload(database);
+    const drmClaimed = await handleDrm(database);
+    const mediaClaimed = await handleMedia(database);
     await heartbeat("ready", { sourceDownloadClaimed, drmClaimed, mediaClaimed });
   } finally {
     running = false;

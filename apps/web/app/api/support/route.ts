@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/database/admin";
+import { createClient } from "@/lib/database/server";
 import { requestRateKey } from "@/lib/security/request-key";
 
 export const runtime = "nodejs";
@@ -23,8 +23,8 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Enter a valid email." }, { status: 400 });
   }
 
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
+  const database = await createClient();
+  const { data: { user } } = await database.auth.getUser();
   if (!user && !email) return NextResponse.json({ error: "Email is required when signed out." }, { status: 400 });
 
   const admin = createAdminClient();

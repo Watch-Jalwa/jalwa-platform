@@ -8,14 +8,14 @@ export const metadata = { title: "Community moderation" };
 export const dynamic = "force-dynamic";
 
 export default async function ModerationPage({ searchParams }: { searchParams: SearchParams }) {
-  const { supabase, profile } = await requireStaff();
+  const { database, profile } = await requireStaff();
   if (!["editor","admin"].includes(profile.role)) redirect("/studio");
   const params = await searchParams;
   const error = typeof params.error === "string" ? params.error : null;
   const [{ data: comments }, { data: reports }, { data: settings }] = await Promise.all([
-    supabase.from("comments").select("id,body,status,moderation_reason,created_at,user_id,profiles(display_name),content_items(id,slug,title_en)").in("status", ["pending","hidden"]).order("created_at").limit(100),
-    supabase.from("content_reports").select("id,reason,details,status,created_at,comment_id,content_id,profiles!content_reports_reporter_id_fkey(display_name),comments(body),content_items(slug,title_en)").in("status", ["open","reviewing"]).order("created_at").limit(100),
-    supabase.from("content_comment_settings").select("content_id,comments_enabled,replies_enabled,approval_required,slow_mode_seconds,content_items(slug,title_en)").order("updated_at", { ascending: false }).limit(50),
+    database.from("comments").select("id,body,status,moderation_reason,created_at,user_id,profiles(display_name),content_items(id,slug,title_en)").in("status", ["pending","hidden"]).order("created_at").limit(100),
+    database.from("content_reports").select("id,reason,details,status,created_at,comment_id,content_id,profiles!content_reports_reporter_id_fkey(display_name),comments(body),content_items(slug,title_en)").in("status", ["open","reviewing"]).order("created_at").limit(100),
+    database.from("content_comment_settings").select("content_id,comments_enabled,replies_enabled,approval_required,slow_mode_seconds,content_items(slug,title_en)").order("updated_at", { ascending: false }).limit(50),
   ]);
 
   return <div className="studio-moderation">

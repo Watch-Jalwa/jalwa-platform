@@ -19,9 +19,9 @@ export default async function StudioContentPage({ searchParams }: { searchParams
   const status = typeof params.status === "string" ? params.status : "";
   const rightsStatus = typeof params.rights === "string" ? params.rights : "";
   const view = typeof params.view === "string" ? params.view : "";
-  const { supabase } = await requireStaff();
+  const { database } = await requireStaff();
 
-  const { data: items } = await supabase
+  const { data: items } = await database
     .from("content_items")
     .select("id,slug,title_en,status,content_type,access_level,hosting_mode,updated_at")
     .order("updated_at", { ascending: false })
@@ -29,7 +29,7 @@ export default async function StudioContentPage({ searchParams }: { searchParams
 
   const contentIds = (items ?? []).map((item) => item.id);
   const { data: rightsRows } = contentIds.length
-    ? await supabase.from("rights_operations").select("content_id,status,expires_at,creator,is_expired,expires_within_30_days").in("content_id", contentIds)
+    ? await database.from("rights_operations").select("content_id,status,expires_at,creator,is_expired,expires_within_30_days").in("content_id", contentIds)
     : { data: [] as RightsSummary[] };
 
   const rightsByContent = new Map<string, RightsSummary>();

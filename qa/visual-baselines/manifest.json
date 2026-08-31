@@ -1,0 +1,5 @@
+{
+  "schema_version": 1,
+  "policy": "Human-approved hashes only. Never update automatically from CI.",
+  "baselines": {}
+}

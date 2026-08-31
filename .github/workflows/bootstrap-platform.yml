@@ -137,7 +137,6 @@ jobs:
           }
           upsert_record "$DOMAIN"
           upsert_record "www.$DOMAIN"
-          upsert_record "api.$DOMAIN"
           curl -fsS "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records?name=media.$DOMAIN" \
             -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | jq -r '.result[].id' | while read -r record_id; do
               curl -fsS -X DELETE "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records/$record_id" \
@@ -154,14 +153,12 @@ jobs:
           gh variable set PRODUCTION_HOST --env production --body "$HOST"
           gh variable set PRODUCTION_USER --env production --body "jalwa"
           gh variable set PRODUCTION_DOMAIN --env production --body "$DOMAIN"
-          gh variable set NEXT_PUBLIC_SUPABASE_URL --env production --body "https://api.$DOMAIN"
           gh variable set PRODUCTION_SSH_KNOWN_HOSTS --env production --body "$(cat /tmp/production-known-hosts)"
           {
             echo '### Platform bootstrap complete'
             echo "- DigitalOcean host: $HOST"
             echo "- SSH Ed25519 fingerprint: $HOST_FINGERPRINT"
-            echo "- Self-hosted Supabase API: https://api.$DOMAIN"
             echo '- R2 buckets and Cloudflare DNS configured'
             echo '- Production SSH host identity pinned for subsequent deploys'
-            echo '- Run scripts/generate-supabase-secrets.mjs and store every generated value as a production environment secret'
+            echo '- Configure PostgreSQL, Better Auth and SMTP production secrets before deployment'
           } >> "$GITHUB_STEP_SUMMARY"

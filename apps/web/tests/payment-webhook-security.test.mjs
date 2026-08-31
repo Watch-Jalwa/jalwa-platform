@@ -4,7 +4,7 @@ import test from "node:test";
 
 const routeUrl = new URL("../app/api/webhooks/payments/[provider]/route.ts", import.meta.url);
 const webhookUrl = new URL("../lib/payments/webhook.ts", import.meta.url);
-const migrationUrl = new URL("../../../supabase/migrations/202607310011_payment_replay_integrity.sql", import.meta.url);
+const migrationUrl = new URL("../../../database/migrations/202607310011_payment_replay_integrity.sql", import.meta.url);
 
 async function text(url) { return readFile(url, "utf8"); }
 

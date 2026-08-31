@@ -19,7 +19,7 @@ export async function POST(request: Request) {
   const validation = validateMediaUpload({ mimeType: body.mimeType, sizeBytes: body.sizeBytes });
   if (!validation.ok) return NextResponse.json({ error: validation.error }, { status: 400 });
 
-  const { data: content } = await context.supabase
+  const { data: content } = await context.database
     .from("content_items")
     .select("id,content_type,hosting_mode,status")
     .eq("id", body.contentId)
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   const storageKey = `incoming/${body.contentId}/${assetId}/source.${extension}`;
   const pipeline = selectPipeline({ contentType: content.content_type, durationSeconds: body.durationSeconds });
 
-  const { error } = await context.supabase.from("media_assets").insert({
+  const { error } = await context.database.from("media_assets").insert({
     id: assetId,
     content_id: body.contentId,
     kind: "source_video",
@@ -52,7 +52,7 @@ export async function POST(request: Request) {
     const uploadUrl = await createUploadUrl({ key: storageKey, contentType: body.mimeType, sizeBytes: body.sizeBytes });
     return NextResponse.json({ assetId, uploadUrl, storageKey, pipeline });
   } catch (error) {
-    await context.supabase.from("media_assets").update({ status: "failed", metadata: { upload_error: String(error) } }).eq("id", assetId);
+    await context.database.from("media_assets").update({ status: "failed", metadata: { upload_error: String(error) } }).eq("id", assetId);
     return NextResponse.json({ error: "Media storage is not configured." }, { status: 503 });
   }
 }

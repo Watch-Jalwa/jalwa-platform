@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-initial="supabase/migrations/202608010002_approved_public_domain_live_inventory.sql"
-institutional="supabase/migrations/202608010003_institutional_public_affairs_live_sources.sql"
-open_government="supabase/migrations/202608010004_open_government_live_expansion.sql"
-manifest="supabase/migrations/202608010005_approved_live_catalogue_manifest.sql"
+initial="database/migrations/202608010002_approved_public_domain_live_inventory.sql"
+institutional="database/migrations/202608010003_institutional_public_affairs_live_sources.sql"
+open_government="database/migrations/202608010004_open_government_live_expansion.sql"
+manifest="database/migrations/202608010005_approved_live_catalogue_manifest.sql"
 state="scripts/set-public-domain-live-catalogue-state.sql"
 seed="scripts/seed-public-domain-live-sources.sql"
 workflow=".github/workflows/set-public-domain-live-sources.yml"
