@@ -42,7 +42,8 @@ variable "ssh_public_key" {
 
 variable "admin_cidrs" {
   type        = list(string)
-  description = "CIDRs allowed to SSH, for example your office or VPN IP /32."
+  default     = []
+  description = "Optional persistent CIDRs allowed to SSH. Leave empty to permit SSH only through temporary deployment-runner firewall rules."
 }
 
 variable "enable_backups" {
