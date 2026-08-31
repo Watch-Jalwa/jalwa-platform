@@ -1,0 +1,72 @@
+name: Apply verified PostgreSQL rebuild
+
+on:
+  push:
+    branches:
+      - chore/permanent-staging-certification
+
+permissions:
+  contents: write
+
+concurrency:
+  group: jalwa-smart-rebuild
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: chore/permanent-staging-certification
+          fetch-depth: 0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Apply PostgreSQL and Better Auth rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${GITHUB_SHA}"
+
+          cat .github/jalwa-smart.part{00..07} > /tmp/jalwa-smart.b64
+          test "$(wc -c < /tmp/jalwa-smart.b64)" -eq 94088
+          base64 --decode /tmp/jalwa-smart.b64 > /tmp/jalwa-smart.patch.xz
+          xz --test /tmp/jalwa-smart.patch.xz
+          xz --decompress --stdout /tmp/jalwa-smart.patch.xz > /tmp/jalwa-smart.patch
+
+          test -d supabase
+          test ! -e database
+          mv supabase database
+          rm -f .github/refactor-patch.part00 .github/refactor-patch.part01 .github/refactor-patch.part02
+          rm -f .github/refactor-postgres.part000
+          rm -f infrastructure/production/scripts/prepare-supabase.sh
+          rm -f scripts/generate-supabase-secrets.mjs
+
+          git apply --check /tmp/jalwa-smart.patch
+          git apply /tmp/jalwa-smart.patch
+
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm test --workspace @jalwa/web
+          node --test apps/web/tests/no-supabase-runtime.test.mjs
+
+          rm -f .github/jalwa-smart.part*
+          rm -f .github/final-refactor.part*
+          rm -f .github/refactor-patch.part* .github/refactor-postgres.part*
+          rm -f .github/workflows/tmp-apply-smart-rebuild.yml
+          rm -f .github/workflows/tmp-source-bundle.yml
+          rm -f .github/workflows/tmp-lock-bundle.yml
+          rm -f .github/workflows/dev-source-snapshot.yml
+          rm -f .github/workflows/tmp-apply-postgres-only.yml
+          rm -f .github/workflows/tmp-apply-postgres-refactor.yml
+
+          git add -A
+          git diff --cached --check
+          git config user.name 'jalwa-release-bot'
+          git config user.email 'jalwa-release-bot@users.noreply.github.com'
+          git commit -m 'Complete PostgreSQL and Better Auth staging refactor'
+          git push origin HEAD:chore/permanent-staging-certification
