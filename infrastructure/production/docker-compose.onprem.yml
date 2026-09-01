@@ -1,0 +1,8 @@
+services:
+  web:
+    ports:
+      - "127.0.0.1:${JALWA_WEB_PORT:-3000}:3000"
+
+  caddy:
+    profiles:
+      - managed-proxy
