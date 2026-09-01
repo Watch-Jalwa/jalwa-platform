@@ -12,7 +12,7 @@
     "build": "node --check src/index.mjs && node --check src/media.mjs && node --check src/storage.mjs && node --check src/source-download.mjs && node --check src/drm.mjs"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.850.0",
+    "@aws-sdk/client-s3": "^3.1121.0",
     "@jalwa/postgres": "file:../../packages/postgres"
   }
 }
