@@ -41,7 +41,7 @@ test("staging deploy is immutable, pinned and cannot enable production-only feat
   assert.match(source, /NEXT_PUBLIC_ENABLE_LIVE_STREAMING=false/);
   assert.match(source, /NEXT_PUBLIC_ENABLE_WEB_DRM=false/);
   assert.match(source, /BACKUP_AGE_IDENTITY/);
-  assert.match(source, /\/opt\/jalwa\/secrets\/backup-age\.key/);
+  assert.match(source, /\$APP_DIR\/secrets\/backup-age\.key/);
   assert.match(source, /STAGING_SSH_KNOWN_HOSTS/);
   assert.match(source, /STAGING_SSH_KEY/);
   assert.match(source, /StrictHostKeyChecking=yes/);
