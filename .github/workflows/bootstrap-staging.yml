@@ -10,14 +10,15 @@ jobs:
   retired:
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    environment: staging
     steps:
       - name: Explain active staging contract
         run: |
           {
             echo '### No infrastructure was changed'
-            echo 'The DigitalOcean staging bootstrap is retired.'
+            echo 'The former cloud-host bootstrap is retired.'
             echo 'Jalwa staging uses the existing Codistan on-prem server at jalwa-platform.codistan.org.'
             echo 'Use **Deploy staging** after the pinned staging SSH key/known-host entry are configured.'
-            echo 'PostgreSQL is self-hosted on that server; Supabase and DigitalOcean are not part of the active staging runtime.'
+            echo 'PostgreSQL is self-hosted on that server; no retired backend gateway is part of the active staging runtime.'
             echo 'Cloudflare is used for private R2 object storage; R2 playback is served by the same-origin application media gateway.'
           } >> "$GITHUB_STEP_SUMMARY"
