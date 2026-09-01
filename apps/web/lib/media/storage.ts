@@ -1,5 +1,5 @@
 import { createHmac } from "node:crypto";
-import { HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, HeadObjectCommand, PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 type BucketKind = "incoming" | "processed";
@@ -93,6 +93,16 @@ export function verifyUploadedObject(key: string) {
 
 export function verifyProcessedObject(key: string) {
   return headObject("processed", key);
+}
+
+export async function getProcessedObject(key: string, range?: string | null) {
+  if (mediaBackend() !== "r2") throw new Error("Direct processed-object delivery is available only for R2.");
+  const { bucket } = r2Config("processed");
+  return r2Client("processed").send(new GetObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ...(range ? { Range: range } : {}),
+  }));
 }
 
 export async function invalidateProcessedMedia(entries: { contentId: string; assetId: string }[]) {
