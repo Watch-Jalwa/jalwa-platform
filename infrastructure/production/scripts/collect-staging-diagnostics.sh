@@ -15,21 +15,19 @@ section "Web health from inside container"
 "${compose[@]}" exec -T web sh -lc 'wget -S -O- http://127.0.0.1:3000/api/health 2>&1' || true
 
 section "PostgreSQL runtime checks"
-"${compose[@]}" exec -T postgres sh -lc '
-  psql -X -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" <<"SQL"
+"${compose[@]}" exec -T postgres psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL' || true
 select current_database() as database, current_user as login_role, version();
-select extname, extversion from pg_extension where extname in (''vector'',''pg_trgm'') order by extname;
-select rolname from pg_roles where rolname in (''anon'',''authenticated'',''service_role'',''authenticator'') order by rolname;
+select extname, extversion from pg_extension where extname in ('vector','pg_trgm') order by extname;
+select rolname from pg_roles where rolname in ('anon','authenticated','service_role','authenticator') order by rolname;
 select
-  has_schema_privilege(''anon'',''extensions'',''USAGE'') as anon_extensions_usage,
-  has_schema_privilege(''authenticated'',''extensions'',''USAGE'') as authenticated_extensions_usage,
-  has_schema_privilege(''service_role'',''extensions'',''USAGE'') as service_role_extensions_usage;
+  has_schema_privilege('anon','extensions','USAGE') as anon_extensions_usage,
+  has_schema_privilege('authenticated','extensions','USAGE') as authenticated_extensions_usage,
+  has_schema_privilege('service_role','extensions','USAGE') as service_role_extensions_usage;
 set role anon;
 select count(*) as active_categories from public.categories where is_active;
 select count(*) as visible_catalogue_items from public.search_catalogue(null,null,40);
 reset role;
 SQL
-' || true
 
 section "Web logs (last 200 lines)"
 "${compose[@]}" logs --no-color --tail=200 web 2>&1 || true
