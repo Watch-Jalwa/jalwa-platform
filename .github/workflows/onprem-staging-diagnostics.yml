@@ -16,7 +16,7 @@ jobs:
     timeout-minutes: 15
     environment: staging
     env:
-      HOST: ${{ vars.STAGING_HOST }}
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
       USER: ${{ vars.STAGING_USER || 'jalwa' }}
       APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/jalwa' }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
