@@ -25,12 +25,19 @@ async function filesUnder(relative) {
   return files;
 }
 
+function sourceForDependencyScan(relative, source) {
+  if (relative !== ".github/workflows/deploy-staging.yml") return source;
+  const guard = /^\s*! grep -qE '\^SUPABASE_\|\^NEXT_PUBLIC_SUPABASE_' "\$env_file" \|\| \{ echo 'Legacy Supabase values remain in \.env\.staging\.' >&2; exit 1; \}\s*$/m;
+  assert.match(source, guard, "The only permitted legacy-name reference must be a fail-closed staging environment rejection guard.");
+  return source.replace(guard, "");
+}
+
 test("active runtime, deployment and QA code has no Supabase dependency", async () => {
   const offenders = [];
   for (const directory of roots) {
     for (const relative of await filesUnder(directory)) {
       if (ignored.has(relative)) continue;
-      const source = await readFile(path.join(root, relative), "utf8");
+      const source = sourceForDependencyScan(relative, await readFile(path.join(root, relative), "utf8"));
       if (/supabase|@supabase/i.test(source)) offenders.push(relative);
     }
   }
