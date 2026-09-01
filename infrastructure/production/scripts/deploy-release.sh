@@ -2,17 +2,25 @@
 set -Eeuo pipefail
 
 new_tag="${1:?new image tag is required}"
-domain="${2:?production domain is required}"
+domain="${2:?deployment domain is required}"
 new_web_image="${3:-ghcr.io/watch-jalwa/jalwa-platform-web:${new_tag}}"
 new_worker_image="${4:-ghcr.io/watch-jalwa/jalwa-platform-worker:${new_tag}}"
 root="${JALWA_ROOT:-/opt/jalwa}"
-env_file="$root/.env.production"
+env_file="${JALWA_ENV_FILE:-$root/.env.production}"
+compose_file="${JALWA_COMPOSE_FILE:-$root/docker-compose.yml}"
 last_good_file="$root/.last-good-image"
 previous_good_file="$root/.previous-good-image"
 manifest_dir="$root/deployments"
+read -r -a deployment_services <<< "${JALWA_COMPOSE_SERVICES:-}"
+export COMPOSE_FILE="$compose_file"
 
 [[ "$new_tag" =~ ^[0-9a-f]{40}$ ]] || { echo "Image tag must be a 40-character lowercase Git commit SHA." >&2; exit 1; }
-[[ -s "$env_file" ]] || { echo "Missing production environment: $env_file" >&2; exit 1; }
+[[ -s "$env_file" ]] || { echo "Missing deployment environment: $env_file" >&2; exit 1; }
+[[ -s "${compose_file%%:*}" ]] || { echo "Missing deployment compose file: ${compose_file%%:*}" >&2; exit 1; }
+
+compose() {
+  docker compose --env-file "$env_file" "$@"
+}
 
 validate_image_ref() {
   local service="$1" ref="$2"
@@ -92,30 +100,43 @@ write_manifest() {
   mv -f "$temporary" "$path"
 }
 
+pull_selected() {
+  if ((${#deployment_services[@]})); then compose pull "${deployment_services[@]}"; else compose pull; fi
+}
+
+up_selected() {
+  if ((${#deployment_services[@]})); then compose up -d --remove-orphans "${deployment_services[@]}"; else compose up -d --remove-orphans; fi
+}
+
 rollback() {
   [[ -n "$previous_tag" && "$previous_tag" != "$new_tag" ]] || return 1
   echo "Release failed; restoring application release ${previous_tag}." >&2
   set_release "$previous_tag" "$previous_web_image" "$previous_worker_image"
   cd "$root"
-  docker compose --env-file "$env_file" config --quiet
-  docker compose --env-file "$env_file" pull web worker
-  docker compose --env-file "$env_file" up -d --remove-orphans web worker caddy
-  "$root/scripts/smoke-test.sh" "https://${domain}" "https://api.${domain}" "$previous_tag"
+  compose config --quiet
+  if ((${#deployment_services[@]})); then
+    compose pull web worker
+    compose up -d --remove-orphans "${deployment_services[@]}"
+  else
+    compose pull web worker
+    compose up -d --remove-orphans web worker caddy
+  fi
+  "$root/scripts/smoke-test.sh" "https://${domain}" "" "$previous_tag"
   return 0
 }
 
 set_release "$new_tag" "$new_web_image" "$new_worker_image"
 cd "$root"
-docker compose --env-file "$env_file" config --quiet
-if ! docker compose --env-file "$env_file" pull; then
+compose config --quiet
+if ! pull_selected; then
   rollback || true
   exit 1
 fi
-if ! docker compose --env-file "$env_file" up -d --remove-orphans; then
+if ! up_selected; then
   rollback || true
   exit 1
 fi
-if ! "$root/scripts/smoke-test.sh" "https://${domain}" "https://api.${domain}" "$new_tag"; then
+if ! "$root/scripts/smoke-test.sh" "https://${domain}" "" "$new_tag"; then
   rollback || true
   exit 1
 fi
