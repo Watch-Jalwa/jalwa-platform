@@ -4,7 +4,7 @@ services:
     container_name: jalwa-postgres
     restart: unless-stopped
     env_file:
-      - path: .env.production
+      - path: ${JALWA_ENV_FILE:-.env.production}
         required: true
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-postgres}
@@ -37,7 +37,7 @@ services:
       postgres:
         condition: service_healthy
     env_file:
-      - path: .env.production
+      - path: ${JALWA_ENV_FILE:-.env.production}
         required: true
       - path: .env.media
         required: false
@@ -74,7 +74,7 @@ services:
       postgres:
         condition: service_healthy
     env_file:
-      - path: .env.production
+      - path: ${JALWA_ENV_FILE:-.env.production}
         required: true
       - path: .env.media
         required: false
@@ -104,7 +104,7 @@ services:
     image: caddy:2-alpine
     restart: unless-stopped
     init: true
-    env_file: .env.production
+    env_file: ${JALWA_ENV_FILE:-.env.production}
     depends_on:
       web:
         condition: service_healthy
