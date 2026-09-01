@@ -2,13 +2,16 @@
 set -Eeuo pipefail
 
 APP_DIR="${APP_DIR:-/opt/jalwa}"
-ENV_FILE="${APP_DIR}/.env.production"
+ENV_FILE="${JALWA_ENV_FILE:-${APP_DIR}/.env.production}"
+COMPOSE_FILE_VALUE="${JALWA_COMPOSE_FILE:-${APP_DIR}/docker-compose.yml}"
 BACKUP_DIR="${BACKUP_DIR:-${APP_DIR}/backups/postgres}"
 BASE_URL="${1:-${APP_URL:-https://watch-jalwa.com}}"
 API_URL="${2:-}" # positional compatibility only; no separate data/auth gateway exists.
 MAX_DISK_PERCENT="${MAX_DISK_PERCENT:-85}"
 MAX_BACKUP_AGE_SECONDS="${MAX_BACKUP_AGE_SECONDS:-108000}"
 MAX_RESTORE_DRILL_AGE_SECONDS="${MAX_RESTORE_DRILL_AGE_SECONDS:-691200}"
+read -r -a expected_services <<< "${JALWA_EXPECT_SERVICES:-postgres web worker caddy}"
+export COMPOSE_FILE="$COMPOSE_FILE_VALUE"
 
 fail() { printf 'FAIL %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS %s\n' "$*"; }
@@ -33,7 +36,7 @@ cd "$APP_DIR"
 docker compose --env-file "$ENV_FILE" config --quiet
 pass "Compose and public smoke checks"
 
-for service in postgres web worker caddy; do
+for service in "${expected_services[@]}"; do
   id="$(docker compose --env-file "$ENV_FILE" ps -q "$service")"
   [[ -n "$id" ]] || fail "Missing app service: $service"
   [[ "$(docker inspect -f '{{.State.Running}}' "$id")" == "true" ]] || fail "Service not running: $service"
