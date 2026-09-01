@@ -14,6 +14,9 @@ BEGIN
   IF to_regprocedure('public.process_payment_lifecycle_event(uuid,public.payment_provider,text,text,text,integer,text,text,text)') IS NULL THEN
     RAISE EXCEPTION 'payment lifecycle function is missing';
   END IF;
+  IF NOT has_schema_privilege('anon', 'extensions', 'USAGE') OR NOT has_schema_privilege('authenticated', 'extensions', 'USAGE') OR NOT has_schema_privilege('service_role', 'extensions', 'USAGE') THEN
+    RAISE EXCEPTION 'runtime roles cannot use the extensions schema';
+  END IF;
   IF has_function_privilege('authenticated', 'public.claim_media_job(text)', 'EXECUTE') THEN
     RAISE EXCEPTION 'authenticated role can execute claim_media_job';
   END IF;
@@ -55,3 +58,9 @@ BEGIN
   END IF;
 END
 $$;
+
+-- Exercise the same anonymous catalogue path used by the public web runtime.
+-- This catches missing pg_trgm/vector extension-schema privileges and RPC grants.
+SET ROLE anon;
+SELECT count(*) AS public_catalogue_probe FROM public.search_catalogue(NULL, NULL, 1);
+RESET ROLE;
