@@ -11,8 +11,17 @@ section() { printf '\n===== %s =====\n' "$1"; }
 section "Compose services"
 "${compose[@]}" ps || true
 
-section "Web health from inside container"
+section "Web liveness from inside container"
 "${compose[@]}" exec -T web sh -lc 'wget -S -O- http://127.0.0.1:3000/api/health 2>&1' || true
+
+section "Web readiness from inside container"
+"${compose[@]}" exec -T web sh -lc '
+  if [ -n "${OPERATIONS_DIAGNOSTICS_SECRET:-}" ]; then
+    wget -S -O- --header="x-jalwa-operations-token: ${OPERATIONS_DIAGNOSTICS_SECRET}" http://127.0.0.1:3000/api/readiness 2>&1
+  else
+    wget -S -O- http://127.0.0.1:3000/api/readiness 2>&1
+  fi
+' || true
 
 section "PostgreSQL runtime checks"
 "${compose[@]}" exec -T postgres psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres <<'SQL' || true
