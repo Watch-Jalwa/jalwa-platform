@@ -1,0 +1,41 @@
+name: Temporary patch on-prem certification defaults
+
+on:
+  push:
+    branches:
+      - ops/onprem-cicd-media-production-20260901
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    if: github.actor != 'github-actions[bot]'
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ops/onprem-cicd-media-production-20260901
+          fetch-depth: 0
+      - name: Apply on-prem defaults
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/staging-acceptance.yml')
+          text = path.read_text()
+          dollar = '$'
+          host = dollar + '{{ vars.STAGING_HOST }}'
+          host_default = dollar + "{{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}"
+          domain = dollar + '{{ vars.STAGING_DOMAIN }}'
+          domain_default = dollar + "{{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}"
+          updated = text.replace(host, host_default).replace(domain, domain_default)
+          if updated == text:
+              raise SystemExit(0)
+          path.write_text(updated)
+          PY
+          if git diff --quiet; then exit 0; fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/workflows/staging-acceptance.yml
+          git commit -m 'Default staging certification to on-prem host'
+          git push origin HEAD:ops/onprem-cicd-media-production-20260901
