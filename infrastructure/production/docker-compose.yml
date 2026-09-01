@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:17-alpine
+    image: ${POSTGRES_IMAGE:-pgvector/pgvector:pg17}
     container_name: jalwa-postgres
     restart: unless-stopped
     env_file:
