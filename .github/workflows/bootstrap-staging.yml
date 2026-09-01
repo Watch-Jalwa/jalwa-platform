@@ -1,206 +1,23 @@
-name: Bootstrap staging
+name: Bootstrap staging (retired DigitalOcean path)
 
 on:
   workflow_dispatch:
-    inputs:
-      digitalocean_region:
-        description: DigitalOcean region slug
-        required: true
-        default: blr1
-      admin_cidr:
-        description: Optional persistent SSH CIDR for break-glass access; leave empty for deployment-runner-only SSH
-        required: false
-        default: ''
-      domain:
-        description: Staging domain
-        required: true
-        default: staging.watch-jalwa.com
-      droplet_size:
-        description: DigitalOcean size for the combined staging stack
-        required: true
-        default: s-4vcpu-8gb
 
 permissions:
   contents: read
-  actions: write
-
-concurrency:
-  group: jalwa-staging-bootstrap
-  cancel-in-progress: false
 
 jobs:
-  bootstrap:
+  retired:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    environment: staging
-    env:
-      DIGITALOCEAN_TOKEN: ${{ secrets.DIGITALOCEAN_TOKEN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
-      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-      ENV_ADMIN_TOKEN: ${{ secrets.GITHUB_ENV_ADMIN_TOKEN }}
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e
-
-      - name: Restrict bootstrap to main
-        run: test "$GITHUB_REF" = refs/heads/main
-
-      - name: Validate required staging connections
+      - name: Explain active staging contract
         run: |
-          set -euo pipefail
-          for value in DIGITALOCEAN_TOKEN CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID CLOUDFLARE_ZONE_ID AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY ENV_ADMIN_TOKEN; do
-            test -n "${!value:-}" || { echo "Missing staging value $value" >&2; exit 1; }
-          done
-
-      - name: Install bootstrap secret tooling
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq age >/dev/null
-
-      - name: Generate missing Jalwa-owned staging secrets
-        id: generated
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_ENV_ADMIN_TOKEN }}
-          DEPLOY_SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
-        run: bash scripts/seed-environment-secrets.sh staging STAGING_SSH_KEY true
-
-      - name: Create isolated staging R2 buckets
-        run: |
-          set -euo pipefail
-          for bucket in jalwa-terraform-state jalwa-staging-incoming jalwa-staging-media jalwa-staging-rights-evidence jalwa-staging-backups; do
-            status=$(curl -sS -o /tmp/r2.json -w '%{http_code}' \
-              -X POST "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/r2/buckets" \
-              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-              -H 'Content-Type: application/json' \
-              --data "{\"name\":\"$bucket\"}")
-            if [[ "$status" != "200" && "$status" != "201" && "$status" != "409" ]]; then
-              cat /tmp/r2.json >&2
-              exit 1
-            fi
-          done
-
-      - name: Provision isolated staging host
-        id: terraform
-        env:
-          SSH_PUBLIC_KEY: ${{ steps.generated.outputs.ssh_public_key }}
-          REGION: ${{ inputs.digitalocean_region }}
-          ADMIN_CIDR: ${{ inputs.admin_cidr }}
-          DOMAIN: ${{ inputs.domain }}
-          DROPLET_SIZE: ${{ inputs.droplet_size }}
-        run: |
-          set -euo pipefail
-          test -n "$SSH_PUBLIC_KEY"
-          admin_cidrs='[]'
-          if [[ -n "$ADMIN_CIDR" ]]; then
-            python - "$ADMIN_CIDR" <<'PY'
-          import ipaddress, sys
-          network = ipaddress.ip_network(sys.argv[1], strict=False)
-          if network.version != 4:
-              raise SystemExit('admin_cidr must be an IPv4 CIDR')
-          PY
-            admin_cidrs="$(jq -nc --arg cidr "$ADMIN_CIDR" '[$cidr]')"
-          fi
-          cd infrastructure/digitalocean
-          terraform init -reconfigure \
-            -backend-config="bucket=jalwa-terraform-state" \
-            -backend-config="key=staging/digitalocean.tfstate" \
-            -backend-config="region=auto" \
-            -backend-config="skip_credentials_validation=true" \
-            -backend-config="skip_metadata_api_check=true" \
-            -backend-config="skip_region_validation=true" \
-            -backend-config="skip_requesting_account_id=true" \
-            -backend-config="skip_s3_checksum=true" \
-            -backend-config="use_path_style=true" \
-            -backend-config="endpoints={s3=\"https://$CLOUDFLARE_ACCOUNT_ID.r2.cloudflarestorage.com\"}"
-          terraform apply -auto-approve \
-            -var="digitalocean_token=$DIGITALOCEAN_TOKEN" \
-            -var="project_name=jalwa-staging" \
-            -var="deployment_environment=staging" \
-            -var="region=$REGION" \
-            -var="droplet_size=$DROPLET_SIZE" \
-            -var="ssh_public_key=$SSH_PUBLIC_KEY" \
-            -var="admin_cidrs=$admin_cidrs" \
-            -var="domain=$DOMAIN"
-          host=$(terraform output -raw ipv4_address)
-          firewall_id=$(terraform output -raw firewall_id)
-          echo "host=$host" >> "$GITHUB_OUTPUT"
-          echo "firewall_id=$firewall_id" >> "$GITHUB_OUTPUT"
-
-      - name: Pin staging SSH host identity
-        id: hostkey
-        env:
-          HOST: ${{ steps.terraform.outputs.host }}
-          FIREWALL_ID: ${{ steps.terraform.outputs.firewall_id }}
-        run: |
-          set -euo pipefail
-          bash scripts/with-digitalocean-ssh-access.sh "$FIREWALL_ID" bash -s <<'SSHACCESS'
-          set -Eeuo pipefail
-          for attempt in $(seq 1 30); do
-            if key=$(ssh-keyscan -T 5 -t ed25519 "$HOST" 2>/dev/null) && [[ -n "$key" ]]; then break; fi
-            sleep 10
-          done
-          [[ -n "${key:-}" ]] || { echo 'Could not read the staging host Ed25519 key.' >&2; exit 1; }
-          printf '%s\n' "$key" > /tmp/staging-known-hosts
-          SSHACCESS
-          fingerprint=$(ssh-keygen -lf /tmp/staging-known-hosts | awk '{print $2}')
-          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
-
-      - name: Configure staging DNS
-        env:
-          HOST: ${{ steps.terraform.outputs.host }}
-          DOMAIN: ${{ inputs.domain }}
-        run: |
-          set -euo pipefail
-          upsert_record() {
-            local name="$1" existing body
-            existing=$(curl -fsS "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records?type=A&name=$name" \
-              -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | jq -r '.result[0].id // empty')
-            body=$(jq -nc --arg type A --arg name "$name" --arg content "$HOST" '{type:$type,name:$name,content:$content,ttl:1,proxied:true}')
-            if [[ -n "$existing" ]]; then
-              curl -fsS -X PUT "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records/$existing" \
-                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'Content-Type: application/json' --data "$body" >/dev/null
-            else
-              curl -fsS -X POST "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records" \
-                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" -H 'Content-Type: application/json' --data "$body" >/dev/null
-            fi
-          }
-          upsert_record "$DOMAIN"
-          upsert_record "api.$DOMAIN"
-          curl -fsS "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records?name=media.$DOMAIN" \
-            -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" | jq -r '.result[].id' | while read -r record_id; do
-              curl -fsS -X DELETE "https://api.cloudflare.com/client/v4/zones/$CLOUDFLARE_ZONE_ID/dns_records/$record_id" \
-                -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" >/dev/null
-            done
-
-      - name: Persist staging deployment outputs
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_ENV_ADMIN_TOKEN }}
-          HOST: ${{ steps.terraform.outputs.host }}
-          FIREWALL_ID: ${{ steps.terraform.outputs.firewall_id }}
-          DOMAIN: ${{ inputs.domain }}
-          HOST_FINGERPRINT: ${{ steps.hostkey.outputs.fingerprint }}
-          ADMIN_CIDR: ${{ inputs.admin_cidr }}
-        run: |
-          set -euo pipefail
-          gh variable set STAGING_HOST --repo "$GITHUB_REPOSITORY" --env staging --body "$HOST"
-          gh variable set STAGING_FIREWALL_ID --repo "$GITHUB_REPOSITORY" --env staging --body "$FIREWALL_ID"
-          gh variable set STAGING_USER --repo "$GITHUB_REPOSITORY" --env staging --body "jalwa"
-          gh variable set STAGING_DOMAIN --repo "$GITHUB_REPOSITORY" --env staging --body "$DOMAIN"
-          gh variable set STAGING_SSH_KNOWN_HOSTS --repo "$GITHUB_REPOSITORY" --env staging --body "$(cat /tmp/staging-known-hosts)"
-          gh variable set R2_INCOMING_BUCKET --repo "$GITHUB_REPOSITORY" --env staging --body "jalwa-staging-incoming"
-          gh variable set R2_PROCESSED_BUCKET --repo "$GITHUB_REPOSITORY" --env staging --body "jalwa-staging-media"
-          gh variable set R2_BACKUP_BUCKET --repo "$GITHUB_REPOSITORY" --env staging --body "jalwa-staging-backups"
           {
-            echo '### Staging bootstrap complete'
-            echo "- Host: $HOST"
-            echo "- Domain: https://$DOMAIN"
-            echo "- SSH Ed25519 fingerprint: $HOST_FINGERPRINT"
-            if [[ -n "$ADMIN_CIDR" ]]; then echo "- Persistent break-glass SSH CIDR: $ADMIN_CIDR"; else echo '- Persistent SSH access: none'; fi
-            echo '- GitHub runner SSH access was temporary and removed after host-key capture'
-            echo '- Jalwa-owned secrets were generated only when absent'
-            echo '- Terraform state and media/backup buckets are isolated from production'
-            echo '- Configure SMTP, DeepSeek and payment-provider sandbox credentials, then run Deploy staging'
+            echo '### No infrastructure was changed'
+            echo 'The DigitalOcean staging bootstrap is retired.'
+            echo 'Jalwa staging uses the existing Codistan on-prem server at jalwa-platform.codistan.org.'
+            echo 'Use **Deploy staging** after the pinned staging SSH key/known-host entry are configured.'
+            echo 'PostgreSQL is self-hosted on that server; Supabase and DigitalOcean are not part of the active staging runtime.'
+            echo 'Cloudflare is used for private R2 object storage; R2 playback is served by the same-origin application media gateway.'
           } >> "$GITHUB_STEP_SUMMARY"
