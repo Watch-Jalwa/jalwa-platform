@@ -37,7 +37,7 @@ async function serve(request: Request, params: Params, headOnly: boolean) {
   if (!key) return NextResponse.json({ error: "Invalid media path." }, { status: 400 });
 
   const token = new URL(request.url).searchParams.get("token");
-  const payload = verifyPlaybackToken(token, process.env.MEDIA_SIGNING_SECRET);
+  const payload = verifyPlaybackToken(token ?? "", process.env.MEDIA_SIGNING_SECRET);
   const pathPrefix = typeof payload?.pathPrefix === "string" ? payload.pathPrefix : "";
   if (!payload || !mediaPathAllowed(key, pathPrefix)) {
     return NextResponse.json({ error: "Playback token is invalid or expired." }, { status: 403 });
