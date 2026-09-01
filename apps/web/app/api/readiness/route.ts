@@ -1,6 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 import { NextResponse } from "next/server";
+import { createDatabaseClient } from "@jalwa/postgres";
 import { createAdminClient } from "@/lib/database/admin";
+import { databasePool } from "@/lib/database/pool";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -41,6 +43,7 @@ export async function GET(request: Request) {
   const names = [...required, ...paymentNames, ...(liveEnabled ? liveRequired : []), ...(drmEnabled ? drmRequired : [])];
   const missing = names.filter((name) => !process.env[name]);
   let database = "unavailable";
+  let publicCatalogue = "unavailable";
   let migrations = "unavailable";
   let migrationIssues: Array<{ filename: string; status: string }> = [];
   let publishedContent = 0;
@@ -49,13 +52,16 @@ export async function GET(request: Request) {
   if (!missing.includes("DATABASE_URL")) {
     try {
       const admin = createAdminClient();
-      const [databaseResult, migrationResult, publishedResult, categoryResult] = await Promise.all([
+      const anon = createDatabaseClient(databasePool, { role: "anon" });
+      const [databaseResult, migrationResult, publishedResult, categoryResult, catalogueResult] = await Promise.all([
         admin.from("content_items").select("id", { head: true, count: "exact" }).limit(1),
         admin.from("jalwa_schema_migrations").select("filename,status").neq("status", "applied").limit(10),
         admin.from("content_items").select("id", { head: true, count: "exact" }).eq("status", "published"),
         admin.from("categories").select("id", { head: true, count: "exact" }).eq("is_active", true),
+        anon.rpc("search_catalogue", { p_query: null, p_category: null, p_limit: 1 }),
       ]);
       database = databaseResult.error ? "unavailable" : "ready";
+      publicCatalogue = catalogueResult.error ? "unavailable" : "ready";
       if (!publishedResult.error) publishedContent = publishedResult.count ?? 0;
       if (!categoryResult.error) activeCategories = categoryResult.count ?? 0;
       if (!migrationResult.error) {
@@ -64,6 +70,7 @@ export async function GET(request: Request) {
       }
     } catch {
       database = "unavailable";
+      publicCatalogue = "unavailable";
       migrations = "unavailable";
     }
   }
@@ -75,7 +82,7 @@ export async function GET(request: Request) {
   const liveReady = !liveEnabled || liveRequired.every((name) => Boolean(process.env[name]));
   const drmReady = !drmEnabled || drmRequired.every((name) => Boolean(process.env[name]));
   const authReady = Boolean(process.env.BETTER_AUTH_SECRET && (process.env.BETTER_AUTH_URL || process.env.NEXT_PUBLIC_APP_URL) && process.env.SMTP_HOST);
-  const ready = missing.length === 0 && database === "ready" && migrations === "ready" && authReady && paymentReady && liveReady && drmReady;
+  const ready = missing.length === 0 && database === "ready" && publicCatalogue === "ready" && migrations === "ready" && authReady && paymentReady && liveReady && drmReady;
   const base = { service: "jalwa-web", status: ready ? "ready" : "not_ready", version: process.env.GIT_SHA ?? "local", time: new Date().toISOString() };
 
   if (!authorized(request)) return NextResponse.json(base, { status: ready ? 200 : 503, headers: { "Cache-Control": "no-store" } });
@@ -84,6 +91,7 @@ export async function GET(request: Request) {
     ...base,
     deploymentEnvironment,
     database,
+    publicCatalogue,
     migrations,
     migrationIssues,
     auth: { provider: "better-auth", ready: authReady, magicLink: true },
