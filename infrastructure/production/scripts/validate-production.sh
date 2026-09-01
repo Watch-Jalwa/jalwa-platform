@@ -57,7 +57,7 @@ trap 'rm -f infrastructure/production/.env.production /tmp/jalwa-self-hosted-sec
     JALWA_WORKER_IMAGE=ghcr.io/watch-jalwa/jalwa-platform-worker:0000000000000000000000000000000000000000 \
     docker compose config --quiet
 )
-require_match 'postgres:17-alpine' infrastructure/production/docker-compose.yml 'Pinned PostgreSQL service is missing.'
+require_match '${POSTGRES_IMAGE:-pgvector/pgvector:pg17}' infrastructure/production/docker-compose.yml 'Pgvector-capable PostgreSQL service is missing.'
 require_match 'container_name: jalwa-postgres' infrastructure/production/docker-compose.yml 'Stable PostgreSQL container identity is missing.'
 require_match '${JALWA_WEB_IMAGE:-ghcr.io/watch-jalwa/jalwa-platform-web:latest}' infrastructure/production/docker-compose.yml 'Web service does not accept an exact promoted image reference.'
 require_match '${JALWA_WORKER_IMAGE:-ghcr.io/watch-jalwa/jalwa-platform-worker:latest}' infrastructure/production/docker-compose.yml 'Worker service does not accept an exact promoted image reference.'
