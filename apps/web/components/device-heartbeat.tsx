@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { authClient } from "@/lib/auth-client";
 
 function deviceName() {
   const ua = navigator.userAgent;
@@ -12,7 +13,12 @@ function deviceName() {
 }
 
 export function DeviceHeartbeat() {
+  const { data: session } = authClient.useSession();
+  const userId = session?.user?.id;
+
   useEffect(() => {
+    if (!userId) return;
+
     let key = localStorage.getItem("jalwa_device_key");
     if (!key) {
       key = crypto.randomUUID();
@@ -26,6 +32,6 @@ export function DeviceHeartbeat() {
       signal: controller.signal,
     }).catch(() => undefined);
     return () => controller.abort();
-  }, []);
+  }, [userId]);
   return null;
 }
