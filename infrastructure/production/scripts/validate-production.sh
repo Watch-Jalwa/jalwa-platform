@@ -61,10 +61,13 @@ require_match '${POSTGRES_IMAGE:-pgvector/pgvector:pg17}' infrastructure/product
 require_match 'container_name: jalwa-postgres' infrastructure/production/docker-compose.yml 'Stable PostgreSQL container identity is missing.'
 require_match '${JALWA_WEB_IMAGE:-ghcr.io/watch-jalwa/jalwa-platform-web:latest}' infrastructure/production/docker-compose.yml 'Web service does not accept an exact promoted image reference.'
 require_match '${JALWA_WORKER_IMAGE:-ghcr.io/watch-jalwa/jalwa-platform-worker:latest}' infrastructure/production/docker-compose.yml 'Worker service does not accept an exact promoted image reference.'
-require_match 'DATABASE_URL=postgresql://postgres:' .github/workflows/deploy-staging.yml 'Staging does not use a direct PostgreSQL URL.'
-require_match 'BETTER_AUTH_URL=https://$DOMAIN' .github/workflows/deploy-staging.yml 'Staging Better Auth URL is missing.'
-require_match 'PAYMENT_PROVIDER=mock' .github/workflows/deploy-staging.yml 'Staging mock payment boundary is missing.'
-require_match 'ALLOW_MOCK_PAYMENTS=true' .github/workflows/deploy-staging.yml 'Staging mock payment allow flag is missing.'
+require_match 'server-managed staging environment' .github/workflows/deploy-staging.yml 'Staging does not preserve the on-prem server-managed environment.'
+require_match 'required=(DEPLOYMENT_ENVIRONMENT DATABASE_URL BETTER_AUTH_SECRET BETTER_AUTH_URL' .github/workflows/deploy-staging.yml 'Staging does not require direct PostgreSQL and Better Auth runtime configuration.'
+require_match 'upsert_env MEDIA_BACKEND r2' .github/workflows/deploy-staging.yml 'Staging R2 media boundary is missing.'
+require_match 'upsert_env TRANSCODE_BACKEND ffmpeg' .github/workflows/deploy-staging.yml 'Staging FFmpeg transcode boundary is missing.'
+require_match 'upsert_env MEDIA_GATEWAY_MODE same-origin' .github/workflows/deploy-staging.yml 'Staging same-origin media gateway boundary is missing.'
+require_match 'upsert_env PAYMENT_PROVIDER mock' .github/workflows/deploy-staging.yml 'Staging mock payment boundary is missing.'
+require_match 'upsert_env ALLOW_MOCK_PAYMENTS true' .github/workflows/deploy-staging.yml 'Staging mock payment allow flag is missing.'
 require_match 'ALLOW_MOCK_PAYMENTS=false' .github/workflows/deploy-production.yml 'Production mock payments must remain disabled.'
 
 echo "Checking migration inventory"
@@ -89,8 +92,13 @@ require_count 2 'USER node' Dockerfile 'Web and worker runtime images must run a
 require_count 2 'HEALTHCHECK' Dockerfile 'Web and worker runtime images must declare health checks.'
 require_match 'test-production-container.sh' .github/workflows/ci.yml 'CI does not boot and test the production web image.'
 require_match 'persistentState: "not-allowed"' apps/web/components/drm-player.tsx 'Persistent browser DRM sessions must remain disabled.'
-require_match 'rewritePlaylist' infrastructure/media-gateway/src/index.ts 'Signed HLS playlist rewriting is missing.'
-require_match 'MEDIA_GATEWAY_ALLOWED_ORIGINS' infrastructure/media-gateway/src/index.ts 'Media origin allow-list is missing.'
+require_match 'rewritePlaylist' infrastructure/media-gateway/src/index.ts 'Legacy media gateway signed HLS playlist rewriting is missing.'
+require_match 'MEDIA_GATEWAY_ALLOWED_ORIGINS' infrastructure/media-gateway/src/index.ts 'Legacy media gateway origin allow-list is missing.'
+require_match 'rewriteHlsPlaylist' apps/web/lib/media/gateway.mjs 'Same-origin media gateway signed HLS rewriting is missing.'
+require_match 'normalizeMediaPath' apps/web/lib/media/gateway.mjs 'Same-origin media path validation is missing.'
+require_match 'verifyPlaybackToken' 'apps/web/app/api/media/[...path]/route.ts' 'Same-origin media route does not verify signed playback tokens.'
+require_match 'getProcessedObject' apps/web/lib/media/storage.ts 'Web runtime cannot read private processed R2 media.'
+require_match 'MEDIA_GATEWAY_MODE same-origin' .github/workflows/deploy-staging.yml 'On-prem staging does not select the same-origin media gateway.'
 require_match 'WORKER_HEARTBEAT_PATH' infrastructure/production/docker-compose.yml 'Worker heartbeat health check is missing.'
 require_match 'BACKUP_REASON=pre-migration' .github/workflows/deploy-production.yml 'Pre-migration backup is missing.'
 require_match 'deploy-release.sh' .github/workflows/deploy-production.yml 'Transactional release deployment is missing.'
@@ -126,6 +134,7 @@ echo "Checking runtime JavaScript syntax"
 node --check apps/worker/src/index.mjs
 node --check apps/worker/src/media.mjs
 node --check apps/worker/src/drm.mjs
+node --check apps/web/lib/media/gateway.mjs
 node --check apps/web/public/sw.js
 node --check infrastructure/aws-media/lambda/submit-mediaconvert.mjs
 node --check infrastructure/aws-media/lambda/complete-mediaconvert.mjs

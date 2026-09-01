@@ -41,6 +41,12 @@ NODE_ENV=production
 JALWA_IMAGE_TAG=$old_sha
 GIT_SHA=$old_sha
 EOF
+  cat > "$root/docker-compose.yml" <<'EOF'
+services: {}
+EOF
+  cat > "$root/docker-compose.onprem.yml" <<'EOF'
+services: {}
+EOF
   printf '%s\n' "$old_sha" > "$root/.last-good-image"
 
   cat > "$root/bin/docker" <<'EOF'
@@ -54,8 +60,9 @@ EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 expected="${3:?expected release version is required}"
-image="$(awk -F= '$1 == "JALWA_IMAGE_TAG" { print $2; exit }' "${JALWA_ROOT:?}/.env.production")"
-version="$(awk -F= '$1 == "GIT_SHA" { print $2; exit }' "${JALWA_ROOT:?}/.env.production")"
+env_file="${JALWA_ENV_FILE:-${JALWA_ROOT:?}/.env.production}"
+image="$(awk -F= '$1 == "JALWA_IMAGE_TAG" { print $2; exit }' "$env_file")"
+version="$(awk -F= '$1 == "GIT_SHA" { print $2; exit }' "$env_file")"
 [[ "$image" == "$expected" ]]
 [[ "$version" == "$expected" ]]
 if [[ "${FAIL_ON_VERSION:-}" == "$expected" ]]; then
@@ -77,6 +84,20 @@ grep -q "$new_sha" "$success_root/.last-successful-deploy" || fail "successful d
 grep -q '^compose .* pull$' "$success_root/docker.log" || fail "successful deployment did not pull images"
 grep -q '^compose .* up -d --remove-orphans$' "$success_root/docker.log" || fail "successful deployment did not start the stack"
 printf 'PASS successful deployment updates image and version atomically\n'
+
+staging_root="$(mktemp -d)"
+temporary_roots+=("$staging_root")
+prepare_case "$staging_root"
+cp "$staging_root/.env.production" "$staging_root/.env.staging"
+DOCKER_LOG="$staging_root/docker.log" JALWA_ROOT="$staging_root" JALWA_ENV_FILE="$staging_root/.env.staging" \
+JALWA_COMPOSE_FILE="$staging_root/docker-compose.yml:$staging_root/docker-compose.onprem.yml" \
+JALWA_COMPOSE_SERVICES="postgres web worker" PATH="$staging_root/bin:$PATH" \
+  bash "$sut" "$new_sha" "staging.example.test"
+assert_equal "$new_sha" "$(env_value "$staging_root/.env.staging" JALWA_IMAGE_TAG)" "staging image tag"
+assert_equal "$old_sha" "$(env_value "$staging_root/.env.production" JALWA_IMAGE_TAG)" "production file remains untouched"
+grep -q 'pull postgres web worker' "$staging_root/docker.log" || fail "on-prem staging did not pull selected services"
+grep -q 'up -d --remove-orphans postgres web worker' "$staging_root/docker.log" || fail "on-prem staging did not start selected services"
+printf 'PASS on-prem staging deployment preserves the production environment and selected proxy boundary\n'
 
 rollback_root="$(mktemp -d)"
 temporary_roots+=("$rollback_root")

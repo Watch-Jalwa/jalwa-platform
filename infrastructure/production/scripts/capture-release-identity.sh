@@ -5,8 +5,10 @@ release_sha="${1:?release SHA is required}"
 build_pipeline_id="${2:?build pipeline ID is required}"
 deployment_pipeline_id="${3:-$build_pipeline_id}"
 root="${JALWA_ROOT:-/opt/jalwa}"
-env_file="$root/.env.production"
+env_file="${JALWA_ENV_FILE:-$root/.env.production}"
+compose_file="${JALWA_COMPOSE_FILE:-$root/docker-compose.yml}"
 output_file="$root/deployments/${release_sha}.identity.json"
+export COMPOSE_FILE="$compose_file"
 
 [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || { echo "Release SHA must be a 40-character lowercase Git commit SHA." >&2; exit 1; }
 [[ "$build_pipeline_id" =~ ^[0-9]+$ ]] || { echo "Build pipeline ID must be numeric." >&2; exit 1; }

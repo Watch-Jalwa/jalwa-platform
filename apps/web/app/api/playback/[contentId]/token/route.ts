@@ -29,6 +29,17 @@ function cookieOptions(expires: Date) {
   };
 }
 
+function r2Gateway(request: Request) {
+  const mode = (process.env.MEDIA_GATEWAY_MODE ?? "same-origin").trim().toLowerCase();
+  if (mode === "same-origin") return `${new URL(request.url).origin}/api/media`;
+  if (mode === "external") {
+    const configured = process.env.MEDIA_GATEWAY_URL ?? process.env.NEXT_PUBLIC_MEDIA_GATEWAY_URL;
+    if (!configured) throw new Error("External playback gateway is not configured.");
+    return cleanBaseUrl(configured);
+  }
+  throw new Error("Unsupported media gateway mode.");
+}
+
 export async function POST(request: Request, { params }: { params: Params }) {
   const { contentId } = await params;
   const database = await createClient();
@@ -113,8 +124,15 @@ export async function POST(request: Request, { params }: { params: Params }) {
   }
 
   const secret = process.env.MEDIA_SIGNING_SECRET;
-  const gateway = process.env.NEXT_PUBLIC_MEDIA_GATEWAY_URL;
-  if (!secret || !gateway) return NextResponse.json({ error: "Playback gateway is not configured." }, { status: 503 });
+  if (!secret) return NextResponse.json({ error: "Playback signing is not configured." }, { status: 503 });
+
+  let gateway: string;
+  try {
+    gateway = r2Gateway(request);
+  } catch {
+    return NextResponse.json({ error: "Playback gateway is not configured." }, { status: 503 });
+  }
+
   const token = signPlaybackToken({
     assetId: playback.media_asset_id,
     pathPrefix,

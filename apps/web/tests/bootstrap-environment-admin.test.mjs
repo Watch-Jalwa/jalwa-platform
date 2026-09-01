@@ -14,23 +14,30 @@ const outputs = read("infrastructure/digitalocean/outputs.tf");
 const seeder = read("scripts/seed-environment-secrets.sh");
 const sshAccess = read("scripts/with-digitalocean-ssh-access.sh");
 
-test("staging infrastructure is explicitly isolated from production identity", () => {
+test("staging infrastructure is explicitly on-prem while production cloud provisioning remains isolated", () => {
+  assert.match(staging, /Bootstrap staging \(retired DigitalOcean path\)/);
+  assert.match(staging, /environment: staging/);
+  assert.match(staging, /existing Codistan on-prem server at jalwa-platform\.codistan\.org/);
+  assert.match(staging, /No infrastructure was changed/);
+  assert.doesNotMatch(staging, /terraform apply|-var="project_name=jalwa-staging"|digitalocean\.tfstate/);
+  assert.match(deployStaging, /HOST: \$\{\{ vars\.STAGING_HOST \|\| 'jalwa-platform\.codistan\.org' \}\}/);
+  assert.match(deployStaging, /APP_DIR: \$\{\{ vars\.STAGING_APP_DIR \|\| '\/opt\/jalwa' \}\}/);
+  assert.doesNotMatch(deployStaging, /STAGING_FIREWALL_ID|with-digitalocean-ssh-access\.sh/);
+
   assert.match(terraform, /tags\s*=\s*\["jalwa", var\.deployment_environment, "web", "worker"\]/);
   assert.match(terraform, /environment\s*=\s*title\(var\.deployment_environment\)/);
   assert.match(variables, /contains\(\["production", "staging"\], var\.deployment_environment\)/);
-  assert.match(staging, /-var="project_name=jalwa-staging"/);
-  assert.match(staging, /-var="deployment_environment=staging"/);
   assert.doesNotMatch(terraform, /tags\s*=\s*\["jalwa", "production", "web", "worker"\]/);
 });
 
-test("bootstrap uses explicit environment administration and idempotent generated secrets", () => {
-  for (const workflow of [staging, production]) {
-    assert.match(workflow, /GITHUB_ENV_ADMIN_TOKEN/);
-    assert.match(workflow, /scripts\/seed-environment-secrets\.sh/);
-    assert.match(workflow, /with-digitalocean-ssh-access\.sh/);
-    assert.doesNotMatch(workflow, /DIGITALOCEAN_SSH_PUBLIC_KEY/);
-  }
-  assert.match(staging, /gh variable set STAGING_FIREWALL_ID/);
+test("retired staging bootstrap cannot mutate infrastructure while production bootstrap keeps explicit idempotent administration", () => {
+  assert.doesNotMatch(staging, /GITHUB_ENV_ADMIN_TOKEN|scripts\/seed-environment-secrets\.sh|with-digitalocean-ssh-access\.sh|gh variable set|terraform apply/);
+  assert.match(staging, /contents: read/);
+
+  assert.match(production, /GITHUB_ENV_ADMIN_TOKEN/);
+  assert.match(production, /scripts\/seed-environment-secrets\.sh/);
+  assert.match(production, /with-digitalocean-ssh-access\.sh/);
+  assert.doesNotMatch(production, /DIGITALOCEAN_SSH_PUBLIC_KEY/);
   assert.match(production, /gh variable set PRODUCTION_FIREWALL_ID/);
   assert.match(production, /gh variable set R2_INCOMING_BUCKET/);
   assert.match(production, /gh variable set R2_PROCESSED_BUCKET/);
@@ -41,30 +48,37 @@ test("bootstrap uses explicit environment administration and idempotent generate
   assert.match(seeder, /refusing to rotate it/);
 });
 
-test("persistent SSH CIDRs are optional and omitted by default", () => {
-  for (const workflow of [staging, production]) {
-    assert.match(workflow, /admin_cidr:\n\s+description: Optional persistent SSH CIDR/);
-    assert.match(workflow, /admin_cidr:[\s\S]{0,220}required: false/);
-    assert.match(workflow, /admin_cidrs='\[\]'/);
-    assert.match(workflow, /if \[\[ -n "\$ADMIN_CIDR" \]\]; then/);
-    assert.match(workflow, /-var="admin_cidrs=\$admin_cidrs"/);
-  }
+test("persistent cloud SSH CIDRs remain optional for production and staging uses only pinned on-prem SSH", () => {
+  assert.match(production, /admin_cidr:\n\s+description: Optional persistent SSH CIDR/);
+  assert.match(production, /admin_cidr:[\s\S]{0,220}required: false/);
+  assert.match(production, /admin_cidrs='\[\]'/);
+  assert.match(production, /if \[\[ -n "\$ADMIN_CIDR" \]\]; then/);
+  assert.match(production, /-var="admin_cidrs=\$admin_cidrs"/);
   assert.match(variables, /variable "admin_cidrs"[\s\S]*default\s*=\s*\[\]/);
   assert.match(terraform, /dynamic "inbound_rule"/);
   assert.match(terraform, /for_each = length\(var\.admin_cidrs\) > 0 \? \[1\] : \[\]/);
+
+  assert.doesNotMatch(staging, /admin_cidr|admin_cidrs/);
+  assert.match(deployStaging, /STAGING_SSH_KNOWN_HOSTS/);
+  assert.match(deployStaging, /STAGING_SSH_KEY/);
+  assert.match(deployStaging, /StrictHostKeyChecking=yes/);
+  assert.doesNotMatch(deployStaging, /ssh-keyscan|DIGITALOCEAN_TOKEN/);
 });
 
-test("GitHub-hosted deploys use temporary runner SSH access and run-scoped GHCR credentials", () => {
-  for (const workflow of [deployStaging, deployProduction]) {
-    assert.match(workflow, /DIGITALOCEAN_TOKEN/);
-    assert.match(workflow, /with-digitalocean-ssh-access\.sh/);
-    assert.match(workflow, /GHCR_USERNAME: \$\{\{ github\.actor \}\}/);
-    assert.match(workflow, /GHCR_DEPLOY_TOKEN: \$\{\{ github\.token \}\}/);
-    assert.doesNotMatch(workflow, /GHCR_USERNAME: \$\{\{ secrets\.GHCR_USERNAME \}\}/);
-    assert.doesNotMatch(workflow, /GHCR_DEPLOY_TOKEN: \$\{\{ secrets\.GHCR_DEPLOY_TOKEN \}\}/);
-  }
-  assert.match(deployStaging, /STAGING_FIREWALL_ID/);
+test("staging uses pinned direct SSH and run-scoped GHCR credentials while production keeps temporary cloud-runner access", () => {
+  assert.match(deployStaging, /password: \$\{\{ github\.token \}\}/);
+  assert.match(deployStaging, /GHCR_TOKEN: \$\{\{ github\.token \}\}/);
+  assert.match(deployStaging, /GITHUB_ACTOR/);
+  assert.match(deployStaging, /StrictHostKeyChecking=yes/);
+  assert.doesNotMatch(deployStaging, /GHCR_USERNAME: \$\{\{ secrets\.GHCR_USERNAME \}\}|GHCR_DEPLOY_TOKEN: \$\{\{ secrets\.GHCR_DEPLOY_TOKEN \}\}/);
+  assert.doesNotMatch(deployStaging, /DIGITALOCEAN_TOKEN|STAGING_FIREWALL_ID|with-digitalocean-ssh-access\.sh/);
+
+  assert.match(deployProduction, /DIGITALOCEAN_TOKEN/);
+  assert.match(deployProduction, /with-digitalocean-ssh-access\.sh/);
+  assert.match(deployProduction, /GHCR_USERNAME: \$\{\{ github\.actor \}\}/);
+  assert.match(deployProduction, /GHCR_DEPLOY_TOKEN: \$\{\{ github\.token \}\}/);
   assert.match(deployProduction, /PRODUCTION_FIREWALL_ID/);
+  assert.doesNotMatch(deployProduction, /GHCR_USERNAME: \$\{\{ secrets\.GHCR_USERNAME \}\}|GHCR_DEPLOY_TOKEN: \$\{\{ secrets\.GHCR_DEPLOY_TOKEN \}\}/);
   assert.match(sshAccess, /\/v2\/firewalls\/\$firewall_id\/rules/);
   assert.match(sshAccess, /-X POST/);
   assert.match(sshAccess, /-X DELETE/);

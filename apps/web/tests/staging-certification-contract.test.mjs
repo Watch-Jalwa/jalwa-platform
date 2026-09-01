@@ -39,7 +39,8 @@ test("staging images carry immutable source and pipeline labels", async () => {
   assert.match(dockerfile, /com\.watch-jalwa\.build-run-id="\$BUILD_RUN_ID"/);
   assert.match(deploy, /GIT_SHA=\$\{\{ github\.sha \}\}/);
   assert.match(deploy, /BUILD_RUN_ID=\$\{\{ github\.run_id \}\}/);
-  assert.match(deploy, /capture-release-identity\.sh '\$\{\{ github\.sha \}\}' '\$\{\{ github\.run_id \}\}'/);
+  assert.match(deploy, /RELEASE_SHA='\$GITHUB_SHA' BUILD_RUN_ID='\$GITHUB_RUN_ID'/);
+  assert.match(deploy, /capture-release-identity\.sh" "\$RELEASE_SHA" "\$BUILD_RUN_ID" "\$BUILD_RUN_ID"/);
 });
 
 test("gate zero verifies running image IDs, registry digests and OCI revisions", async () => {

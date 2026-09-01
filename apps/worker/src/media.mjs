@@ -32,24 +32,36 @@ export function buildShortArgs(input, output) {
   ];
 }
 
-export function buildHlsArgs(input, outputDir) {
+export function buildThumbnailArgs(input, output) {
+  return [
+    "-y",
+    ...inputArgs(input),
+    "-vf",
+    "thumbnail=30,scale=640:-2",
+    "-frames:v",
+    "1",
+    "-q:v",
+    "3",
+    output,
+  ];
+}
+
+export function buildHlsArgs(input, outputDir, hasAudio = true) {
+  const maps = [];
+  for (const video of ["[v1out]", "[v2out]", "[v3out]"]) {
+    maps.push("-map", video);
+    if (hasAudio) maps.push("-map", "0:a?");
+  }
+  const variantMap = hasAudio
+    ? "v:0,a:0,name:360p v:1,a:1,name:480p v:2,a:2,name:720p"
+    : "v:0,name:360p v:1,name:480p v:2,name:720p";
+
   return [
     "-y",
     ...inputArgs(input),
     "-filter_complex",
     "[0:v]split=3[v1][v2][v3];[v1]scale=-2:360[v1out];[v2]scale=-2:480[v2out];[v3]scale=-2:720[v3out]",
-    "-map",
-    "[v1out]",
-    "-map",
-    "0:a?",
-    "-map",
-    "[v2out]",
-    "-map",
-    "0:a?",
-    "-map",
-    "[v3out]",
-    "-map",
-    "0:a?",
+    ...maps,
     "-c:v",
     "libx264",
     "-preset",
@@ -71,7 +83,7 @@ export function buildHlsArgs(input, outputDir) {
     "-master_pl_name",
     "master.m3u8",
     "-var_stream_map",
-    "v:0,a:0,name:360p v:1,a:1,name:480p v:2,a:2,name:720p",
+    variantMap,
     "-hls_segment_filename",
     join(outputDir, "%v", "segment-%05d.ts"),
     join(outputDir, "%v", "index.m3u8"),
@@ -262,27 +274,32 @@ export async function processMediaJob({ database, job }) {
     await assertJobStillAllowed(database, job.id, asset.content_id);
     await downloadObject(asset.storage_key, source, "incoming");
     const probe = await probeMedia(source);
+    const hasAudio = await hasAudioStream(source);
     const ffmpeg = process.env.FFMPEG_PATH ?? "ffmpeg";
+    const prefix = `processed/${asset.content_id}/${asset.id}/`;
+    const thumbnailPath = `${prefix}thumbnail.jpg`;
     let format;
     let mediaPath;
-    let uploaded;
+
+    await run(ffmpeg, buildThumbnailArgs(source, join(output, "thumbnail.jpg")));
+    await assertJobStillAllowed(database, job.id, asset.content_id);
 
     if (job.job_type === "short_mp4") {
       const target = join(output, "short-720.mp4");
       await run(ffmpeg, buildShortArgs(source, target));
-      await assertJobStillAllowed(database, job.id, asset.content_id);
-      const prefix = `processed/${asset.content_id}/${asset.id}/`;
-      uploaded = await uploadDirectory(output, prefix);
       mediaPath = `${prefix}short-720.mp4`;
       format = "mp4";
     } else {
       for (const name of ["360p", "480p", "720p"]) await mkdir(join(output, name), { recursive: true });
-      await run(ffmpeg, buildHlsArgs(source, output));
-      await assertJobStillAllowed(database, job.id, asset.content_id);
-      const prefix = `processed/${asset.content_id}/${asset.id}/`;
-      uploaded = await uploadDirectory(output, prefix);
+      await run(ffmpeg, buildHlsArgs(source, output, hasAudio));
       mediaPath = `${prefix}master.m3u8`;
       format = "hls";
+    }
+
+    await assertJobStillAllowed(database, job.id, asset.content_id);
+    const uploaded = await uploadDirectory(output, prefix);
+    if (!uploaded.includes(thumbnailPath) || !uploaded.includes(mediaPath)) {
+      throw new Error("Required processed media output was not uploaded.");
     }
 
     await assertJobStillAllowed(database, job.id, asset.content_id);
@@ -292,8 +309,9 @@ export async function processMediaJob({ database, job }) {
       duration_seconds: probe.durationSeconds ? Math.round(probe.durationSeconds) : null,
       metadata: {
         ...asset.metadata,
-        probe,
+        probe: { ...probe, hasAudio },
         outputs: uploaded,
+        thumbnailPath,
         mediaBackend: mediaBackend(),
       },
     }).eq("id", asset.id);
@@ -324,14 +342,15 @@ export async function processMediaJob({ database, job }) {
       error_message: null,
       output: {
         mediaPath,
+        thumbnailPath,
         format,
         uploaded,
-        probe,
+        probe: { ...probe, hasAudio },
         mediaBackend: mediaBackend(),
       },
     }).eq("id", job.id);
     if (jobUpdateError) throw jobUpdateError;
-    return { provider: "ffmpeg", deferred: false, mediaPath, format };
+    return { provider: "ffmpeg", deferred: false, mediaPath, thumbnailPath, format };
   } finally {
     await rm(root, { recursive: true, force: true });
   }
