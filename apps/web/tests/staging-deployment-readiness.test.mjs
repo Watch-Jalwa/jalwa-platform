@@ -14,14 +14,15 @@ const paths = {
   worker: new URL("../../worker/src/index.mjs", import.meta.url),
 };
 
-test("staging bootstrap isolates infrastructure and Terraform state", async () => {
+test("retired staging bootstrap cannot provision infrastructure and points to the isolated on-prem environment", async () => {
   const source = await readFile(paths.bootstrap, "utf8");
+  assert.match(source, /Bootstrap staging \(retired DigitalOcean path\)/);
   assert.match(source, /environment: staging/);
-  assert.match(source, /key=staging\/digitalocean\.tfstate/);
-  assert.match(source, /jalwa-staging-incoming/);
-  assert.match(source, /jalwa-staging-media/);
-  assert.match(source, /jalwa-staging-backups/);
-  assert.match(source, /STAGING_SSH_KNOWN_HOSTS/);
+  assert.match(source, /No infrastructure was changed/);
+  assert.match(source, /existing Codistan on-prem server at jalwa-platform\.codistan\.org/);
+  assert.match(source, /private R2 object storage/);
+  assert.match(source, /same-origin application media gateway/);
+  assert.doesNotMatch(source, /terraform apply|digitalocean\.tfstate|gh variable set|gh secret set/);
   assert.doesNotMatch(source, /gh variable set PRODUCTION_/);
 });
 
@@ -31,17 +32,23 @@ test("staging deploy is immutable, pinned and cannot enable production-only feat
   assert.match(source, /tags: \$\{\{ env\.WEB_IMAGE \}\}:\$\{\{ github\.sha \}\}/);
   assert.match(source, /tags: \$\{\{ env\.WORKER_IMAGE \}\}:\$\{\{ github\.sha \}\}/);
   assert.doesNotMatch(source, /:latest/);
-  assert.match(source, /DEPLOYMENT_ENVIRONMENT=staging/);
-  assert.match(source, /ALLOW_MOCK_PAYMENTS=true/);
-  assert.match(source, /PAYMENT_PROVIDER=mock/);
+  assert.match(source, /grep -qx 'DEPLOYMENT_ENVIRONMENT=staging'/);
+  assert.match(source, /upsert_env ALLOW_MOCK_PAYMENTS true/);
+  assert.match(source, /upsert_env PAYMENT_PROVIDER mock/);
+  assert.match(source, /upsert_env MEDIA_BACKEND r2/);
+  assert.match(source, /upsert_env TRANSCODE_BACKEND ffmpeg/);
+  assert.match(source, /upsert_env MEDIA_GATEWAY_MODE same-origin/);
   assert.match(source, /NEXT_PUBLIC_ENABLE_LIVE_STREAMING=false/);
   assert.match(source, /NEXT_PUBLIC_ENABLE_WEB_DRM=false/);
   assert.match(source, /BACKUP_AGE_IDENTITY/);
   assert.match(source, /\/opt\/jalwa\/secrets\/backup-age\.key/);
+  assert.match(source, /STAGING_SSH_KNOWN_HOSTS/);
+  assert.match(source, /STAGING_SSH_KEY/);
   assert.match(source, /StrictHostKeyChecking=yes/);
   assert.doesNotMatch(source, /ssh-keyscan/);
   assert.match(source, /restore-drill\.sh/);
   assert.match(source, /host-acceptance\.sh/);
+  assert.match(source, /capture-release-identity\.sh/);
 });
 
 test("live staging acceptance uses protected diagnostics and pinned SSH", async () => {
