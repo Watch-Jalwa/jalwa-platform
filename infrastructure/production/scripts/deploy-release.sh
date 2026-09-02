@@ -12,11 +12,13 @@ last_good_file="$root/.last-good-image"
 previous_good_file="$root/.previous-good-image"
 manifest_dir="$root/deployments"
 read -r -a deployment_services <<< "${JALWA_COMPOSE_SERVICES:-}"
+preserve_dependencies="${JALWA_DEPLOY_NO_DEPS:-false}"
 export COMPOSE_FILE="$compose_file"
 
 [[ "$new_tag" =~ ^[0-9a-f]{40}$ ]] || { echo "Image tag must be a 40-character lowercase Git commit SHA." >&2; exit 1; }
 [[ -s "$env_file" ]] || { echo "Missing deployment environment: $env_file" >&2; exit 1; }
 [[ -s "${compose_file%%:*}" ]] || { echo "Missing deployment compose file: ${compose_file%%:*}" >&2; exit 1; }
+[[ "$preserve_dependencies" == "true" || "$preserve_dependencies" == "false" ]] || { echo "JALWA_DEPLOY_NO_DEPS must be true or false." >&2; exit 1; }
 
 compose() {
   docker compose --env-file "$env_file" "$@"
@@ -105,7 +107,9 @@ pull_selected() {
 }
 
 up_selected() {
-  if ((${#deployment_services[@]})); then compose up -d --remove-orphans "${deployment_services[@]}"; else compose up -d --remove-orphans; fi
+  local args=(up -d --remove-orphans)
+  if [[ "$preserve_dependencies" == "true" ]]; then args+=(--no-deps); fi
+  if ((${#deployment_services[@]})); then compose "${args[@]}" "${deployment_services[@]}"; else compose "${args[@]}"; fi
 }
 
 rollback() {
@@ -114,12 +118,13 @@ rollback() {
   set_release "$previous_tag" "$previous_web_image" "$previous_worker_image"
   cd "$root"
   compose config --quiet
+  compose pull web worker
+  local args=(up -d --remove-orphans)
+  if [[ "$preserve_dependencies" == "true" ]]; then args+=(--no-deps); fi
   if ((${#deployment_services[@]})); then
-    compose pull web worker
-    compose up -d --remove-orphans "${deployment_services[@]}"
+    compose "${args[@]}" "${deployment_services[@]}"
   else
-    compose pull web worker
-    compose up -d --remove-orphans web worker caddy
+    compose "${args[@]}" web worker caddy
   fi
   "$root/scripts/smoke-test.sh" "https://${domain}" "" "$previous_tag"
   return 0
