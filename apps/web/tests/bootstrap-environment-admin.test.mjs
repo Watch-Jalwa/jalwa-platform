@@ -8,6 +8,7 @@ const staging = read(".github/workflows/bootstrap-staging.yml");
 const production = read(".github/workflows/bootstrap-platform.yml");
 const deployStaging = read(".github/workflows/deploy-staging.yml");
 const deployProduction = read(".github/workflows/deploy-production.yml");
+const codistanStaging = read("infrastructure/production/docker-compose.codistan-staging.yml");
 const terraform = read("infrastructure/digitalocean/main.tf");
 const variables = read("infrastructure/digitalocean/variables.tf");
 const outputs = read("infrastructure/digitalocean/outputs.tf");
@@ -21,7 +22,17 @@ test("staging infrastructure is explicitly on-prem while production cloud provis
   assert.match(staging, /No infrastructure was changed/);
   assert.doesNotMatch(staging, /terraform apply|-var="project_name=jalwa-staging"|digitalocean\.tfstate/);
   assert.match(deployStaging, /HOST: \$\{\{ vars\.STAGING_HOST \|\| 'jalwa-platform\.codistan\.org' \}\}/);
-  assert.match(deployStaging, /APP_DIR: \$\{\{ vars\.STAGING_APP_DIR \|\| '\/opt\/jalwa' \}\}/);
+  assert.match(deployStaging, /USER: \$\{\{ vars\.STAGING_USER \|\| 'codistan' \}\}/);
+  assert.match(deployStaging, /APP_DIR: \$\{\{ vars\.STAGING_APP_DIR \|\| '\/opt\/codistan\/jalwa-platform' \}\}/);
+  assert.match(deployStaging, /db_container=jalwa-postgres-staging/);
+  assert.match(deployStaging, /expected_volume=jalwa-platform_jalwa_staging_pgdata/);
+  assert.match(deployStaging, /expected_network=jalwa-platform_default/);
+  assert.match(deployStaging, /export JALWA_COMPOSE_SERVICES='web worker'/);
+  assert.match(deployStaging, /export JALWA_DEPLOY_NO_DEPS=true/);
+  assert.match(codistanStaging, /container_name: jalwa-postgres-staging/);
+  assert.match(codistanStaging, /127\.0\.0\.1:\$\{JALWA_WEB_PORT:-3001\}:3000/);
+  assert.match(codistanStaging, /external: true[\s\S]*name: jalwa-platform_default/);
+  assert.match(codistanStaging, /external: true[\s\S]*name: jalwa-platform_jalwa_staging_pgdata/);
   assert.doesNotMatch(deployStaging, /STAGING_FIREWALL_ID|with-digitalocean-ssh-access\.sh/);
 
   assert.match(terraform, /tags\s*=\s*\["jalwa", var\.deployment_environment, "web", "worker"\]/);
@@ -70,6 +81,9 @@ test("staging uses pinned direct SSH and run-scoped GHCR credentials while produ
   assert.match(deployStaging, /GHCR_TOKEN: \$\{\{ github\.token \}\}/);
   assert.match(deployStaging, /GITHUB_ACTOR/);
   assert.match(deployStaging, /StrictHostKeyChecking=yes/);
+  assert.match(deployStaging, /upsert_env MEDIA_GATEWAY_MODE same-origin/);
+  assert.match(deployStaging, /upsert_env PAYMENT_PROVIDER mock/);
+  assert.match(deployStaging, /upsert_env ALLOW_MOCK_PAYMENTS true/);
   assert.doesNotMatch(deployStaging, /GHCR_USERNAME: \$\{\{ secrets\.GHCR_USERNAME \}\}|GHCR_DEPLOY_TOKEN: \$\{\{ secrets\.GHCR_DEPLOY_TOKEN \}\}/);
   assert.doesNotMatch(deployStaging, /DIGITALOCEAN_TOKEN|STAGING_FIREWALL_ID|with-digitalocean-ssh-access\.sh/);
 
