@@ -5,8 +5,6 @@ umask 077
 ENV_FILE="${ENV_FILE:-/opt/jalwa/.env.production}"
 BACKUP_DIR="${BACKUP_DIR:-/opt/jalwa/backups/postgres}"
 DB_CONTAINER="${DB_CONTAINER:-jalwa-postgres}"
-DB_NAME="${POSTGRES_DB:-postgres}"
-DB_USER="${POSTGRES_USER:-postgres}"
 R2_BACKUP_BUCKET="${R2_BACKUP_BUCKET:-jalwa-backups}"
 BACKUP_AGE_IDENTITY_FILE="${BACKUP_AGE_IDENTITY_FILE:-/opt/jalwa/secrets/backup-age.key}"
 
@@ -17,10 +15,16 @@ if [[ -r "$ENV_FILE" ]]; then
   set +a
 fi
 
-DB_NAME="${POSTGRES_DB:-$DB_NAME}"
-DB_USER="${POSTGRES_USER:-$DB_USER}"
-: "${DB_NAME:?POSTGRES_DB is required}"
-: "${DB_USER:?POSTGRES_USER is required}"
+DB_USER="${POSTGRES_USER:-}"
+DB_NAME="${POSTGRES_DB:-}"
+if [[ -z "$DB_USER" ]]; then
+  DB_USER="$(docker exec "$DB_CONTAINER" sh -lc 'printf %s "${POSTGRES_USER:-}"')"
+fi
+if [[ -z "$DB_NAME" ]]; then
+  DB_NAME="$(docker exec "$DB_CONTAINER" sh -lc 'printf %s "${POSTGRES_DB:-}"')"
+fi
+: "${DB_USER:?Could not determine PostgreSQL user from POSTGRES_USER or the running database container}"
+: "${DB_NAME:?Could not determine PostgreSQL database from POSTGRES_DB or the running database container}"
 [[ -r "$BACKUP_AGE_IDENTITY_FILE" ]] || { echo "Backup age identity is not readable." >&2; exit 1; }
 command -v age >/dev/null || { echo "age is required for backup decryption." >&2; exit 1; }
 
