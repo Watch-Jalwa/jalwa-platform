@@ -1,0 +1,40 @@
+name: Temporary probe on-prem SSH account
+
+on:
+  push:
+    branches:
+      - ops/dispatch-onprem-staging-20260901-2207
+    paths:
+      - .github/workflows/tmp-probe-onprem-ssh-user.yml
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      HOST: jalwa-platform.codistan.org
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - name: Probe configured key against common deployment accounts
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          matched=''
+          for user in jalwa ubuntu deploy codistan root; do
+            if ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=5 -o NumberOfPasswordPrompts=0 -i ~/.ssh/jalwa "$user@$HOST" true 2>/dev/null; then
+              echo "AUTHORIZED_SSH_USER=$user"
+              matched="$user"
+              break
+            fi
+          done
+          test -n "$matched" || { echo 'The configured STAGING_SSH_KEY is not authorized for any probed deployment account.' >&2; exit 1; }
