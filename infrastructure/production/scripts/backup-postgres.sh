@@ -7,6 +7,8 @@ BACKUP_DIR="${BACKUP_DIR:-/opt/jalwa/backups/postgres}"
 LOCAL_RETENTION_DAYS="${BACKUP_LOCAL_RETENTION_DAYS:-14}"
 REMOTE_RETENTION_DAYS="${BACKUP_REMOTE_RETENTION_DAYS:-35}"
 DB_CONTAINER="${DB_CONTAINER:-jalwa-postgres}"
+DB_NAME="${POSTGRES_DB:-postgres}"
+DB_USER="${POSTGRES_USER:-postgres}"
 R2_BACKUP_BUCKET="${R2_BACKUP_BUCKET:-jalwa-backups}"
 BACKUP_AGE_IDENTITY_FILE="${BACKUP_AGE_IDENTITY_FILE:-/opt/jalwa/secrets/backup-age.key}"
 BACKUP_KEY_VERSION="${BACKUP_KEY_VERSION:-v1}"
@@ -18,6 +20,10 @@ if [[ -r "$ENV_FILE" ]]; then
   set +a
 fi
 
+DB_NAME="${POSTGRES_DB:-$DB_NAME}"
+DB_USER="${POSTGRES_USER:-$DB_USER}"
+: "${DB_NAME:?POSTGRES_DB is required}"
+: "${DB_USER:?POSTGRES_USER is required}"
 : "${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required}"
 : "${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required}"
 : "${R2_ENDPOINT:?R2_ENDPOINT is required}"
@@ -42,8 +48,8 @@ metadata="${target}.json"
 cleanup_failed() { rm -f "$plaintext" "$target" "$checksum" "$metadata"; }
 trap cleanup_failed ERR EXIT
 
-docker exec "$DB_CONTAINER" pg_isready -U postgres -d postgres >/dev/null
-docker exec "$DB_CONTAINER" pg_dump -U postgres -d postgres --format=custom --compress=6 --no-owner --no-acl > "$plaintext"
+docker exec "$DB_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null
+docker exec "$DB_CONTAINER" pg_dump -U "$DB_USER" -d "$DB_NAME" --format=custom --compress=6 --no-owner --no-acl > "$plaintext"
 test -s "$plaintext"
 docker exec -i "$DB_CONTAINER" pg_restore --list < "$plaintext" >/dev/null
 plaintext_sha256="$(sha256sum "$plaintext" | cut -d' ' -f1)"
@@ -53,8 +59,8 @@ rm -f "$plaintext"
 sha256sum "$target" > "$checksum"
 size_bytes="$(stat -c %s "$target")"
 sha256="$(cut -d' ' -f1 "$checksum")"
-jq -nc --arg createdAt "$(date -u +%FT%TZ)" --arg reason "$reason" --arg sha256 "$sha256" --arg plaintextSha256 "$plaintext_sha256" --arg keyVersion "$BACKUP_KEY_VERSION" --argjson sizeBytes "$size_bytes" \
-  '{createdAt:$createdAt,reason:$reason,database:"postgres",sha256:$sha256,plaintextSha256:$plaintextSha256,sizeBytes:$sizeBytes,format:"age+pg_dump_custom",encryption:{scheme:"age-x25519",keyVersion:$keyVersion}}' > "$metadata"
+jq -nc --arg createdAt "$(date -u +%FT%TZ)" --arg reason "$reason" --arg sha256 "$sha256" --arg plaintextSha256 "$plaintext_sha256" --arg keyVersion "$BACKUP_KEY_VERSION" --arg database "$DB_NAME" --argjson sizeBytes "$size_bytes" \
+  '{createdAt:$createdAt,reason:$reason,database:$database,sha256:$sha256,plaintextSha256:$plaintextSha256,sizeBytes:$sizeBytes,format:"age+pg_dump_custom",encryption:{scheme:"age-x25519",keyVersion:$keyVersion}}' > "$metadata"
 
 export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
 export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
