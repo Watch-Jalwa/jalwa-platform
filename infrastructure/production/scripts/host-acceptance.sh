@@ -2,6 +2,7 @@
 set -Eeuo pipefail
 
 APP_DIR="${APP_DIR:-/opt/jalwa}"
+DB_CONTAINER="${DB_CONTAINER:-jalwa-postgres}"
 if [[ -n "${JALWA_ENV_FILE:-}" ]]; then
   ENV_FILE="$JALWA_ENV_FILE"
 elif [[ -s "${APP_DIR}/.env.production" ]]; then
@@ -67,12 +68,12 @@ for service in "${expected_services[@]}"; do
   pass "$service ($health)"
 done
 
-docker exec jalwa-postgres pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" >/dev/null
-migration_failures="$(docker exec jalwa-postgres psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -Atqc "select count(*) from public.jalwa_schema_migrations where status is distinct from 'applied';")"
+docker exec "$DB_CONTAINER" pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" >/dev/null
+migration_failures="$(docker exec "$DB_CONTAINER" psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -Atqc "select count(*) from public.jalwa_schema_migrations where status is distinct from 'applied';")"
 [[ "$migration_failures" == "0" ]] || fail "$migration_failures migration records are not applied"
 pass "PostgreSQL and migration ledger"
 
-stuck_jobs="$(docker exec jalwa-postgres psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -Atqc "
+stuck_jobs="$(docker exec "$DB_CONTAINER" psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -Atqc "
 select
   (select count(*) from public.media_jobs where (status='queued' and available_at < now()-interval '2 hours') or (status='processing' and locked_at < now()-interval '3 hours'))
  + (select count(*) from public.drm_packaging_jobs where (status='queued' and available_at < now()-interval '2 hours') or (status='processing' and locked_at < now()-interval '3 hours'))

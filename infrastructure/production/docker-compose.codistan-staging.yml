@@ -1,0 +1,26 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: jalwa-postgres-staging
+
+  web:
+    container_name: jalwa-web-staging
+    ports:
+      - "127.0.0.1:${JALWA_WEB_PORT:-3001}:3000"
+
+  worker:
+    container_name: jalwa-worker-staging
+
+  caddy:
+    profiles:
+      - managed-proxy
+
+networks:
+  jalwa:
+    external: true
+    name: jalwa-platform_default
+
+volumes:
+  postgres_data:
+    external: true
+    name: jalwa-platform_jalwa_staging_pgdata

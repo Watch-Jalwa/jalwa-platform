@@ -3,8 +3,9 @@ set -Eeuo pipefail
 
 compose_file="${COMPOSE_FILE:-docker-compose.yml}"
 env_file="${JALWA_ENV_FILE:-.env.staging}"
+export COMPOSE_FILE="$compose_file"
 
-compose=(docker compose -f "$compose_file" --env-file "$env_file")
+compose=(docker compose --env-file "$env_file")
 
 section() { printf '\n===== %s =====\n' "$1"; }
 

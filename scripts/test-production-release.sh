@@ -91,13 +91,13 @@ prepare_case "$staging_root"
 cp "$staging_root/.env.production" "$staging_root/.env.staging"
 DOCKER_LOG="$staging_root/docker.log" JALWA_ROOT="$staging_root" JALWA_ENV_FILE="$staging_root/.env.staging" \
 JALWA_COMPOSE_FILE="$staging_root/docker-compose.yml:$staging_root/docker-compose.onprem.yml" \
-JALWA_COMPOSE_SERVICES="postgres web worker" PATH="$staging_root/bin:$PATH" \
+JALWA_COMPOSE_SERVICES="web worker" JALWA_DEPLOY_NO_DEPS=true PATH="$staging_root/bin:$PATH" \
   bash "$sut" "$new_sha" "staging.example.test"
 assert_equal "$new_sha" "$(env_value "$staging_root/.env.staging" JALWA_IMAGE_TAG)" "staging image tag"
 assert_equal "$old_sha" "$(env_value "$staging_root/.env.production" JALWA_IMAGE_TAG)" "production file remains untouched"
-grep -q 'pull postgres web worker' "$staging_root/docker.log" || fail "on-prem staging did not pull selected services"
-grep -q 'up -d --remove-orphans postgres web worker' "$staging_root/docker.log" || fail "on-prem staging did not start selected services"
-printf 'PASS on-prem staging deployment preserves the production environment and selected proxy boundary\n'
+grep -q 'pull web worker' "$staging_root/docker.log" || fail "on-prem staging did not pull selected application services"
+grep -q 'up -d --remove-orphans --no-deps web worker' "$staging_root/docker.log" || fail "on-prem staging did not preserve database dependencies"
+printf 'PASS on-prem staging deployment preserves the production environment and existing database dependency\n'
 
 rollback_root="$(mktemp -d)"
 temporary_roots+=("$rollback_root")

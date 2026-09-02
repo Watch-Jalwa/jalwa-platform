@@ -24,19 +24,20 @@ jobs:
     environment: staging
     env:
       HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
-      USER: ${{ vars.STAGING_USER || 'jalwa' }}
-      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/jalwa' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-      - name: Validate on-prem staging release boundary
+      - name: Validate Codistan on-prem staging release boundary
         shell: bash
         run: |
           set -euo pipefail
           test "$GITHUB_REF" = refs/heads/main || { echo 'Staging deploys must run from main.' >&2; exit 1; }
           [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
-          test "$APP_DIR" = /opt/jalwa || { echo 'Managed on-prem staging root must remain /opt/jalwa.' >&2; exit 1; }
+          test "$APP_DIR" = /opt/codistan/jalwa-platform || { echo 'Managed Codistan staging root must remain /opt/codistan/jalwa-platform.' >&2; exit 1; }
+          test "$USER" = codistan || { echo 'Codistan staging deploy user must remain codistan unless the server access model is deliberately migrated.' >&2; exit 1; }
           for name in HOST USER KNOWN_HOSTS SSH_KEY; do
             test -n "${!name:-}" || { echo "Missing staging access value $name" >&2; exit 1; }
           done
@@ -101,8 +102,8 @@ jobs:
     needs: build
     env:
       HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
-      USER: ${{ vars.STAGING_USER || 'jalwa' }}
-      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/jalwa' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
       DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
@@ -120,16 +121,16 @@ jobs:
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
 
-      - name: Install canonical on-prem release assets
+      - name: Install canonical Codistan staging release assets
         shell: bash
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
             "mkdir -p '$APP_DIR/scripts' '$APP_DIR/systemd' '$APP_DIR/migrations' '$APP_DIR/backups/postgres' '$APP_DIR/backups/config' '$APP_DIR/operations' '$APP_DIR/secrets' '$APP_DIR/deployments'"
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "if test -s '$APP_DIR/docker-compose.yml'; then cp -a '$APP_DIR/docker-compose.yml' '$APP_DIR/backups/config/docker-compose.yml.pre-${GITHUB_SHA}'; fi"
+            "if test -s '$APP_DIR/docker-compose.staging.yml'; then cp -a '$APP_DIR/docker-compose.staging.yml' '$APP_DIR/backups/config/docker-compose.staging.yml.pre-${GITHUB_SHA}'; fi; if test -s '$APP_DIR/docker-compose.yml'; then cp -a '$APP_DIR/docker-compose.yml' '$APP_DIR/backups/config/docker-compose.yml.pre-${GITHUB_SHA}'; fi"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/docker-compose.yml "$USER@$HOST:$APP_DIR/docker-compose.yml"
-          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/docker-compose.onprem.yml "$USER@$HOST:$APP_DIR/docker-compose.onprem.yml"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/docker-compose.codistan-staging.yml "$USER@$HOST:$APP_DIR/docker-compose.codistan-staging.yml"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/*.sh "$USER@$HOST:$APP_DIR/scripts/"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/systemd/* "$USER@$HOST:$APP_DIR/systemd/"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa database/bootstrap.sql "$USER@$HOST:$APP_DIR/bootstrap.sql"
@@ -145,23 +146,34 @@ jobs:
           printf '%s' "$GHCR_TOKEN" | ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
             "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin"
 
-      - name: Deploy exact SHA on existing PostgreSQL/nginx host
+      - name: Deploy exact SHA while preserving existing PostgreSQL data
         shell: bash
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "APP_DIR='$APP_DIR' DOMAIN='$DOMAIN' RELEASE_SHA='$GITHUB_SHA' BUILD_RUN_ID='$GITHUB_RUN_ID' bash -s" <<'REMOTE'
+            "APP_DIR='$APP_DIR' DOMAIN='$DOMAIN' RELEASE_SHA='$GITHUB_SHA' BUILD_RUN_ID='$GITHUB_RUN_ID' DEPLOY_USER='$USER' bash -s" <<'REMOTE'
           set -Eeuo pipefail
           env_file="$APP_DIR/.env.staging"
-          compose_file="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.onprem.yml"
+          compose_file="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml"
+          db_container=jalwa-postgres-staging
+          expected_volume=jalwa-platform_jalwa_staging_pgdata
+          expected_network=jalwa-platform_default
           test -s "$env_file" || { echo "Missing server-managed staging environment: $env_file" >&2; exit 1; }
 
-          required=(DEPLOYMENT_ENVIRONMENT DATABASE_URL BETTER_AUTH_SECRET BETTER_AUTH_URL R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_INCOMING_BUCKET R2_PROCESSED_BUCKET R2_BACKUP_BUCKET MEDIA_SIGNING_SECRET SMTP_HOST SMTP_USER)
+          required=(DEPLOYMENT_ENVIRONMENT DATABASE_URL BETTER_AUTH_SECRET R2_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY R2_INCOMING_BUCKET R2_PROCESSED_BUCKET R2_BACKUP_BUCKET R2_ENDPOINT MEDIA_SIGNING_SECRET SMTP_HOST SMTP_USER SMTP_PASS BACKUP_AGE_IDENTITY)
           for name in "${required[@]}"; do
             grep -qE "^${name}=.+" "$env_file" || { echo "Missing server staging value $name" >&2; exit 1; }
           done
           grep -qx 'DEPLOYMENT_ENVIRONMENT=staging' "$env_file" || { echo 'DEPLOYMENT_ENVIRONMENT must be staging.' >&2; exit 1; }
           ! grep -qE '^SUPABASE_|^NEXT_PUBLIC_SUPABASE_' "$env_file" || { echo 'Legacy Supabase values remain in .env.staging.' >&2; exit 1; }
+
+          docker inspect "$db_container" >/dev/null 2>&1 || { echo "Existing staging database container is missing: $db_container" >&2; exit 1; }
+          [[ "$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$db_container")" == jalwa-platform ]] || { echo 'Existing PostgreSQL container is not owned by the jalwa-platform Compose project.' >&2; exit 1; }
+          [[ "$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.service" }}' "$db_container")" == postgres ]] || { echo 'Existing PostgreSQL container does not identify as the postgres service.' >&2; exit 1; }
+          docker inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$db_container" | grep -qx "$expected_volume" \
+            || { echo 'Existing PostgreSQL data volume does not match the approved staging volume.' >&2; exit 1; }
+          docker network inspect "$expected_network" >/dev/null 2>&1 || { echo 'Existing Jalwa staging Docker network is missing.' >&2; exit 1; }
+          docker exec "$db_container" pg_isready -U postgres -d postgres >/dev/null
 
           upsert_env() {
             local name="$1" value="$2" temporary
@@ -170,12 +182,27 @@ jobs:
             chmod 600 "$temporary"
             mv -f "$temporary" "$env_file"
           }
+          upsert_env NODE_ENV production
+          upsert_env BETTER_AUTH_URL "https://$DOMAIN"
           upsert_env MEDIA_BACKEND r2
           upsert_env TRANSCODE_BACKEND ffmpeg
           upsert_env MEDIA_GATEWAY_MODE same-origin
           upsert_env PAYMENT_PROVIDER mock
           upsert_env ALLOW_MOCK_PAYMENTS true
           upsert_env NEXT_PUBLIC_FRONTEND_PREVIEW false
+          upsert_env JALWA_WEB_PORT 3001
+          upsert_env POSTGRES_IMAGE pgvector/pgvector:pg16
+          upsert_env DB_CONTAINER "$db_container"
+          upsert_env APP_DIR "$APP_DIR"
+          upsert_env JALWA_ROOT "$APP_DIR"
+          upsert_env JALWA_ENV_FILE "$env_file"
+          upsert_env JALWA_COMPOSE_FILE "$compose_file"
+          upsert_env ENV_FILE "$env_file"
+          upsert_env BACKUP_DIR "$APP_DIR/backups/postgres"
+          upsert_env BACKUP_AGE_IDENTITY_FILE "$APP_DIR/secrets/backup-age.key"
+          upsert_env MIGRATIONS_DIR "$APP_DIR/migrations"
+          upsert_env BOOTSTRAP_SQL "$APP_DIR/bootstrap.sql"
+          upsert_env MIGRATION_LOCK_FILE "$APP_DIR/.migration.lock"
 
           if ! command -v jq >/dev/null || ! command -v age >/dev/null || ! command -v age-keygen >/dev/null || ! command -v aws >/dev/null; then
             sudo -n apt-get update -qq
@@ -191,32 +218,37 @@ jobs:
             chmod 600 "$APP_DIR/secrets/backup-age.key"
           fi
 
-          existing_project="$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' jalwa-postgres 2>/dev/null || true)"
-          export COMPOSE_PROJECT_NAME="${existing_project:-jalwa}"
+          export COMPOSE_PROJECT_NAME=jalwa-platform
           export COMPOSE_FILE="$compose_file"
           export JALWA_ROOT="$APP_DIR"
           export JALWA_ENV_FILE="$env_file"
           export JALWA_COMPOSE_FILE="$compose_file"
-          export JALWA_COMPOSE_SERVICES='postgres web worker'
+          export JALWA_COMPOSE_SERVICES='web worker'
+          export JALWA_DEPLOY_NO_DEPS=true
           export JALWA_EXPECT_SERVICES='postgres web worker'
+          export JALWA_SERVICE_USER="$DEPLOY_USER"
+          export JALWA_SERVICE_GROUP="$DEPLOY_USER"
           export ENV_FILE="$env_file"
+          export DB_CONTAINER="$db_container"
+          export BACKUP_DIR="$APP_DIR/backups/postgres"
+          export BACKUP_AGE_IDENTITY_FILE="$APP_DIR/secrets/backup-age.key"
+          export MIGRATIONS_DIR="$APP_DIR/migrations"
+          export BOOTSTRAP_SQL="$APP_DIR/bootstrap.sql"
+          export MIGRATION_LOCK_FILE="$APP_DIR/.migration.lock"
 
           cd "$APP_DIR"
           docker compose --env-file "$env_file" config --quiet
-          docker compose --env-file "$env_file" up -d postgres
-          for attempt in $(seq 1 30); do
-            docker exec jalwa-postgres pg_isready -U postgres -d postgres >/dev/null 2>&1 && break
-            sleep 2
-          done
-          docker exec jalwa-postgres pg_isready -U postgres -d postgres >/dev/null
+          docker compose --env-file "$env_file" config --images | grep -Fxq 'pgvector/pgvector:pg16'
+          docker compose --env-file "$env_file" config | grep -Fq 'jalwa-platform_jalwa_staging_pgdata'
+          docker compose --env-file "$env_file" config | grep -Fq 'jalwa-platform_default'
 
           BACKUP_REASON="pre-deploy-${RELEASE_SHA:0:12}" "$APP_DIR/scripts/backup-postgres.sh"
           "$APP_DIR/scripts/apply-migrations.sh"
           "$APP_DIR/scripts/deploy-release.sh" "$RELEASE_SHA" "$DOMAIN"
-          JALWA_ENV_FILE="$env_file" "$APP_DIR/scripts/install-operations.sh"
+          JALWA_ENV_FILE="$env_file" JALWA_ROOT="$APP_DIR" JALWA_SERVICE_USER="$DEPLOY_USER" JALWA_SERVICE_GROUP="$DEPLOY_USER" "$APP_DIR/scripts/install-operations.sh"
           BACKUP_REASON="post-deploy-${RELEASE_SHA:0:12}" "$APP_DIR/scripts/backup-postgres.sh"
           "$APP_DIR/scripts/restore-drill.sh"
-          "$APP_DIR/scripts/host-acceptance.sh" "https://$DOMAIN"
+          APP_DIR="$APP_DIR" DB_CONTAINER="$db_container" "$APP_DIR/scripts/host-acceptance.sh" "https://$DOMAIN"
           "$APP_DIR/scripts/capture-release-identity.sh" "$RELEASE_SHA" "$BUILD_RUN_ID" "$BUILD_RUN_ID"
           docker logout ghcr.io >/dev/null 2>&1 || true
           REMOTE
@@ -234,13 +266,14 @@ jobs:
         shell: bash
         run: |
           {
-            echo '### On-prem staging deployed'
+            echo '### Codistan on-prem staging deployed'
             echo "- Domain: https://$DOMAIN"
             echo "- Exact SHA: $GITHUB_SHA"
             echo "- Deployment run: $GITHUB_RUN_ID"
-            echo '- Host: existing Codistan on-prem server (pinned SSH)'
-            echo '- PostgreSQL: self-hosted pgvector container on the same server'
-            echo '- Reverse proxy: existing host nginx; repository Caddy is not started by staging'
+            echo '- Host: existing Codistan on-prem server (pinned SSH as codistan)'
+            echo '- Managed root: /opt/codistan/jalwa-platform'
+            echo '- PostgreSQL: existing pgvector/pg16 container and existing pgdata volume preserved'
+            echo '- Reverse proxy: existing host nginx on Jalwa host port 3001; repository Caddy is not started'
             echo '- Media: private R2 + FFmpeg + same-origin signed /api/media gateway'
             echo '- Payments: mock-only staging boundary enforced'
             echo '- Backups: encrypted pre/post-deploy backup and restore drill executed'
