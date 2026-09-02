@@ -35,9 +35,11 @@ jobs:
     environment: staging
     env:
       RELEASE_SHA: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
-      HOST: ${{ vars.STAGING_HOST }}
-      USER: ${{ vars.STAGING_USER || 'jalwa' }}
-      DOMAIN: ${{ vars.STAGING_DOMAIN }}
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      DB_CONTAINER: jalwa-postgres-staging
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
       STAGING_QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}
@@ -54,6 +56,8 @@ jobs:
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'A deployed commit SHA is required.' >&2; exit 1; }
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
           test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS" && test -n "$STAGING_QA_SECRET"
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
           grep -q "Premium reporting fixtures may run only in staging" scripts/seed-premium-reporting-staging.sql
           grep -q "Public-domain live source fixtures may run only in staging" scripts/seed-public-domain-live-sources.sql
       - name: Configure pinned staging SSH identity
@@ -92,20 +96,20 @@ jobs:
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec -i jalwa-postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            "docker exec -i '$DB_CONTAINER' psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
               -v deployment_environment=staging \
               -v fixture_user_id='$FINANCE_ID' \
               -v fixture_user_id_2='$VIEWER_ID' \
               -v fixture_user_id_3='$MANUAL_ID'" \
             < scripts/seed-premium-reporting-staging.sql
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec jalwa-postgres psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            "docker exec '$DB_CONTAINER' psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
               -c \"select count(*) >= 5 from public.checkout_orders where idempotency_key like 'staging-report-%';\"" | grep -qx t
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec -i jalwa-postgres psql -v ON_ERROR_STOP=1 -U postgres -d postgres -v deployment_environment=staging" \
+            "docker exec -i '$DB_CONTAINER' psql -v ON_ERROR_STOP=1 -U postgres -d postgres -v deployment_environment=staging" \
             < scripts/seed-public-domain-live-sources.sql
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec jalwa-postgres psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            "docker exec '$DB_CONTAINER' psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
               -c \"select count(*) >= 15 from public.live_source_configs;\"" | grep -qx t
 
   certify:
@@ -115,18 +119,20 @@ jobs:
     timeout-minutes: 90
     environment:
       name: staging
-      url: https://${{ vars.STAGING_DOMAIN }}
+      url: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
     env:
       RELEASE_SHA: ${{ inputs.release_sha || github.event.workflow_run.head_sha }}
       DEPLOYMENT_PIPELINE_ID: ${{ inputs.deployment_run_id || github.event.workflow_run.id }}
       QA_RUN_ID: certification-${{ github.run_id }}
-      HOST: ${{ vars.STAGING_HOST }}
-      USER: ${{ vars.STAGING_USER || 'jalwa' }}
-      DOMAIN: ${{ vars.STAGING_DOMAIN }}
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      DB_CONTAINER: jalwa-postgres-staging
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
       STAGING_SSH_KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
-      STAGING_BASE_URL: https://${{ vars.STAGING_DOMAIN }}
+      STAGING_BASE_URL: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
       STAGING_QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}
       STAGING_QA_CUSTOMER_EMAIL: ${{ vars.STAGING_QA_CUSTOMER_EMAIL || 'acceptance+customer@watch-jalwa.com' }}
       STAGING_QA_ADMIN_EMAIL: ${{ vars.STAGING_QA_ADMIN_EMAIL || 'acceptance+admin@watch-jalwa.com' }}
@@ -158,6 +164,8 @@ jobs:
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Invalid release SHA.' >&2; exit 1; }
           [[ "$DEPLOYMENT_PIPELINE_ID" =~ ^[0-9]+$ ]] || { echo 'Invalid deployment pipeline ID.' >&2; exit 1; }
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
       - name: Gate zero — prove deployed artifact identity
         run: |
           set +e
@@ -174,7 +182,7 @@ jobs:
             exit 0
           fi
           identity="$CERTIFICATION_EVIDENCE_DIR/release-identity.json"
-          if ! scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST:/opt/jalwa/deployments/$RELEASE_SHA.identity.json" "$identity"; then
+          if ! scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST:$APP_DIR/deployments/$RELEASE_SHA.identity.json" "$identity"; then
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity BLOCKED "Deployment identity evidence is missing for the selected release." tests=10
             exit 0
           fi
@@ -191,7 +199,9 @@ jobs:
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime BLOCKED "Required protected staging runtime inputs are not configured." tests=12
             exit 0
           fi
-          if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "/opt/jalwa/scripts/host-acceptance.sh 'https://$DOMAIN'" > "$CERTIFICATION_EVIDENCE_DIR/host-acceptance.json"; then
+          if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' DB_CONTAINER='$DB_CONTAINER' JALWA_ENV_FILE='$APP_DIR/.env.staging' JALWA_COMPOSE_FILE='$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml' COMPOSE_PROJECT_NAME=jalwa-platform '$APP_DIR/scripts/host-acceptance.sh' 'https://$DOMAIN'" \
+            > "$CERTIFICATION_EVIDENCE_DIR/host-acceptance.json"; then
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Host, worker, PostgreSQL or recovery acceptance failed after deployment." tests=12
             exit 0
           fi
