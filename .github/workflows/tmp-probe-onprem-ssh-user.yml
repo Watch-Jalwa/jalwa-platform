@@ -1,4 +1,4 @@
-name: Temporary locate on-prem Jalwa runtime
+name: Temporary inspect on-prem Jalwa identity
 
 on:
   push:
@@ -21,7 +21,7 @@ jobs:
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
     steps:
-      - name: Locate current Compose/env paths without reading secrets
+      - name: Inspect Jalwa container identity without reading secrets
         shell: bash
         run: |
           set -euo pipefail
@@ -31,21 +31,19 @@ jobs:
           chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          echo '--- RUNNING CONTAINERS ---'
-          docker ps --format '{{.Names}}|{{.Image}}|{{.Status}}'
-          echo '--- COMPOSE METADATA ---'
-          for c in $(docker ps --format '{{.Names}}'); do
-            project=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$c" 2>/dev/null || true)
-            workdir=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.working_dir" }}' "$c" 2>/dev/null || true)
-            files=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project.config_files" }}' "$c" 2>/dev/null || true)
-            service=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.service" }}' "$c" 2>/dev/null || true)
-            if [ -n "$project$workdir$files$service" ]; then
-              echo "$c|project=$project|service=$service|working_dir=$workdir|config_files=$files"
-            fi
+          set -u
+          for c in jalwa-postgres-staging jalwa-web-staging jalwa-worker-staging; do
+            echo "--- $c ---"
+            docker inspect -f 'IMAGE={{.Config.Image}} PROJECT={{ index .Config.Labels "com.docker.compose.project" }} SERVICE={{ index .Config.Labels "com.docker.compose.service" }} WORKDIR={{ index .Config.Labels "com.docker.compose.project.working_dir" }} FILES={{ index .Config.Labels "com.docker.compose.project.config_files" }}' "$c"
+            docker inspect -f '{{range .Mounts}}MOUNT type={{.Type}} name={{.Name}} source={{.Source}} dest={{.Destination}}{{println}}{{end}}' "$c"
+            docker inspect -f '{{range $name, $conf := .NetworkSettings.Networks}}NETWORK {{$name}}{{println}}{{end}}' "$c"
           done
-          echo '--- ENV FILE PATHS ---'
-          find /home/codistan /opt /srv /var/www -maxdepth 5 -type f \( -name '.env.staging' -o -name 'env.staging' -o -name '.env.production' \) -print 2>/dev/null | sort -u | head -50
-          echo '--- COMPOSE FILE PATHS ---'
-          find /home/codistan /opt /srv /var/www -maxdepth 5 -type f \( -name 'docker-compose.yml' -o -name 'docker-compose.yaml' -o -name 'compose.yml' -o -name 'compose.yaml' \) -print 2>/dev/null | sort -u | head -50
+          echo '--- WEB PORTS ---'
+          docker port jalwa-web-staging || true
+          echo '--- WEB HEALTH ---'
+          docker inspect -f 'status={{.State.Health.Status}}{{range .State.Health.Log}}{{println}}{{.ExitCode}} {{.Output}}{{end}}' jalwa-web-staging 2>/dev/null | tail -30 || true
+          echo '--- LOCAL HEALTH ---'
+          curl -sS -o /tmp/jalwa-health.out -w 'health_http=%{http_code}\n' http://127.0.0.1:3000/api/health || true
+          head -c 500 /tmp/jalwa-health.out 2>/dev/null || true
+          echo
           REMOTE
