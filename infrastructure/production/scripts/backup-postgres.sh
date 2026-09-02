@@ -7,8 +7,6 @@ BACKUP_DIR="${BACKUP_DIR:-/opt/jalwa/backups/postgres}"
 LOCAL_RETENTION_DAYS="${BACKUP_LOCAL_RETENTION_DAYS:-14}"
 REMOTE_RETENTION_DAYS="${BACKUP_REMOTE_RETENTION_DAYS:-35}"
 DB_CONTAINER="${DB_CONTAINER:-jalwa-postgres}"
-DB_NAME="${POSTGRES_DB:-postgres}"
-DB_USER="${POSTGRES_USER:-postgres}"
 R2_BACKUP_BUCKET="${R2_BACKUP_BUCKET:-jalwa-backups}"
 BACKUP_AGE_IDENTITY_FILE="${BACKUP_AGE_IDENTITY_FILE:-/opt/jalwa/secrets/backup-age.key}"
 BACKUP_KEY_VERSION="${BACKUP_KEY_VERSION:-v1}"
@@ -20,10 +18,16 @@ if [[ -r "$ENV_FILE" ]]; then
   set +a
 fi
 
-DB_NAME="${POSTGRES_DB:-$DB_NAME}"
-DB_USER="${POSTGRES_USER:-$DB_USER}"
-: "${DB_NAME:?POSTGRES_DB is required}"
-: "${DB_USER:?POSTGRES_USER is required}"
+DB_USER="${POSTGRES_USER:-}"
+DB_NAME="${POSTGRES_DB:-}"
+if [[ -z "$DB_USER" ]]; then
+  DB_USER="$(docker exec "$DB_CONTAINER" sh -lc 'printf %s "${POSTGRES_USER:-}"')"
+fi
+if [[ -z "$DB_NAME" ]]; then
+  DB_NAME="$(docker exec "$DB_CONTAINER" sh -lc 'printf %s "${POSTGRES_DB:-}"')"
+fi
+: "${DB_USER:?Could not determine PostgreSQL user from POSTGRES_USER or the running database container}"
+: "${DB_NAME:?Could not determine PostgreSQL database from POSTGRES_DB or the running database container}"
 : "${R2_ACCESS_KEY_ID:?R2_ACCESS_KEY_ID is required}"
 : "${R2_SECRET_ACCESS_KEY:?R2_SECRET_ACCESS_KEY is required}"
 : "${R2_ENDPOINT:?R2_ENDPOINT is required}"
