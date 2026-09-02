@@ -17,8 +17,8 @@ jobs:
     environment: staging
     env:
       HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
-      USER: ${{ vars.STAGING_USER || 'jalwa' }}
-      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/jalwa' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
     steps:
@@ -31,6 +31,8 @@ jobs:
           for name in HOST USER APP_DIR KNOWN_HOSTS SSH_KEY; do
             test -n "${!name:-}" || { echo "Missing staging access value $name" >&2; exit 1; }
           done
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
           grep -Fq "$HOST" <<<"$KNOWN_HOSTS" || { echo 'Pinned SSH host key does not contain the staging host.' >&2; exit 1; }
 
       - name: Configure pinned SSH identity
@@ -49,5 +51,5 @@ jobs:
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "cd '$APP_DIR' && COMPOSE_FILE='$APP_DIR/docker-compose.yml' JALWA_ENV_FILE='$APP_DIR/.env.staging' bash -s" \
+            "cd '$APP_DIR' && COMPOSE_PROJECT_NAME=jalwa-platform COMPOSE_FILE='$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml' JALWA_ENV_FILE='$APP_DIR/.env.staging' DB_CONTAINER=jalwa-postgres-staging bash -s" \
             < infrastructure/production/scripts/collect-staging-diagnostics.sh
