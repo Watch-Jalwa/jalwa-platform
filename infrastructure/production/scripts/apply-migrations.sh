@@ -4,9 +4,18 @@ set -Eeuo pipefail
 MIGRATIONS_DIR="${MIGRATIONS_DIR:-/opt/jalwa/migrations}"
 BOOTSTRAP_SQL="${BOOTSTRAP_SQL:-/opt/jalwa/bootstrap.sql}"
 DB_CONTAINER="${DB_CONTAINER:-jalwa-postgres}"
-DB_NAME="${POSTGRES_DB:-postgres}"
-DB_USER="${POSTGRES_USER:-postgres}"
 LOCK_FILE="${MIGRATION_LOCK_FILE:-/opt/jalwa/.migration.lock}"
+
+DB_USER="${POSTGRES_USER:-}"
+DB_NAME="${POSTGRES_DB:-}"
+if [[ -z "$DB_USER" ]]; then
+  DB_USER="$(docker exec "$DB_CONTAINER" sh -lc 'printf %s "${POSTGRES_USER:-}"')"
+fi
+if [[ -z "$DB_NAME" ]]; then
+  DB_NAME="$(docker exec "$DB_CONTAINER" sh -lc 'printf %s "${POSTGRES_DB:-}"')"
+fi
+: "${DB_USER:?Could not determine PostgreSQL user from POSTGRES_USER or the running database container}"
+: "${DB_NAME:?Could not determine PostgreSQL database from POSTGRES_DB or the running database container}"
 
 if [[ ! -d "$MIGRATIONS_DIR" ]]; then
   echo "Migration directory not found: $MIGRATIONS_DIR" >&2
