@@ -1,4 +1,4 @@
-name: Temporary probe on-prem SSH account
+name: Temporary probe on-prem deployment capabilities
 
 on:
   push:
@@ -17,10 +17,11 @@ jobs:
     environment: staging
     env:
       HOST: jalwa-platform.codistan.org
+      USER: codistan
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
     steps:
-      - name: Probe configured key against common deployment accounts
+      - name: Verify read-only deployment capabilities
         shell: bash
         run: |
           set -euo pipefail
@@ -29,12 +30,4 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
-          matched=''
-          for user in jalwa ubuntu deploy codistan root; do
-            if ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=5 -o NumberOfPasswordPrompts=0 -i ~/.ssh/jalwa "$user@$HOST" true 2>/dev/null; then
-              echo "AUTHORIZED_SSH_USER=$user"
-              matched="$user"
-              break
-            fi
-          done
-          test -n "$matched" || { echo 'The configured STAGING_SSH_KEY is not authorized for any probed deployment account.' >&2; exit 1; }
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" 'set -euo pipefail; echo USER=$(id -un); echo GROUPS=$(id -Gn); test -d /opt/jalwa && echo APP_DIR_EXISTS=yes || echo APP_DIR_EXISTS=no; test -w /opt/jalwa && echo APP_DIR_WRITABLE=yes || echo APP_DIR_WRITABLE=no; command -v docker >/dev/null && echo DOCKER_BIN=yes || echo DOCKER_BIN=no; docker compose version >/dev/null 2>&1 && echo DOCKER_COMPOSE=yes || echo DOCKER_COMPOSE=no; docker ps >/dev/null 2>&1 && echo DOCKER_ACCESS=yes || echo DOCKER_ACCESS=no; sudo -n true >/dev/null 2>&1 && echo PASSWORDLESS_SUDO=yes || echo PASSWORDLESS_SUDO=no; test -s /opt/jalwa/.env.staging && echo ENV_STAGING_EXISTS=yes || echo ENV_STAGING_EXISTS=no'
