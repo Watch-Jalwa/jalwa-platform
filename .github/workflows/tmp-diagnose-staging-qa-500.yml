@@ -1,0 +1,46 @@
+name: Temporary staging QA 500 diagnosis
+
+on:
+  push:
+    branches:
+      - ops/diagnose-staging-qa-500-20260903
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Configure pinned SSH and load masked QA secret
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          qa="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "awk -F= '\$1==\"STAGING_QA_SECRET\" {print substr(\$0,index(\$0,\"=\")+1); exit}' '$APP_DIR/.env.staging'")"
+          test -n "$qa"
+          echo "::add-mask::$qa"
+          printf 'STAGING_QA_SECRET=%s\n' "$qa" >> "$GITHUB_ENV"
+      - name: Reproduce once and collect bounded web diagnostics
+        run: |
+          set +e
+          payload='{"email":"acceptance+customer@watch-jalwa.com","role":"subscriber","issueLink":false}'
+          status="$(curl -sS -o /tmp/qa-response.json -w '%{http_code}' -X POST "https://$DOMAIN/api/internal/qa/session" -H "x-jalwa-qa-token: $STAGING_QA_SECRET" -H 'content-type: application/json' --data "$payload")"
+          echo "QA_HTTP_STATUS=$status"
+          echo '=== QA RESPONSE SHAPE ==='
+          jq -c 'if type=="object" then with_entries(if .key|test("secret|token|url|link";"i") then .value="[redacted]" else . end) else . end' /tmp/qa-response.json 2>/dev/null || echo '[non-json response]'
+          echo '=== WEB LOG TAIL ==='
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "docker logs --since 3m jalwa-web-staging 2>&1 | tail -n 160 | sed -E 's/(token|secret|password|authorization)[=: ][^ ]+/\1=[redacted]/Ig'"
+          test "$status" = 200
