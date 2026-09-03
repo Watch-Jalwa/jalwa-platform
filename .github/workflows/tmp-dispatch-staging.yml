@@ -1,0 +1,19 @@
+name: Temporary staging dispatcher
+
+on:
+  push:
+    branches:
+      - ops/dispatch-staging-20260903-3
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch protected staging workflow from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy-staging.yml --repo "$GITHUB_REPOSITORY" --ref main
