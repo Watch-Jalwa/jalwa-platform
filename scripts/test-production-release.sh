@@ -53,6 +53,44 @@ EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 printf '%s\n' "$*" >> "${DOCKER_LOG:?}"
+
+if [[ "${1:-}" == "compose" ]]; then
+  joined=" $* "
+  if [[ "$joined" == *" ps -q web "* ]]; then
+    echo web-id
+  elif [[ "$joined" == *" ps -q worker "* ]]; then
+    echo worker-id
+  fi
+  exit 0
+fi
+
+if [[ "${1:-}" == "inspect" && "${2:-}" == "-f" ]]; then
+  template="${3:-}"
+  id="${4:-}"
+  if [[ "$template" == *'.State.Status'* && "$template" != *'.State.Health'* ]]; then
+    echo running
+    exit 0
+  fi
+  if [[ "$template" == *'.State.Health'* ]]; then
+    if [[ "$id" == "web-id" && "${DELAY_WEB_HEALTH_ONCE:-false}" == "true" ]]; then
+      counter_file="${DOCKER_HEALTH_COUNTER_FILE:?}"
+      count=0
+      [[ -s "$counter_file" ]] && read -r count < "$counter_file"
+      count=$((count + 1))
+      printf '%s\n' "$count" > "$counter_file"
+      if ((count == 1)); then
+        echo starting
+        exit 0
+      fi
+    fi
+    echo healthy
+    exit 0
+  fi
+fi
+
+if [[ "${1:-}" == "logs" ]]; then
+  exit 0
+fi
 EOF
   chmod +x "$root/bin/docker"
 
@@ -83,7 +121,20 @@ assert_equal "$new_sha" "$(tr -d '[:space:]' < "$success_root/.last-good-image")
 grep -q "$new_sha" "$success_root/.last-successful-deploy" || fail "successful deployment marker does not contain the release SHA"
 grep -q '^compose .* pull$' "$success_root/docker.log" || fail "successful deployment did not pull images"
 grep -q '^compose .* up -d --remove-orphans$' "$success_root/docker.log" || fail "successful deployment did not start the stack"
-printf 'PASS successful deployment updates image and version atomically\n'
+grep -q 'inspect -f .*State.Health.* web-id' "$success_root/docker.log" || fail "successful deployment did not wait for web health"
+grep -q 'inspect -f .*State.Health.* worker-id' "$success_root/docker.log" || fail "successful deployment did not wait for worker health"
+printf 'PASS successful deployment waits for health and updates image/version atomically\n'
+
+wait_root="$(mktemp -d)"
+temporary_roots+=("$wait_root")
+prepare_case "$wait_root"
+: > "$wait_root/health-counter"
+DOCKER_LOG="$wait_root/docker.log" DOCKER_HEALTH_COUNTER_FILE="$wait_root/health-counter" DELAY_WEB_HEALTH_ONCE=true \
+JALWA_HEALTH_WAIT_TIMEOUT_SECONDS=5 JALWA_HEALTH_WAIT_INTERVAL_SECONDS=0 JALWA_ROOT="$wait_root" PATH="$wait_root/bin:$PATH" \
+  bash "$sut" "$new_sha" "example.test"
+assert_equal "2" "$(cat "$wait_root/health-counter")" "web health retry count"
+assert_equal "$new_sha" "$(tr -d '[:space:]' < "$wait_root/.last-good-image")" "delayed-health last-good marker"
+printf 'PASS deployment tolerates bounded startup health delay before smoke testing\n'
 
 staging_root="$(mktemp -d)"
 temporary_roots+=("$staging_root")
@@ -114,7 +165,7 @@ assert_equal "$old_sha" "$(tr -d '[:space:]' < "$rollback_root/.last-good-image"
 [[ ! -e "$rollback_root/.last-successful-deploy" ]] || fail "failed deployment wrote a success marker"
 grep -q 'pull web worker' "$rollback_root/docker.log" || fail "rollback did not pull the previous application images"
 grep -q 'up -d --remove-orphans web worker caddy' "$rollback_root/docker.log" || fail "rollback did not restore application services"
-printf 'PASS failed deployment restores image and reported version\n'
+printf 'PASS failed deployment restores image and reported version after waiting for rollback health\n'
 
 invalid_root="$(mktemp -d)"
 temporary_roots+=("$invalid_root")
