@@ -130,6 +130,57 @@ jobs:
           grep -q '^APPLY ' "$RUNNER_TEMP/migrations-first.log"
           grep -q '^SKIP ' "$RUNNER_TEMP/migrations-second.log"
           ! grep -q '^APPLY ' "$RUNNER_TEMP/migrations-second.log"
+      - name: Exercise guarded legacy migration ledger reconciliation
+        run: |
+          set -euo pipefail
+          db_container="$(docker ps --format '{{.ID}} {{.Image}}' | awk '$2 ~ /pgvector\/pgvector/ {print $1; exit}')"
+          test -n "$db_container" || { echo 'Could not locate the CI PostgreSQL service container.' >&2; docker ps; exit 1; }
+          first_migration=202607300001_foundation.sql
+          first_checksum="$(sha256sum "database/migrations/$first_migration" | awk '{print $1}')"
+
+          printf '%s\n' \
+            "delete from public.jalwa_schema_migrations;" \
+            "insert into public.jalwa_schema_migrations(filename,checksum,status,started_at,applied_at,error_message) values (:'filename',:'checksum','failed',now(),null,'simulated legacy replay');" \
+            | psql -X -v ON_ERROR_STOP=1 -v filename="$first_migration" -v checksum="$first_checksum"
+
+          ALLOW_LEGACY_MIGRATION_BASELINE=true \
+          POSTGRES_USER=postgres \
+          POSTGRES_DB=postgres \
+          DB_CONTAINER="$db_container" \
+          MIGRATIONS_DIR="$GITHUB_WORKSPACE/database/migrations" \
+          MIGRATION_BASELINE_LOCK_FILE="$RUNNER_TEMP/jalwa-migration-baseline.lock" \
+            bash infrastructure/production/scripts/reconcile-legacy-migration-ledger.sh \
+            | tee "$RUNNER_TEMP/migration-baseline.log"
+
+          expected="$(find database/migrations -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d ' ')"
+          actual="$(psql -At -c "select count(*) from public.jalwa_schema_migrations where status='applied';")"
+          test "$actual" = "$expected" || { echo "Expected $expected reconciled migration rows, found $actual" >&2; exit 1; }
+          grep -Fq "recorded $expected migration checksums as applied" "$RUNNER_TEMP/migration-baseline.log"
+
+          POSTGRES_USER=postgres \
+          POSTGRES_DB=postgres \
+          DB_CONTAINER="$db_container" \
+          MIGRATIONS_DIR="$GITHUB_WORKSPACE/database/migrations" \
+          BOOTSTRAP_SQL="$GITHUB_WORKSPACE/database/bootstrap.sql" \
+          MIGRATION_LOCK_FILE="$RUNNER_TEMP/jalwa-migrations-after-baseline.lock" \
+            bash infrastructure/production/scripts/apply-migrations.sh \
+            | tee "$RUNNER_TEMP/migrations-after-baseline.log"
+          grep -q '^SKIP ' "$RUNNER_TEMP/migrations-after-baseline.log"
+          ! grep -q '^APPLY ' "$RUNNER_TEMP/migrations-after-baseline.log"
+
+          future_dir="$RUNNER_TEMP/future-migrations"
+          mkdir -p "$future_dir"
+          cp database/migrations/*.sql "$future_dir/"
+          printf '%s\n' '-- future migration placeholder for baseline no-op regression' > "$future_dir/209901010001_future_migration.sql"
+          ALLOW_LEGACY_MIGRATION_BASELINE=true \
+          POSTGRES_USER=postgres \
+          POSTGRES_DB=postgres \
+          DB_CONTAINER="$db_container" \
+          MIGRATIONS_DIR="$future_dir" \
+          MIGRATION_BASELINE_LOCK_FILE="$RUNNER_TEMP/jalwa-migration-baseline-future.lock" \
+            bash infrastructure/production/scripts/reconcile-legacy-migration-ledger.sh \
+            | tee "$RUNNER_TEMP/migration-baseline-future.log"
+          grep -Fq 'Migration ledger is already established' "$RUNNER_TEMP/migration-baseline-future.log"
       - name: Verify production privileges
         run: psql --set ON_ERROR_STOP=1 --file scripts/ci-verify-production-schema.sql
 
