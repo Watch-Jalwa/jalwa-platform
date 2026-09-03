@@ -1,0 +1,81 @@
+name: Temporary staging QA allowlist update
+
+on:
+  push:
+    branches:
+      - ops/update-staging-qa-allowlist-20260903
+
+permissions:
+  contents: read
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    env:
+      RELEASE_SHA: 70dddd399fffdc56e76073dd9513e9842e5febe5
+      DEPLOYMENT_RUN_ID: '33737399767'
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Append exact staging QA identities and recreate web only
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' RELEASE_SHA='$RELEASE_SHA' DEPLOYMENT_RUN_ID='$DEPLOYMENT_RUN_ID' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          env_file="$APP_DIR/.env.staging"
+          compose_file="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml"
+          test -s "$env_file"
+          grep -qx 'DEPLOYMENT_ENVIRONMENT=staging' "$env_file"
+
+          required=(
+            'acceptance+customer@watch-jalwa.com'
+            'acceptance+admin@watch-jalwa.com'
+            'acceptance+rights@watch-jalwa.com'
+            'acceptance+viewer@watch-jalwa.com'
+            'acceptance+premium-finance@watch-jalwa.com'
+            'acceptance+premium-viewer@watch-jalwa.com'
+            'acceptance+premium-manual@watch-jalwa.com'
+          )
+          current="$(awk -F= '$1=="STAGING_QA_ALLOWED_EMAILS" {print substr($0,index($0,"=")+1); exit}' "$env_file")"
+          combined="$current"
+          for email in "${required[@]}"; do
+            if ! tr ',' '\n' <<<"$combined" | sed 's/^ *//;s/ *$//' | grep -Fxiq "$email"; then
+              combined="${combined:+$combined,}$email"
+            fi
+          done
+          temporary="$(mktemp "${env_file}.XXXXXX")"
+          awk -v value="$combined" 'BEGIN{done=0} /^STAGING_QA_ALLOWED_EMAILS=/{if(!done) print "STAGING_QA_ALLOWED_EMAILS=" value; done=1; next} {print} END{if(!done) print "STAGING_QA_ALLOWED_EMAILS=" value}' "$env_file" > "$temporary"
+          chmod 600 "$temporary"
+          mv -f "$temporary" "$env_file"
+
+          export COMPOSE_PROJECT_NAME=jalwa-platform
+          export COMPOSE_FILE="$compose_file"
+          docker compose --env-file "$env_file" up -d --no-deps web
+          for attempt in $(seq 1 30); do
+            state="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' jalwa-web-staging 2>/dev/null || true)"
+            if [[ "$state" == healthy ]]; then break; fi
+            sleep 2
+          done
+          [[ "$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' jalwa-web-staging)" == healthy ]]
+          docker inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' jalwa-web-staging | grep -qx "$RELEASE_SHA"
+          curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3001/api/health | jq -e --arg sha "$RELEASE_SHA" '.status=="ready" and .version==$sha' >/dev/null
+          curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3001/api/readiness >/dev/null
+          "$APP_DIR/scripts/capture-release-identity.sh" "$RELEASE_SHA" "$DEPLOYMENT_RUN_ID" "$DEPLOYMENT_RUN_ID" >/dev/null
+          echo 'PASS staging QA allowlist updated; exact immutable web release remains healthy.'
+          REMOTE
