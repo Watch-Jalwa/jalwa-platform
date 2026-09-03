@@ -243,6 +243,7 @@ jobs:
           docker compose --env-file "$env_file" config | grep -Fq 'jalwa-platform_default'
 
           BACKUP_REASON="pre-deploy-${RELEASE_SHA:0:12}" "$APP_DIR/scripts/backup-postgres.sh"
+          ALLOW_LEGACY_MIGRATION_BASELINE=true MIGRATION_BASELINE_LOCK_FILE="$APP_DIR/.migration-baseline.lock" "$APP_DIR/scripts/reconcile-legacy-migration-ledger.sh"
           "$APP_DIR/scripts/apply-migrations.sh"
           "$APP_DIR/scripts/deploy-release.sh" "$RELEASE_SHA" "$DOMAIN"
           JALWA_ENV_FILE="$env_file" JALWA_ROOT="$APP_DIR" JALWA_SERVICE_USER="$DEPLOY_USER" JALWA_SERVICE_GROUP="$DEPLOY_USER" "$APP_DIR/scripts/install-operations.sh"
