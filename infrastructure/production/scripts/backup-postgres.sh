@@ -68,6 +68,7 @@ jq -nc --arg createdAt "$(date -u +%FT%TZ)" --arg reason "$reason" --arg sha256 
 
 export AWS_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID"
 export AWS_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY"
+export AWS_REGION=auto
 export AWS_DEFAULT_REGION=auto
 for artifact in "$target" "$checksum" "$metadata"; do
   aws --endpoint-url "$R2_ENDPOINT" s3 cp "$artifact" "s3://${R2_BACKUP_BUCKET}/postgres/$(basename "$artifact")" --only-show-errors
