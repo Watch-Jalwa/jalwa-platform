@@ -27,6 +27,7 @@ API_URL="${2:-}" # positional compatibility only; no separate data/auth gateway 
 MAX_DISK_PERCENT="${MAX_DISK_PERCENT:-85}"
 MAX_BACKUP_AGE_SECONDS="${MAX_BACKUP_AGE_SECONDS:-108000}"
 MAX_RESTORE_DRILL_AGE_SECONDS="${MAX_RESTORE_DRILL_AGE_SECONDS:-691200}"
+SKIP_EDGE_CHECKS="${JALWA_SKIP_EDGE_CHECKS:-false}"
 if [[ -n "${JALWA_EXPECT_SERVICES:-}" ]]; then
   read -r -a expected_services <<< "$JALWA_EXPECT_SERVICES"
 elif [[ "$ENV_FILE" == *.env.staging ]]; then
@@ -46,6 +47,7 @@ marker_age() {
   printf '%s\n' "$(( $(date -u +%s) - epoch ))"
 }
 
+[[ "$SKIP_EDGE_CHECKS" == "true" || "$SKIP_EDGE_CHECKS" == "false" ]] || fail "JALWA_SKIP_EDGE_CHECKS must be true or false"
 [[ -s "$ENV_FILE" ]] || fail "Missing ${ENV_FILE}"
 set -a
 # shellcheck disable=SC1090
@@ -57,7 +59,7 @@ cd "$APP_DIR"
 [[ "${GIT_SHA:-}" == "$JALWA_IMAGE_TAG" ]] || fail "GIT_SHA and JALWA_IMAGE_TAG differ before acceptance"
 ./scripts/smoke-test.sh "$BASE_URL" "$API_URL" "$JALWA_IMAGE_TAG"
 docker compose --env-file "$ENV_FILE" config --quiet
-pass "Compose and public smoke checks"
+pass "Compose and application smoke checks"
 
 for service in "${expected_services[@]}"; do
   id="$(docker compose --env-file "$ENV_FILE" ps -q "$service")"
@@ -108,13 +110,17 @@ else
 fi
 if [[ "${NEXT_PUBLIC_ENABLE_PHONE_AUTH:-false}" == "true" ]]; then fail "Phone authentication is not enabled in the Better Auth deployment contract"; fi
 
-headers="$(mktemp)"
-trap 'rm -f "$headers"' EXIT
-curl --fail --silent --show-error --head --max-time 20 "$BASE_URL/" > "$headers"
-for expected in 'strict-transport-security:' 'x-content-type-options: nosniff' 'referrer-policy:' 'permissions-policy:' 'x-frame-options:'; do
-  grep -qi "^${expected}" "$headers" || fail "Security header missing: $expected"
-done
-pass "Security response headers"
+if [[ "$SKIP_EDGE_CHECKS" == "false" ]]; then
+  headers="$(mktemp)"
+  trap 'rm -f "$headers"' EXIT
+  curl --fail --silent --show-error --head --max-time 20 "$BASE_URL/" > "$headers"
+  for expected in 'strict-transport-security:' 'x-content-type-options: nosniff' 'referrer-policy:' 'permissions-policy:' 'x-frame-options:'; do
+    grep -qi "^${expected}" "$headers" || fail "Security header missing: $expected"
+  done
+  pass "Security response headers"
+else
+  pass "Edge-only checks delegated to external certification runner"
+fi
 
 version="$(curl --fail --silent --show-error --max-time 20 "$BASE_URL/api/readiness" | jq -r '.version // empty')"
 [[ "$version" == "$JALWA_IMAGE_TAG" ]] || fail "Readiness version ${version:-missing} does not match image tag $JALWA_IMAGE_TAG"

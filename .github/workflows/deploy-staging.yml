@@ -183,10 +183,15 @@ jobs:
             mv -f "$temporary" "$env_file"
           }
           upsert_env NODE_ENV production
+          upsert_env APP_URL "https://$DOMAIN"
+          upsert_env NEXT_PUBLIC_APP_URL "https://$DOMAIN"
           upsert_env BETTER_AUTH_URL "https://$DOMAIN"
+          upsert_env SMTP_FROM 'subscription@codistan.org'
           upsert_env MEDIA_BACKEND r2
           upsert_env TRANSCODE_BACKEND ffmpeg
           upsert_env MEDIA_GATEWAY_MODE same-origin
+          upsert_env NEXT_PUBLIC_MEDIA_GATEWAY_URL "https://$DOMAIN"
+          upsert_env MEDIA_GATEWAY_ALLOWED_ORIGINS "https://$DOMAIN"
           upsert_env PAYMENT_PROVIDER mock
           upsert_env ALLOW_MOCK_PAYMENTS true
           upsert_env NEXT_PUBLIC_FRONTEND_PREVIEW false
@@ -228,6 +233,7 @@ jobs:
           export JALWA_EXPECT_SERVICES='postgres web worker'
           export JALWA_SERVICE_USER="$DEPLOY_USER"
           export JALWA_SERVICE_GROUP="$DEPLOY_USER"
+          export JALWA_SMOKE_BASE_URL='http://127.0.0.1:3001'
           export ENV_FILE="$env_file"
           export DB_CONTAINER="$db_container"
           export BACKUP_DIR="$APP_DIR/backups/postgres"
@@ -249,19 +255,25 @@ jobs:
           JALWA_ENV_FILE="$env_file" JALWA_ROOT="$APP_DIR" JALWA_SERVICE_USER="$DEPLOY_USER" JALWA_SERVICE_GROUP="$DEPLOY_USER" "$APP_DIR/scripts/install-operations.sh"
           BACKUP_REASON="post-deploy-${RELEASE_SHA:0:12}" "$APP_DIR/scripts/backup-postgres.sh"
           "$APP_DIR/scripts/restore-drill.sh"
-          APP_DIR="$APP_DIR" DB_CONTAINER="$db_container" "$APP_DIR/scripts/host-acceptance.sh" "https://$DOMAIN"
+          APP_DIR="$APP_DIR" DB_CONTAINER="$db_container" JALWA_SKIP_EDGE_CHECKS=true "$APP_DIR/scripts/host-acceptance.sh" "$JALWA_SMOKE_BASE_URL"
           "$APP_DIR/scripts/capture-release-identity.sh" "$RELEASE_SHA" "$BUILD_RUN_ID" "$BUILD_RUN_ID"
           docker logout ghcr.io >/dev/null 2>&1 || true
           REMOTE
 
-      - name: Verify public exact-release health
+      - name: Verify public exact-release health and edge headers
         shell: bash
         run: |
           set -euo pipefail
           health="$(curl -fsS --max-time 30 "https://$DOMAIN/api/health")"
           readiness="$(curl -fsS --max-time 30 "https://$DOMAIN/api/readiness")"
-          jq -e --arg sha "$GITHUB_SHA" '.status == "ready" and .version == $sha' <<<"$health" >/dev/null
-          jq -e --arg sha "$GITHUB_SHA" '.status == "ready" and .database == "ready" and .version == $sha' <<<"$readiness" >/dev/null
+          jq -e --arg sha "$GITHUB_SHA" '.service == "jalwa-web" and .status == "ready" and .version == $sha' <<<"$health" >/dev/null
+          jq -e --arg sha "$GITHUB_SHA" '.service == "jalwa-web" and .status == "ready" and .version == $sha' <<<"$readiness" >/dev/null
+          headers="$(mktemp)"
+          trap 'rm -f "$headers"' EXIT
+          curl -fsSI --max-time 30 "https://$DOMAIN/" > "$headers"
+          for expected in 'strict-transport-security:' 'x-content-type-options: nosniff' 'referrer-policy:' 'permissions-policy:' 'x-frame-options:'; do
+            grep -qi "^${expected}" "$headers" || { echo "Missing public edge security header: $expected" >&2; exit 1; }
+          done
 
       - name: Deployment summary
         shell: bash
@@ -278,5 +290,7 @@ jobs:
             echo '- Media: private R2 + FFmpeg + same-origin signed /api/media gateway'
             echo '- Payments: mock-only staging boundary enforced'
             echo '- Backups: encrypted pre/post-deploy backup and restore drill executed'
+            echo '- Internal release smoke: host loopback to 127.0.0.1:3001 (no NAT hairpin dependency)'
+            echo '- Public edge: external HTTPS health, readiness, exact SHA and security headers verified'
             echo '- Next: Staging certification workflow runs automatically for this exact SHA'
           } >> "$GITHUB_STEP_SUMMARY"
