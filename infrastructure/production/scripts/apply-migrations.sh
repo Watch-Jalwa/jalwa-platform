@@ -30,9 +30,9 @@ if [[ ! -f "$BOOTSTRAP_SQL" ]]; then
   echo "Database bootstrap file not found: $BOOTSTRAP_SQL" >&2
   exit 1
 fi
-docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$BOOTSTRAP_SQL"
+docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$BOOTSTRAP_SQL"
 
-docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<'SQL'
+docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<'SQL'
 create table if not exists public.jalwa_schema_migrations (
   filename text primary key,
   checksum text not null,
@@ -48,6 +48,15 @@ alter table public.jalwa_schema_migrations alter column applied_at drop not null
 update public.jalwa_schema_migrations set status='applied', applied_at=coalesce(applied_at,now()) where status is null;
 SQL
 
+# psql does not perform its :variable interpolation on SQL supplied through -c.
+# Feed tracking statements over stdin so -v values are quoted by psql itself rather
+# than interpolating migration filenames/checksums into SQL in the shell.
+run_tracking_sql() {
+  local sql="$1"
+  shift
+  printf '%s\n' "$sql" | docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" "$@"
+}
+
 shopt -s nullglob
 migrations=("$MIGRATIONS_DIR"/*.sql)
 if (( ${#migrations[@]} == 0 )); then
@@ -62,8 +71,9 @@ for migration in "${migrations[@]}"; do
     exit 1
   fi
   checksum="$(sha256sum "$migration" | awk '{print $1}')"
-  record="$(docker exec "$DB_CONTAINER" psql -At -F '|' -U "$DB_USER" -d "$DB_NAME" \
-    -v filename="$filename" -c "select checksum,status from public.jalwa_schema_migrations where filename=:'filename';")"
+  record="$(run_tracking_sql \
+    "select checksum,status from public.jalwa_schema_migrations where filename=:'filename';" \
+    -At -F '|' -v filename="$filename")"
 
   if [[ -n "$record" ]]; then
     existing_checksum="${record%%|*}"
@@ -80,26 +90,27 @@ for migration in "${migrations[@]}"; do
     exit 1
   fi
 
-  docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" \
-    -v filename="$filename" -v checksum="$checksum" \
-    -c "insert into public.jalwa_schema_migrations(filename,checksum,status,started_at,applied_at) values (:'filename',:'checksum','applying',now(),null);"
+  run_tracking_sql \
+    "insert into public.jalwa_schema_migrations(filename,checksum,status,started_at,applied_at) values (:'filename',:'checksum','applying',now(),null);" \
+    -v filename="$filename" -v checksum="$checksum" >/dev/null
 
   echo "APPLY $filename"
-  if ! docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$migration"; then
-    docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" \
-      -v filename="$filename" -c "update public.jalwa_schema_migrations set status='failed',error_message='psql execution failed' where filename=:'filename';" || true
+  if ! docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$migration"; then
+    run_tracking_sql \
+      "update public.jalwa_schema_migrations set status='failed',error_message='psql execution failed' where filename=:'filename';" \
+      -v filename="$filename" >/dev/null || true
     echo "Migration failed and was recorded for operator review: $filename" >&2
     exit 1
   fi
 
-  docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" \
-    -v filename="$filename" \
-    -c "update public.jalwa_schema_migrations set status='applied',applied_at=now(),error_message=null where filename=:'filename' and status='applying';"
+  run_tracking_sql \
+    "update public.jalwa_schema_migrations set status='applied',applied_at=now(),error_message=null where filename=:'filename' and status='applying';" \
+    -v filename="$filename" >/dev/null
 done
 
 # Vanilla PostgreSQL does not install the table/sequence grants supplied by the former gateway stack.
 # Mirror that role model while leaving function execution constrained by the explicit migration grants.
-docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<'SQL'
+docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<'SQL'
 grant usage on schema public to anon, authenticated, service_role;
 grant select, insert, update, delete, truncate, references, trigger on all tables in schema public to anon, authenticated, service_role;
 grant usage, select, update on all sequences in schema public to anon, authenticated, service_role;
