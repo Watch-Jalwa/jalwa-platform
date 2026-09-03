@@ -105,15 +105,31 @@ jobs:
             sudo apt-get update
             sudo apt-get install -y postgresql-client
           fi
-      - name: Bootstrap PostgreSQL compatibility roles
-        run: psql --set ON_ERROR_STOP=1 --file database/bootstrap.sql
-      - name: Apply migrations in order
+      - name: Exercise production migration runner and idempotent retry
         run: |
           set -euo pipefail
-          while IFS= read -r migration; do
-            echo "Applying ${migration}"
-            psql --set ON_ERROR_STOP=1 --file "$migration"
-          done < <(find database/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+          db_container="$(docker ps --format '{{.ID}} {{.Image}}' | awk '$2 ~ /pgvector\/pgvector/ {print $1; exit}')"
+          test -n "$db_container" || { echo 'Could not locate the CI PostgreSQL service container.' >&2; docker ps; exit 1; }
+
+          run_migrations() {
+            POSTGRES_USER=postgres \
+            POSTGRES_DB=postgres \
+            DB_CONTAINER="$db_container" \
+            MIGRATIONS_DIR="$GITHUB_WORKSPACE/database/migrations" \
+            BOOTSTRAP_SQL="$GITHUB_WORKSPACE/database/bootstrap.sql" \
+            MIGRATION_LOCK_FILE="$RUNNER_TEMP/jalwa-migrations.lock" \
+              bash infrastructure/production/scripts/apply-migrations.sh
+          }
+
+          run_migrations | tee "$RUNNER_TEMP/migrations-first.log"
+          run_migrations | tee "$RUNNER_TEMP/migrations-second.log"
+
+          expected="$(find database/migrations -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d ' ')"
+          actual="$(psql -At -c "select count(*) from public.jalwa_schema_migrations where status='applied';")"
+          test "$actual" = "$expected" || { echo "Expected $expected applied migration rows, found $actual" >&2; exit 1; }
+          grep -q '^APPLY ' "$RUNNER_TEMP/migrations-first.log"
+          grep -q '^SKIP ' "$RUNNER_TEMP/migrations-second.log"
+          ! grep -q '^APPLY ' "$RUNNER_TEMP/migrations-second.log"
       - name: Verify production privileges
         run: psql --set ON_ERROR_STOP=1 --file scripts/ci-verify-production-schema.sql
 
