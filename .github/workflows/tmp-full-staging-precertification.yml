@@ -1,0 +1,253 @@
+name: Temporary full staging pre-certification
+
+on:
+  push:
+    branches:
+      - ops/full-staging-certification-20260903
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_SHA: 70dddd399fffdc56e76073dd9513e9842e5febe5
+  DEPLOYMENT_PIPELINE_ID: '33737399767'
+  STAGING_BASE_URL: https://jalwa-platform.codistan.org
+  JALWA_BROWSER_BASE_URL: https://jalwa-platform.codistan.org
+  JALWA_EXPECTED_VERSION: 70dddd399fffdc56e76073dd9513e9842e5febe5
+  EXPECTED_ENVIRONMENT: staging
+  EXPECT_NOINDEX: 'true'
+  JALWA_EXPECT_NOINDEX: 'true'
+  JALWA_EXPECT_READINESS_STATUS: '200'
+  ALLOW_MOCK_PAYMENTS: 'true'
+  JALWA_EXPECT_LIVE_SOURCES: 'false'
+  STAGING_QA_CUSTOMER_EMAIL: acceptance+customer@watch-jalwa.com
+  STAGING_QA_ADMIN_EMAIL: acceptance+admin@watch-jalwa.com
+  STAGING_QA_RESTRICTED_EMAIL: acceptance+rights@watch-jalwa.com
+  STAGING_QA_UNAUTHORIZED_EMAIL: acceptance+viewer@watch-jalwa.com
+  STAGING_QA_FINANCE_EMAIL: acceptance+premium-finance@watch-jalwa.com
+  STAGING_QA_REPORT_VIEWER_EMAIL: acceptance+premium-viewer@watch-jalwa.com
+  FINANCE_EMAIL: acceptance+premium-finance@watch-jalwa.com
+  VIEWER_EMAIL: acceptance+premium-viewer@watch-jalwa.com
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      DB_CONTAINER: jalwa-postgres-staging
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 70dddd399fffdc56e76073dd9513e9842e5febe5
+
+      - name: Validate exact deployed candidate
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          [[ "$DEPLOYMENT_PIPELINE_ID" =~ ^[0-9]+$ ]]
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Load server-managed protected staging inputs
+        run: |
+          set -euo pipefail
+          load_secret() {
+            local name="$1" value
+            value="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+              "awk -F= -v n='$name' '\$1==n {print substr(\$0,index(\$0,\"=\")+1); exit}' '$APP_DIR/.env.staging'")"
+            test -n "$value" || { echo "Server-managed $name is missing." >&2; exit 1; }
+            echo "::add-mask::$value"
+            printf '%s=%s\n' "$name" "$value" >> "$GITHUB_ENV"
+          }
+          load_secret STAGING_QA_SECRET
+          load_secret OPERATIONS_DIAGNOSTICS_SECRET
+          echo 'Protected inputs loaded from the server-managed staging environment and masked.'
+
+      - name: Ensure deterministic Better Auth QA users
+        run: |
+          set -euo pipefail
+          ensure_user() {
+            local email="$1" role="$2" payload id
+            payload="$(jq -nc --arg email "$email" --arg role "$role" '{email:$email,role:$role,issueLink:false}')"
+            id="$(curl -fsS -X POST "$STAGING_BASE_URL/api/internal/qa/session" \
+              -H "x-jalwa-qa-token: $STAGING_QA_SECRET" -H 'content-type: application/json' \
+              --data "$payload" | jq -r '.user.id // empty')"
+            [[ "$id" =~ ^[0-9a-f-]{36}$ ]] || { echo "Could not resolve QA user $email" >&2; exit 1; }
+            printf '%s' "$id"
+          }
+          admin_id="$(ensure_user "$STAGING_QA_ADMIN_EMAIL" admin)"
+          finance_id="$(ensure_user "$STAGING_QA_FINANCE_EMAIL" finance)"
+          viewer_id="$(ensure_user "$STAGING_QA_REPORT_VIEWER_EMAIL" viewer)"
+          manual_id="$(ensure_user 'acceptance+premium-manual@watch-jalwa.com' subscriber)"
+          echo "::add-mask::$admin_id"
+          printf 'QA_ADMIN_ID=%s\nQA_FINANCE_ID=%s\nQA_VIEWER_ID=%s\nQA_MANUAL_ID=%s\n' "$admin_id" "$finance_id" "$viewer_id" "$manual_id" >> "$GITHUB_ENV"
+
+      - name: Seed deterministic reporting and governed live-source fixtures
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i '$DB_CONTAINER' psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              -v deployment_environment=staging \
+              -v fixture_user_id='$QA_FINANCE_ID' \
+              -v fixture_user_id_2='$QA_VIEWER_ID' \
+              -v fixture_user_id_3='$QA_MANUAL_ID'" \
+            < scripts/seed-premium-reporting-staging.sql
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i '$DB_CONTAINER' psql -v ON_ERROR_STOP=1 -U postgres -d postgres -v deployment_environment=staging" \
+            < scripts/seed-public-domain-live-sources.sql
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec '$DB_CONTAINER' psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres -c \"select count(*) >= 5 from public.checkout_orders where idempotency_key like 'staging-report-%';\"" | grep -qx t
+
+      - name: Acquire verifiable CC0 staging media evidence
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/jalwa-precertification-evidence"
+          curl --fail --silent --show-error --retry 4 --retry-delay 2 --max-time 40 \
+            'https://openaccess-api.clevelandart.org/api/artworks/?cc0=1&has_image=1&limit=1' \
+            > "$RUNNER_TEMP/jalwa-precertification-evidence/cleveland-open-access.json"
+          jq -e '.data[0].id and .data[0].title and .data[0].url and .data[0].images.web.url' \
+            "$RUNNER_TEMP/jalwa-precertification-evidence/cleveland-open-access.json" >/dev/null
+          jq -e '.info.total > 0 or (.data | length > 0)' "$RUNNER_TEMP/jalwa-precertification-evidence/cleveland-open-access.json" >/dev/null
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            "$RUNNER_TEMP/jalwa-precertification-evidence/cleveland-open-access.json" \
+            "$USER@$HOST:$APP_DIR/operations/staging-public-domain-media-evidence.json"
+
+      - name: Publish staging-only rights-gated public-domain media fixture
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' DB_CONTAINER='$DB_CONTAINER' QA_ADMIN_ID='$QA_ADMIN_ID' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          evidence="$APP_DIR/operations/staging-public-domain-media-evidence.json"
+          test -s "$evidence"
+          item_id="$(jq -r '.data[0].id' "$evidence")"
+          title="$(jq -r '.data[0].title | gsub("[\\r\\n\\t]"; " ")' "$evidence")"
+          source_url="$(jq -r '.data[0].url' "$evidence")"
+          image_url="$(jq -r '.data[0].images.web.url' "$evidence")"
+          creator="$(jq -r '(.data[0].creators // []) | map(.description) | join(", ") | if length == 0 then "Cleveland Museum of Art Open Access" else . end | gsub("[\\r\\n\\t]"; " ")' "$evidence")"
+          [[ "$item_id" =~ ^[0-9]+$ ]]
+          [[ "$source_url" == https://* ]]
+          [[ "$image_url" == https://* ]]
+          slug=staging-public-domain-media-fixture
+          provider_id="cleveland:$item_id"
+          attribution="$creator — Cleveland Museum of Art Open Access (CC0)."
+          evidence_note="Staging-only QA fixture selected from Cleveland Museum of Art Open Access API using cc0=1 and has_image=1; API response retained at $evidence."
+          docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            -v slug="$slug" -v title="$title" -v source_url="$source_url" -v image_url="$image_url" \
+            -v creator="$creator" -v provider_id="$provider_id" -v attribution="$attribution" \
+            -v evidence_note="$evidence_note" -v verifier="$QA_ADMIN_ID" <<'SQL'
+          begin;
+          insert into public.content_items(
+            slug,content_type,hosting_mode,access_level,status,title_en,description_en,primary_category_id,
+            language,audience,sensitivity,thumbnail_url,is_featured,publish_at,unpublish_at
+          ) values (
+            :'slug','image_story','external_link','public','draft',:'title',
+            'Staging-only public-domain media fixture used for representative rights and playback certification.',
+            (select id from public.categories where slug='learn'),'en','general','standard',:'image_url',false,null,null
+          )
+          on conflict(slug) do update set
+            content_type='image_story',hosting_mode='external_link',access_level='public',status='draft',title_en=excluded.title_en,
+            description_en=excluded.description_en,primary_category_id=excluded.primary_category_id,thumbnail_url=excluded.thumbnail_url,
+            is_featured=false,publish_at=null,unpublish_at=null;
+
+          delete from public.playback_sources where content_id=(select id from public.content_items where slug=:'slug');
+          insert into public.playback_sources(content_id,provider,provider_content_id,external_url,is_primary,status)
+          values ((select id from public.content_items where slug=:'slug'),'other',:'provider_id',:'source_url',true,'active');
+
+          delete from public.rights_records where content_id=(select id from public.content_items where slug=:'slug');
+          insert into public.rights_records(
+            content_id,source_url,creator,licence_code,attribution_text,evidence_url,evidence_note,takedown_contact,review_notes,
+            commercial_use_confirmed,modification_confirmed,self_hosting_confirmed,embedding_confirmed,status,verified_by,verified_at
+          ) values (
+            (select id from public.content_items where slug=:'slug'),:'source_url',:'creator','CC0',:'attribution',:'source_url',:'evidence_note',
+            'subscription@codistan.org','Staging-only QA fixture. Do not promote to production automatically.',
+            true,true,false,false,'approved',:'verifier'::uuid,now()
+          );
+
+          update public.content_items set status='published',publish_at=now()
+          where slug=:'slug';
+
+          select public.has_publishable_rights(id,hosting_mode,access_level) from public.content_items where slug=:'slug' \gset
+          \if :has_publishable_rights
+          \else
+            \quit 42
+          \endif
+          commit;
+          SQL
+          docker exec "$DB_CONTAINER" psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            -c "select count(*) from public.search_catalogue(null,null,100) where slug='$slug';" | grep -qx 1
+          echo 'PASS rights-gated staging public-domain media fixture is published with retained CC0 evidence.'
+          REMOTE
+
+      - name: Verify exact release, host recovery and public runtime
+        run: |
+          set -euo pipefail
+          identity="$RUNNER_TEMP/release-identity.json"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST:$APP_DIR/deployments/$RELEASE_SHA.identity.json" "$identity"
+          node scripts/verify-release-identity.mjs "$identity" "$RELEASE_SHA" "$DEPLOYMENT_PIPELINE_ID" >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' DB_CONTAINER='$DB_CONTAINER' JALWA_ENV_FILE='$APP_DIR/.env.staging' JALWA_COMPOSE_FILE='$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml' COMPOSE_PROJECT_NAME=jalwa-platform '$APP_DIR/scripts/host-acceptance.sh' 'https://$DOMAIN'" >/dev/null
+          health="$(curl -fsS --max-time 25 "$STAGING_BASE_URL/api/health")"
+          jq -e --arg release "$RELEASE_SHA" '.service == "jalwa-web" and .status == "ready" and .version == $release' <<<"$health" >/dev/null
+          BASE_URL="$STAGING_BASE_URL" REPORT_FILE="$RUNNER_TEMP/platform-acceptance.json" \
+            infrastructure/production/scripts/production-acceptance.sh "$STAGING_BASE_URL"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Install pinned staging browser harness
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          npx playwright install --with-deps chromium
+
+      - name: Public, Better Auth and responsive browser certification
+        run: npm run test:staging:playwright:public
+
+      - name: Customer, checkout, mock-payment and mobile browser certification
+        run: npm run test:staging:playwright:customer
+
+      - name: Studio, Finance and least-privilege browser certification
+        run: npm run test:staging:playwright:studio
+
+      - name: Catalogue and representative media browser certification
+        run: npm run test:staging:playwright:media
+
+      - name: Capture deterministic public visual review evidence
+        run: |
+          set +e
+          export CERTIFICATION_EVIDENCE_DIR="$RUNNER_TEMP/jalwa-precertification-evidence"
+          node scripts/staging-visual-certification.mjs
+          code=$?
+          if [[ "$code" -ne 0 && "$code" -ne 3 ]]; then exit "$code"; fi
+          test -s "$CERTIFICATION_EVIDENCE_DIR/visual-evidence.json"
+          echo 'Visual captures generated for exact-release review.'
+
+      - name: Upload sanitized pre-certification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: staging-precertification-${{ env.RELEASE_SHA }}-${{ github.run_id }}
+          path: ${{ runner.temp }}/jalwa-precertification-evidence
+          if-no-files-found: warn
+          retention-days: 30
+          include-hidden-files: false
