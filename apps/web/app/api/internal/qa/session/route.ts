@@ -8,6 +8,25 @@ export const dynamic = "force-dynamic";
 
 const allowedRoles = new Set(["subscriber", "editor", "admin", "rights_reviewer", "finance", "viewer"]);
 
+async function setQaProfileRole(userId: string, role: string) {
+  const client = await databasePool.connect();
+  try {
+    await client.query("begin");
+    await client.query("select set_config('request.jwt.claim.role', 'service_role', true)");
+    const result = await client.query(
+      `update public.profiles set role=$2,onboarding_completed=true,updated_at=now() where id=$1`,
+      [userId, role],
+    );
+    if (result.rowCount !== 1) throw new Error("QA profile was not found for role assignment.");
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 export async function POST(request: Request) {
   if (!stagingQaAuthorized(request)) return NextResponse.json({ error: "Not found." }, { status: 404 });
   const body = await request.json().catch(() => ({})) as { email?: string; role?: string; nextPath?: string; issueLink?: boolean; qaRunId?: string };
@@ -29,9 +48,7 @@ export async function POST(request: Request) {
   }
   if (!userId) return NextResponse.json({ error: "QA identity could not be created." }, { status: 500 });
 
-  if (role) {
-    await databasePool.query(`update public.profiles set role=$2,onboarding_completed=true,updated_at=now() where id=$1`, [userId, role]);
-  }
+  if (role) await setQaProfileRole(userId, role);
 
   if (body.issueLink === false) return NextResponse.json({ user: { id: userId, email } }, { headers: { "Cache-Control": "no-store" } });
 
