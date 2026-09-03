@@ -27,6 +27,35 @@ exec 9>"$LOCK_FILE"
 flock -n 9 || { echo "Another migration baseline operation is active." >&2; exit 1; }
 docker exec "$DB_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null
 
+docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<'SQL'
+create table if not exists public.jalwa_schema_migrations (
+  filename text primary key,
+  checksum text not null,
+  status text not null default 'applied' check (status in ('applying','applied','failed')),
+  started_at timestamptz not null default now(),
+  applied_at timestamptz,
+  error_message text
+);
+alter table public.jalwa_schema_migrations add column if not exists status text not null default 'applied';
+alter table public.jalwa_schema_migrations add column if not exists started_at timestamptz not null default now();
+alter table public.jalwa_schema_migrations add column if not exists error_message text;
+alter table public.jalwa_schema_migrations alter column applied_at drop not null;
+SQL
+
+ledger_summary="$(docker exec "$DB_CONTAINER" psql -X -At -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" -c "select count(*),count(*) filter(where status='applied'),count(*) filter(where status<>'applied') from public.jalwa_schema_migrations;")"
+IFS='|' read -r ledger_total ledger_applied ledger_non_applied <<<"$ledger_summary"
+
+# Once a real migration ledger exists, this one-time compatibility path must get
+# out of the way. Future migration files are then handled only by apply-migrations.sh.
+if (( ledger_applied > 0 )); then
+  if (( ledger_non_applied > 0 )); then
+    echo "Migration ledger is already established but contains non-applied rows; refusing automatic reconciliation." >&2
+    exit 1
+  fi
+  echo "Migration ledger is already established; leaving it to the normal migration runner."
+  exit 0
+fi
+
 expected_manifest="$(mktemp)"
 actual_manifest="$(mktemp)"
 seed_sql="$(mktemp)"
@@ -78,33 +107,6 @@ if ! cmp -s "$expected_manifest" "$actual_manifest"; then
   echo "Legacy baseline migration set does not match the single approved 29-migration set; refusing to mark history." >&2
   diff -u "$expected_manifest" "$actual_manifest" >&2 || true
   exit 1
-fi
-
-docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<'SQL'
-create table if not exists public.jalwa_schema_migrations (
-  filename text primary key,
-  checksum text not null,
-  status text not null default 'applied' check (status in ('applying','applied','failed')),
-  started_at timestamptz not null default now(),
-  applied_at timestamptz,
-  error_message text
-);
-alter table public.jalwa_schema_migrations add column if not exists status text not null default 'applied';
-alter table public.jalwa_schema_migrations add column if not exists started_at timestamptz not null default now();
-alter table public.jalwa_schema_migrations add column if not exists error_message text;
-alter table public.jalwa_schema_migrations alter column applied_at drop not null;
-SQL
-
-ledger_summary="$(docker exec "$DB_CONTAINER" psql -X -At -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" -c "select count(*),count(*) filter(where status='applied'),count(*) filter(where status<>'applied') from public.jalwa_schema_migrations;")"
-IFS='|' read -r ledger_total ledger_applied ledger_non_applied <<<"$ledger_summary"
-
-if (( ledger_applied > 0 )); then
-  if (( ledger_non_applied > 0 )); then
-    echo "Migration ledger is already established but contains non-applied rows; refusing automatic reconciliation." >&2
-    exit 1
-  fi
-  echo "Migration ledger is already established; leaving it to the normal migration runner."
-  exit 0
 fi
 
 if (( ledger_total > 0 )); then
