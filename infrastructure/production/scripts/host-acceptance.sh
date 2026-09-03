@@ -55,6 +55,22 @@ source "$ENV_FILE"
 set +a
 cd "$APP_DIR"
 
+# Preserve the database identity chosen when an existing on-prem PostgreSQL
+# container was initialized. Staging predates the canonical Compose defaults,
+# so POSTGRES_USER/POSTGRES_DB may be absent from the server-managed env file.
+# Prefer explicit environment values, otherwise discover non-secret identity
+# fields from the running container, matching the backup/restore contract.
+DB_USER="${POSTGRES_USER:-}"
+DB_NAME="${POSTGRES_DB:-}"
+if [[ -z "$DB_USER" ]]; then
+  DB_USER="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$DB_CONTAINER" | sed -n 's/^POSTGRES_USER=//p' | head -n 1)"
+fi
+if [[ -z "$DB_NAME" ]]; then
+  DB_NAME="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$DB_CONTAINER" | sed -n 's/^POSTGRES_DB=//p' | head -n 1)"
+fi
+DB_USER="${DB_USER:-postgres}"
+DB_NAME="${DB_NAME:-postgres}"
+
 [[ "${JALWA_IMAGE_TAG:-}" =~ ^[0-9a-f]{40}$ ]] || fail "JALWA_IMAGE_TAG is not a deployable Git commit SHA"
 [[ "${GIT_SHA:-}" == "$JALWA_IMAGE_TAG" ]] || fail "GIT_SHA and JALWA_IMAGE_TAG differ before acceptance"
 ./scripts/smoke-test.sh "$BASE_URL" "$API_URL" "$JALWA_IMAGE_TAG"
@@ -67,7 +83,7 @@ for service in "${expected_services[@]}"; do
   [[ "$(docker inspect -f '{{.State.Running}}' "$id")" == "true" ]] || fail "Service not running: $service"
   health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id")"
   if [[ "$service" == "postgres" && "$health" == "none" ]]; then
-    docker exec "$DB_CONTAINER" pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" >/dev/null \
+    docker exec "$DB_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null \
       || fail "Service unhealthy: postgres (no Docker healthcheck and pg_isready failed)"
   elif [[ "$service" != "caddy" && "$health" != "healthy" ]]; then
     fail "Service unhealthy: $service ($health)"
@@ -75,12 +91,13 @@ for service in "${expected_services[@]}"; do
   pass "$service ($health)"
 done
 
-docker exec "$DB_CONTAINER" pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" >/dev/null
-migration_failures="$(docker exec "$DB_CONTAINER" psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -Atqc "select count(*) from public.jalwa_schema_migrations where status is distinct from 'applied';")"
+docker exec "$DB_CONTAINER" pg_isready -U "$DB_USER" -d "$DB_NAME" >/dev/null \
+  || fail "PostgreSQL readiness failed for the preserved database identity"
+migration_failures="$(docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -Atqc "select count(*) from public.jalwa_schema_migrations where status is distinct from 'applied';")"
 [[ "$migration_failures" == "0" ]] || fail "$migration_failures migration records are not applied"
 pass "PostgreSQL and migration ledger"
 
-stuck_jobs="$(docker exec "$DB_CONTAINER" psql -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" -Atqc "
+stuck_jobs="$(docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" -Atqc "
 select
   (select count(*) from public.media_jobs where (status='queued' and available_at < now()-interval '2 hours') or (status='processing' and locked_at < now()-interval '3 hours'))
  + (select count(*) from public.drm_packaging_jobs where (status='queued' and available_at < now()-interval '2 hours') or (status='processing' and locked_at < now()-interval '3 hours'))
