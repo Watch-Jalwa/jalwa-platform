@@ -13,7 +13,10 @@ last_good_file="$root/.last-good-image"
 previous_good_file="$root/.previous-good-image"
 manifest_dir="$root/deployments"
 read -r -a deployment_services <<< "${JALWA_COMPOSE_SERVICES:-}"
+read -r -a health_services <<< "${JALWA_HEALTH_SERVICES:-web worker}"
 preserve_dependencies="${JALWA_DEPLOY_NO_DEPS:-false}"
+health_wait_timeout="${JALWA_HEALTH_WAIT_TIMEOUT_SECONDS:-180}"
+health_wait_interval="${JALWA_HEALTH_WAIT_INTERVAL_SECONDS:-2}"
 export COMPOSE_FILE="$compose_file"
 
 [[ "$new_tag" =~ ^[0-9a-f]{40}$ ]] || { echo "Image tag must be a 40-character lowercase Git commit SHA." >&2; exit 1; }
@@ -21,6 +24,9 @@ export COMPOSE_FILE="$compose_file"
 [[ -s "${compose_file%%:*}" ]] || { echo "Missing deployment compose file: ${compose_file%%:*}" >&2; exit 1; }
 [[ "$preserve_dependencies" == "true" || "$preserve_dependencies" == "false" ]] || { echo "JALWA_DEPLOY_NO_DEPS must be true or false." >&2; exit 1; }
 [[ "$smoke_base_url" =~ ^https?:// ]] || { echo "JALWA_SMOKE_BASE_URL must be an http(s) URL." >&2; exit 1; }
+[[ "$health_wait_timeout" =~ ^[1-9][0-9]*$ ]] || { echo "JALWA_HEALTH_WAIT_TIMEOUT_SECONDS must be a positive integer." >&2; exit 1; }
+[[ "$health_wait_interval" =~ ^[0-9]+$ ]] || { echo "JALWA_HEALTH_WAIT_INTERVAL_SECONDS must be a non-negative integer." >&2; exit 1; }
+((${#health_services[@]})) || { echo "At least one JALWA_HEALTH_SERVICES service is required." >&2; exit 1; }
 
 compose() {
   docker compose --env-file "$env_file" "$@"
@@ -114,6 +120,49 @@ up_selected() {
   if ((${#deployment_services[@]})); then compose "${args[@]}" "${deployment_services[@]}"; else compose "${args[@]}"; fi
 }
 
+wait_for_service_health() {
+  local deadline=$((SECONDS + health_wait_timeout))
+  local service id state health all_ready
+
+  while :; do
+    all_ready=true
+    for service in "${health_services[@]}"; do
+      id="$(compose ps -q "$service" 2>/dev/null || true)"
+      if [[ -z "$id" ]]; then
+        all_ready=false
+        continue
+      fi
+      state="$(docker inspect -f '{{.State.Status}}' "$id" 2>/dev/null || true)"
+      health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id" 2>/dev/null || true)"
+      case "$state" in
+        exited|dead)
+          echo "Release service ${service} entered terminal state ${state} before smoke testing." >&2
+          docker logs --tail 100 "$id" >&2 2>/dev/null || true
+          return 1
+          ;;
+      esac
+      if [[ "$state" != "running" || "$health" != "healthy" ]]; then
+        all_ready=false
+      fi
+    done
+
+    if [[ "$all_ready" == "true" ]]; then
+      echo "Release services are healthy: ${health_services[*]}"
+      return 0
+    fi
+    if ((SECONDS >= deadline)); then
+      echo "Timed out after ${health_wait_timeout}s waiting for release service health: ${health_services[*]}" >&2
+      compose ps >&2 || true
+      for service in "${health_services[@]}"; do
+        id="$(compose ps -q "$service" 2>/dev/null || true)"
+        [[ -n "$id" ]] && docker inspect -f '{{.Name}} status={{.State.Status}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id" >&2 2>/dev/null || true
+      done
+      return 1
+    fi
+    sleep "$health_wait_interval"
+  done
+}
+
 rollback() {
   [[ -n "$previous_tag" && "$previous_tag" != "$new_tag" ]] || return 1
   echo "Release failed; restoring application release ${previous_tag}." >&2
@@ -128,6 +177,7 @@ rollback() {
   else
     compose "${args[@]}" web worker caddy
   fi
+  wait_for_service_health
   "$root/scripts/smoke-test.sh" "$smoke_base_url" "" "$previous_tag"
   return 0
 }
@@ -140,6 +190,10 @@ if ! pull_selected; then
   exit 1
 fi
 if ! up_selected; then
+  rollback || true
+  exit 1
+fi
+if ! wait_for_service_health; then
   rollback || true
   exit 1
 fi
