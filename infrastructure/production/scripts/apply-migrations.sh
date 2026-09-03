@@ -62,8 +62,11 @@ for migration in "${migrations[@]}"; do
     exit 1
   fi
   checksum="$(sha256sum "$migration" | awk '{print $1}')"
-  record="$(docker exec "$DB_CONTAINER" psql -At -F '|' -U "$DB_USER" -d "$DB_NAME" \
-    -v filename="$filename" -c "select checksum,status from public.jalwa_schema_migrations where filename=:'filename';")"
+  record="$(docker exec -i "$DB_CONTAINER" psql -At -F '|' -U "$DB_USER" -d "$DB_NAME" \
+    -v filename="$filename" <<'SQL'
+select checksum,status from public.jalwa_schema_migrations where filename=:'filename';
+SQL
+)"
 
   if [[ -n "$record" ]]; then
     existing_checksum="${record%%|*}"
@@ -80,21 +83,30 @@ for migration in "${migrations[@]}"; do
     exit 1
   fi
 
-  docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" \
-    -v filename="$filename" -v checksum="$checksum" \
-    -c "insert into public.jalwa_schema_migrations(filename,checksum,status,started_at,applied_at) values (:'filename',:'checksum','applying',now(),null);"
+  docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" \
+    -v filename="$filename" -v checksum="$checksum" <<'SQL'
+insert into public.jalwa_schema_migrations(filename,checksum,status,started_at,applied_at)
+values (:'filename',:'checksum','applying',now(),null);
+SQL
 
   echo "APPLY $filename"
   if ! docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" < "$migration"; then
-    docker exec "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" \
-      -v filename="$filename" -c "update public.jalwa_schema_migrations set status='failed',error_message='psql execution failed' where filename=:'filename';" || true
+    docker exec -i "$DB_CONTAINER" psql -U "$DB_USER" -d "$DB_NAME" \
+      -v filename="$filename" <<'SQL' || true
+update public.jalwa_schema_migrations
+set status='failed',error_message='psql execution failed'
+where filename=:'filename';
+SQL
     echo "Migration failed and was recorded for operator review: $filename" >&2
     exit 1
   fi
 
-  docker exec "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" \
-    -v filename="$filename" \
-    -c "update public.jalwa_schema_migrations set status='applied',applied_at=now(),error_message=null where filename=:'filename' and status='applying';"
+  docker exec -i "$DB_CONTAINER" psql -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" \
+    -v filename="$filename" <<'SQL'
+update public.jalwa_schema_migrations
+set status='applied',applied_at=now(),error_message=null
+where filename=:'filename' and status='applying';
+SQL
 done
 
 # Vanilla PostgreSQL does not install the table/sequence grants supplied by the former gateway stack.
