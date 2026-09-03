@@ -1,0 +1,87 @@
+name: Temporary staging disk recovery
+
+on:
+  push:
+    branches:
+      - ops/staging-disk-recovery-20260903
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - name: Configure pinned SSH access
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Remove only unused Jalwa images and stale Docker cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          db_container=jalwa-postgres-staging
+          expected_volume=jalwa-platform_jalwa_staging_pgdata
+
+          docker inspect "$db_container" >/dev/null
+          docker inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$db_container" | grep -qx "$expected_volume"
+          [[ "$(docker inspect -f '{{.State.Running}}' "$db_container")" == true ]]
+
+          echo '=== BEFORE ==='
+          df -h "$APP_DIR"
+          docker system df || true
+
+          mapfile -t used_ids < <(docker ps -aq | xargs -r docker inspect -f '{{.Image}}' | sort -u)
+          removed=0
+          while read -r ref short_id; do
+            [[ -n "$ref" ]] || continue
+            full_id="$(docker image inspect -f '{{.Id}}' "$ref")"
+            in_use=false
+            for used in "${used_ids[@]}"; do
+              if [[ "$used" == "$full_id" ]]; then
+                in_use=true
+                break
+              fi
+            done
+            if [[ "$in_use" == false ]]; then
+              echo "Removing unused Jalwa image $ref ($short_id)"
+              docker image rm "$ref"
+              removed=$((removed + 1))
+            fi
+          done < <(docker image ls --format '{{.Repository}}:{{.Tag}} {{.ID}}' | awk '$1 ~ /^ghcr.io\/watch-jalwa\/jalwa-platform-(web|worker):[0-9a-f]{40}$/ {print $1, $2}')
+
+          docker image prune -f
+          docker builder prune -f --filter 'until=168h' || true
+
+          echo "Removed $removed unused immutable Jalwa image references."
+          echo '=== AFTER ==='
+          df -h "$APP_DIR"
+          docker system df || true
+
+          [[ "$(docker inspect -f '{{.State.Running}}' "$db_container")" == true ]]
+          docker inspect -f '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Name}}{{end}}{{end}}' "$db_container" | grep -qx "$expected_volume"
+          curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3001/api/health >/dev/null
+          curl --fail --silent --show-error --max-time 20 http://127.0.0.1:3001/api/readiness >/dev/null
+
+          disk_percent="$(df -P "$APP_DIR" | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+          [[ "$disk_percent" =~ ^[0-9]+$ ]]
+          (( disk_percent < 85 )) || { echo "Disk remains above staging acceptance threshold: ${disk_percent}%" >&2; exit 1; }
+          echo "PASS staging disk utilization is ${disk_percent}% and PostgreSQL/app health remained intact"
+          REMOTE
