@@ -8,6 +8,7 @@ new_worker_image="${4:-ghcr.io/watch-jalwa/jalwa-platform-worker:${new_tag}}"
 root="${JALWA_ROOT:-/opt/jalwa}"
 env_file="${JALWA_ENV_FILE:-$root/.env.production}"
 compose_file="${JALWA_COMPOSE_FILE:-$root/docker-compose.yml}"
+smoke_base_url="${JALWA_SMOKE_BASE_URL:-https://${domain}}"
 last_good_file="$root/.last-good-image"
 previous_good_file="$root/.previous-good-image"
 manifest_dir="$root/deployments"
@@ -19,6 +20,7 @@ export COMPOSE_FILE="$compose_file"
 [[ -s "$env_file" ]] || { echo "Missing deployment environment: $env_file" >&2; exit 1; }
 [[ -s "${compose_file%%:*}" ]] || { echo "Missing deployment compose file: ${compose_file%%:*}" >&2; exit 1; }
 [[ "$preserve_dependencies" == "true" || "$preserve_dependencies" == "false" ]] || { echo "JALWA_DEPLOY_NO_DEPS must be true or false." >&2; exit 1; }
+[[ "$smoke_base_url" =~ ^https?:// ]] || { echo "JALWA_SMOKE_BASE_URL must be an http(s) URL." >&2; exit 1; }
 
 compose() {
   docker compose --env-file "$env_file" "$@"
@@ -126,7 +128,7 @@ rollback() {
   else
     compose "${args[@]}" web worker caddy
   fi
-  "$root/scripts/smoke-test.sh" "https://${domain}" "" "$previous_tag"
+  "$root/scripts/smoke-test.sh" "$smoke_base_url" "" "$previous_tag"
   return 0
 }
 
@@ -141,7 +143,7 @@ if ! up_selected; then
   rollback || true
   exit 1
 fi
-if ! "$root/scripts/smoke-test.sh" "https://${domain}" "" "$new_tag"; then
+if ! "$root/scripts/smoke-test.sh" "$smoke_base_url" "" "$new_tag"; then
   rollback || true
   exit 1
 fi
