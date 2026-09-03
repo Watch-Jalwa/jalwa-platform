@@ -1,0 +1,68 @@
+name: Temporary verify staging QA allowlist
+
+on:
+  push:
+    branches:
+      - ops/verify-staging-qa-allowlist-20260903
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    env:
+      RELEASE_SHA: 70dddd399fffdc56e76073dd9513e9842e5febe5
+      DEPLOYMENT_RUN_ID: '33737399767'
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: 70dddd399fffdc56e76073dd9513e9842e5febe5
+      - name: Configure pinned SSH and load QA secret
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
+          qa="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "awk -F= '\$1==\"STAGING_QA_SECRET\" {print substr(\$0,index(\$0,\"=\")+1); exit}' '$APP_DIR/.env.staging'")"
+          test -n "$qa"
+          echo "::add-mask::$qa"
+          printf 'STAGING_QA_SECRET=%s\n' "$qa" >> "$GITHUB_ENV"
+      - name: Recapture exact release identity after web recreation
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "JALWA_ROOT='$APP_DIR' JALWA_ENV_FILE='$APP_DIR/.env.staging' JALWA_COMPOSE_FILE='$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml' COMPOSE_PROJECT_NAME=jalwa-platform '$APP_DIR/scripts/capture-release-identity.sh' '$RELEASE_SHA' '$DEPLOYMENT_RUN_ID' '$DEPLOYMENT_RUN_ID' >/dev/null"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST:$APP_DIR/deployments/$RELEASE_SHA.identity.json" /tmp/release-identity.json
+          node scripts/verify-release-identity.mjs /tmp/release-identity.json "$RELEASE_SHA" "$DEPLOYMENT_RUN_ID" >/dev/null
+      - name: Prove exact allowlisted QA identities are accepted
+        run: |
+          set -euo pipefail
+          for pair in \
+            'acceptance+customer@watch-jalwa.com:subscriber' \
+            'acceptance+admin@watch-jalwa.com:admin' \
+            'acceptance+rights@watch-jalwa.com:rights_reviewer' \
+            'acceptance+viewer@watch-jalwa.com:viewer' \
+            'acceptance+premium-finance@watch-jalwa.com:finance' \
+            'acceptance+premium-viewer@watch-jalwa.com:viewer' \
+            'acceptance+premium-manual@watch-jalwa.com:subscriber'; do
+            email="${pair%%:*}"; role="${pair##*:}"
+            payload="$(jq -nc --arg email "$email" --arg role "$role" '{email:$email,role:$role,issueLink:false}')"
+            result="$(curl -fsS -X POST "https://$DOMAIN/api/internal/qa/session" -H "x-jalwa-qa-token: $STAGING_QA_SECRET" -H 'content-type: application/json' --data "$payload")"
+            jq -e --arg email "$email" '.user.email == $email and (.user.id | length > 0)' <<<"$result" >/dev/null
+          done
+          curl -fsS "https://$DOMAIN/api/health" | jq -e --arg sha "$RELEASE_SHA" '.status=="ready" and .version==$sha' >/dev/null
+          curl -fsS "https://$DOMAIN/api/readiness" >/dev/null
+          echo 'PASS exact staging QA allowlist, release identity, health and readiness verified.'
