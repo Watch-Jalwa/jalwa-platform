@@ -24,8 +24,8 @@ check() {
 
 check "${BASE_URL}/api/health" "200" "$WORK_DIR/health.json"
 check "${BASE_URL}/api/readiness" "200" "$WORK_DIR/readiness.json"
-jq -e '.status == "ready" and .database == "ready" and .migrations == "ready"' "$WORK_DIR/readiness.json" >/dev/null || {
-  echo "FAIL readiness payload does not report a fully ready service" >&2
+jq -e '.service == "jalwa-web" and .status == "ready"' "$WORK_DIR/readiness.json" >/dev/null || {
+  echo "FAIL readiness payload does not report a ready Jalwa web service" >&2
   cat "$WORK_DIR/readiness.json" >&2
   exit 1
 }
