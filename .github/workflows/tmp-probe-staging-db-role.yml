@@ -1,0 +1,42 @@
+name: Temporary staging DB role probe
+
+on:
+  push:
+    branches:
+      - ops/probe-staging-db-role-20260903
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Probe application DB role capability without exposing credentials
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" <<'REMOTE'
+          set -euo pipefail
+          docker exec jalwa-web-staging node - <<'NODE'
+          const pg = require('pg');
+          (async () => {
+            const c = new pg.Client({ connectionString: process.env.DATABASE_URL });
+            await c.connect();
+            const r = await c.query("select current_user, pg_has_role(current_user,'service_role','MEMBER') as can_assume");
+            console.log(`APP_DB_ROLE=${r.rows[0].current_user}`);
+            console.log(`CAN_ASSUME_SERVICE_ROLE=${r.rows[0].can_assume ? 'YES' : 'NO'}`);
+            await c.end();
+          })().catch((e)=>{ console.error(e.message); process.exit(1); });
+          NODE
+          REMOTE
