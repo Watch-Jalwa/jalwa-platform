@@ -66,7 +66,12 @@ for service in "${expected_services[@]}"; do
   [[ -n "$id" ]] || fail "Missing app service: $service"
   [[ "$(docker inspect -f '{{.State.Running}}' "$id")" == "true" ]] || fail "Service not running: $service"
   health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$id")"
-  if [[ "$service" != "caddy" && "$health" != "healthy" ]]; then fail "Service unhealthy: $service ($health)"; fi
+  if [[ "$service" == "postgres" && "$health" == "none" ]]; then
+    docker exec "$DB_CONTAINER" pg_isready -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}" >/dev/null \
+      || fail "Service unhealthy: postgres (no Docker healthcheck and pg_isready failed)"
+  elif [[ "$service" != "caddy" && "$health" != "healthy" ]]; then
+    fail "Service unhealthy: $service ($health)"
+  fi
   pass "$service ($health)"
 done
 
