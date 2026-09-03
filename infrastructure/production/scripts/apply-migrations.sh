@@ -108,12 +108,9 @@ for migration in "${migrations[@]}"; do
     -v filename="$filename" >/dev/null
 done
 
-# Vanilla PostgreSQL does not install the table/sequence grants supplied by the former gateway stack.
-# Mirror that role model while leaving function execution constrained by the explicit migration grants.
-docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" <<'SQL'
-grant usage on schema public to anon, authenticated, service_role;
-grant select, insert, update, delete, truncate, references, trigger on all tables in schema public to anon, authenticated, service_role;
-grant usage, select, update on all sequences in schema public to anon, authenticated, service_role;
-SQL
+# bootstrap.sql establishes the runtime roles, schema usage and default privileges
+# before migrations create objects. Individual migrations intentionally revoke and
+# narrow privileges for sensitive tables/functions. Never re-grant blanket table
+# DML here after migrations, because doing so would undo those security boundaries.
 
 echo "Database migrations are current."
