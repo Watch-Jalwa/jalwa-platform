@@ -102,6 +102,8 @@ The projection contains only documented finance fields such as remote payment ID
 
 This table is readable only by Finance/Admin through RLS and is surfaced in Studio Finance. It deliberately does not fabricate checkout/subscription relationships that are absent from the documented payment-history response. Customer Billing continues to read authoritative payment history directly through the authenticated BFF.
 
+Existing Premium aggregate reports were designed around local checkout-to-subscription linkage. Because the documented remote payment-history shape does not provide that linkage, remote payment-service transactions are kept in the dedicated authoritative Finance projection rather than being inserted into legacy report sources with guessed plan/renewal relationships. Any future unified revenue/renewal report must be based on a documented provider-side relationship or explicit reporting contract, not inference.
+
 ## Customer Billing UX
 
 When the integration is enabled, `/pricing` and `/billing` use payment-service state rather than the legacy local checkout assumptions.
