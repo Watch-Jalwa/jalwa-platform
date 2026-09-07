@@ -113,3 +113,9 @@ test("staging payment-service preflight is exact-release, secret-safe, fail-clos
   assert.match(workflow, /mv -f \"\$backup\" \"\$env_file\"/);
   assert.doesNotMatch(workflow, /NEXT_PUBLIC_PAYMENT_SERVICE/);
 });
+
+test("payment-service integration is discoverable from the canonical repository handoff", async () => {
+  const readme = await file("README.md");
+  assert.match(readme, /Payment-service JazzCash wallet subscriptions/);
+  assert.match(readme, /#110/);
+});
