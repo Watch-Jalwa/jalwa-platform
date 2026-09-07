@@ -14,7 +14,10 @@ test("payment-service finance projection stores only sanitized authoritative pay
   assert.match(migration, /status in \('pending','completed','failed','expired','refunded'\)/);
   assert.match(migration, /finance payment service payments read/);
   assert.match(migration, /role in \('finance','admin'\)/);
-  assert.doesNotMatch(migration, /pp_PaymentToken|pp_Password|pp_SecureHash|MPIN/i);
+  const tableDefinition = migration.match(/create table public\.payment_service_payments \(([\s\S]*?)\n\);/)?.[1] ?? "";
+  assert.ok(tableDefinition, "payment_service_payments table definition must be present");
+  assert.doesNotMatch(tableDefinition, /pp_paymenttoken|pp_password|pp_securehash|\bmpin\b/i);
+  assert.match(migration, /No JazzCash wallet token, MPIN, merchant password or secure hash is stored/);
 });
 
 test("signed payment-service events reconcile authoritative payment history into Finance", async () => {
