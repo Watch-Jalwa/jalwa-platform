@@ -1,0 +1,38 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const root = new URL("../../../", import.meta.url);
+const file = (path) => readFile(new URL(path, root), "utf8");
+
+test("payment-service finance projection stores only sanitized authoritative payment fields", async () => {
+  const migration = await file("database/migrations/202609070001_payment_service_finance_projection.sql");
+  assert.match(migration, /create table public\.payment_service_payments/);
+  assert.match(migration, /remote_payment_id text not null/);
+  assert.match(migration, /amount_minor integer not null/);
+  assert.match(migration, /charge_kind text/);
+  assert.match(migration, /status in \('pending','completed','failed','expired','refunded'\)/);
+  assert.match(migration, /finance payment service payments read/);
+  assert.match(migration, /role in \('finance','admin'\)/);
+  assert.doesNotMatch(migration, /pp_PaymentToken|pp_Password|pp_SecureHash|MPIN/i);
+});
+
+test("signed payment-service events reconcile authoritative payment history into Finance", async () => {
+  const reconciliation = await file("apps/web/lib/payments/payment-service-webhook.ts");
+  assert.match(reconciliation, /getPaymentServicePayments\(event\.userId\)/);
+  assert.match(reconciliation, /PAYMENT_HISTORY_EVENTS/);
+  assert.match(reconciliation, /insert into public\.payment_service_payments/);
+  assert.match(reconciliation, /on conflict\(provider,remote_payment_id\) do update/);
+  assert.match(reconciliation, /response_message=excluded\.response_message/);
+  assert.match(reconciliation, /payments_reconciled/);
+  assert.match(reconciliation, /boundedText\(payment\.response_message, 1000\)/);
+});
+
+test("Studio Finance exposes the reconciled payment-service ledger under staff authorization", async () => {
+  const page = await file("apps/web/app/studio/finance/page.tsx");
+  assert.match(page, /requireStaff\(\)/);
+  assert.match(page, /profile\.role !== "finance" && profile\.role !== "admin"/);
+  assert.match(page, /database\.from\("payment_service_payments"\)/);
+  assert.match(page, /Payment-service transactions/);
+  assert.match(page, /sanitized local projection of the authoritative payment-service history/);
+});
