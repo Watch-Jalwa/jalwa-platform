@@ -28,6 +28,15 @@ test("signed payment-service events reconcile authoritative payment history into
   assert.match(reconciliation, /boundedText\(payment\.response_message, 1000\)/);
 });
 
+test("remote subscription projection records authoritative price and recurring-consent snapshots", async () => {
+  const reconciliation = await file("apps/web/lib/payments/payment-service-webhook.ts");
+  assert.match(reconciliation, /auto_renew_consented=/);
+  assert.match(reconciliation, /price_snapshot=jsonb_build_object/);
+  assert.match(reconciliation, /subscription\.amount_minor/);
+  assert.match(reconciliation, /subscription\.step_amount_minor/);
+  assert.match(reconciliation, /subscription\.interval/);
+});
+
 test("Studio Finance exposes the reconciled payment-service ledger under staff authorization", async () => {
   const page = await file("apps/web/app/studio/finance/page.tsx");
   assert.match(page, /requireStaff\(\)/);
