@@ -46,5 +46,5 @@ export async function POST(request: Request) {
 
   const result = await reconcilePaymentServiceEvent(rawBody, payload);
   if (!result.ok) return NextResponse.json({ error: result.error }, { status: result.status });
-  return NextResponse.json({ ok: true, ...result });
+  return NextResponse.json(result);
 }
