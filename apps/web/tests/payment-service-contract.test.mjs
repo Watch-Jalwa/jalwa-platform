@@ -11,6 +11,7 @@ test("payment service API key stays server-side and all upstream calls use X-Api
   assert.match(client, /process\.env\.PAYMENT_SERVICE_API_KEY/);
   assert.match(client, /"X-Api-Key": apiKey/);
   assert.doesNotMatch(client, /NEXT_PUBLIC_PAYMENT_SERVICE/);
+  assert.match(env, /PAYMENT_SERVICE_ENABLED=false/);
   assert.match(env, /PAYMENT_SERVICE_API_KEY=/);
   assert.doesNotMatch(env, /NEXT_PUBLIC_PAYMENT_SERVICE_(API_KEY|WEBHOOK_SECRET)/);
 });
