@@ -45,3 +45,9 @@ test("Studio Finance exposes the reconciled payment-service ledger under staff a
   assert.match(page, /Payment-service transactions/);
   assert.match(page, /sanitized local projection of the authoritative payment-service history/);
 });
+
+test("aggregate reports do not invent undocumented remote payment-to-subscription links", async () => {
+  const docs = await file("docs/29-payment-service-wallet-subscriptions.md");
+  assert.match(docs, /does not provide that linkage/);
+  assert.match(docs, /not inference/);
+});
