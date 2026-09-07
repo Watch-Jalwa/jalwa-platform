@@ -97,3 +97,18 @@ test("v1 customer UX keeps cancel and wallet unlink separate and omits pause, sw
   assert.doesNotMatch(billing, />Pause</);
   assert.doesNotMatch(billing, />Switch plan</);
 });
+
+test("staging payment-service preflight is exact-release, secret-safe, fail-closed and always restores mock staging", async () => {
+  const workflow = await file(".github/workflows/payment-service-staging-preflight.yml");
+  assert.match(workflow, /release_sha:/);
+  assert.match(workflow, /STAGING_DEPLOYMENT_RUN_ID/);
+  assert.match(workflow, /STAGING_PAYMENT_SERVICE_API_KEY/);
+  assert.match(workflow, /STAGING_PAYMENT_SERVICE_WEBHOOK_SECRET/);
+  assert.match(workflow, /PAYMENT_SERVICE_ENABLED': 'true'/);
+  assert.match(workflow, /ALLOW_MOCK_PAYMENTS': 'false'/);
+  assert.match(workflow, /status BLOCKED/);
+  assert.match(workflow, /Restore ordinary mock staging runtime/);
+  assert.match(workflow, /if: always\(\) && steps\.configure\.outcome == 'success'/);
+  assert.match(workflow, /mv -f \"\$backup\" \"\$env_file\"/);
+  assert.doesNotMatch(workflow, /NEXT_PUBLIC_PAYMENT_SERVICE/);
+});
