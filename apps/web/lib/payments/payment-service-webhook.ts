@@ -149,8 +149,9 @@ export async function reconcilePaymentServiceEvent(rawBody: string, event: Produ
       const planResult = await client.query<{ id: string; benefits: string[] }>(
         "select id::text as id,benefits from public.plans where code='premium' and is_active=true limit 1",
       );
-      if (planResult.rowCount !== 1) throw new Error("Jalwa Premium plan is unavailable.");
       const localPlan = planResult.rows[0];
+      if (!localPlan) throw new Error("Jalwa Premium plan is unavailable.");
+
       const existingSubscription = await client.query<{ id: string }>(
         "select id::text as id from public.subscriptions where provider='jazzcash' and provider_subscription_id=$1 order by created_at desc limit 1 for update",
         [subscription.id],
@@ -174,7 +175,9 @@ export async function reconcilePaymentServiceEvent(rawBody: string, event: Produ
            returning id::text as id`,
           [event.userId, localPlan.id, subscription.id, mappedStatus, periodEnd],
         );
-        localSubscriptionId = inserted.rows[0].id;
+        const insertedSubscription = inserted.rows[0];
+        if (!insertedSubscription) throw new Error("Jalwa subscription projection failed.");
+        localSubscriptionId = insertedSubscription.id;
       }
 
       grantedUntil = accessEnd(status, subscription);
