@@ -1,0 +1,272 @@
+name: Payment service staging preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact deployed 40-character main commit SHA
+        required: true
+        type: string
+      staging_deployment_run_id:
+        description: Deploy staging run that produced the running release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-staging-payment-service-preflight
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: staging
+      url: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      STAGING_DEPLOYMENT_RUN_ID: ${{ inputs.staging_deployment_run_id }}
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      STAGING_QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}
+      STAGING_QA_CUSTOMER_EMAIL: ${{ vars.STAGING_QA_CUSTOMER_EMAIL || 'acceptance+customer@watch-jalwa.com' }}
+      PAYMENT_SERVICE_BASE_URL: ${{ vars.STAGING_PAYMENT_SERVICE_BASE_URL }}
+      PAYMENT_SERVICE_API_KEY: ${{ secrets.STAGING_PAYMENT_SERVICE_API_KEY }}
+      PAYMENT_SERVICE_WEBHOOK_SECRET: ${{ secrets.STAGING_PAYMENT_SERVICE_WEBHOOK_SECRET }}
+      PAYMENT_SERVICE_EXPECTED_PORTAL_HOST: ${{ vars.STAGING_PAYMENT_SERVICE_EXPECTED_PORTAL_HOST }}
+      PAYMENT_SERVICE_TEST_MSISDN: ${{ secrets.STAGING_PAYMENT_SERVICE_TEST_MSISDN }}
+      STAGING_BASE_URL: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      PAYMENT_SERVICE_PREFLIGHT_EVIDENCE_FILE: ${{ github.workspace }}/payment-service-preflight-report.json
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Validate exact release and protected preflight configuration
+        id: config
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -euo pipefail
+          blocked=''
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || blocked='release_sha must be a lowercase 40-character SHA'
+          [[ "$STAGING_DEPLOYMENT_RUN_ID" =~ ^[0-9]+$ ]] || blocked='staging_deployment_run_id must be numeric'
+          test "$GITHUB_REF" = refs/heads/main || blocked='Payment-service staging preflight must be dispatched from main'
+          for name in HOST USER APP_DIR DOMAIN SSH_KEY KNOWN_HOSTS STAGING_QA_SECRET STAGING_QA_CUSTOMER_EMAIL PAYMENT_SERVICE_BASE_URL PAYMENT_SERVICE_API_KEY PAYMENT_SERVICE_WEBHOOK_SECRET PAYMENT_SERVICE_EXPECTED_PORTAL_HOST PAYMENT_SERVICE_TEST_MSISDN; do
+            if test -z "${!name:-}"; then blocked="Missing protected staging payment-service value: $name"; break; fi
+          done
+          if test -n "$PAYMENT_SERVICE_BASE_URL"; then
+            case "$PAYMENT_SERVICE_BASE_URL" in https://*) ;; *) blocked='Payment-service staging base URL must use HTTPS' ;; esac
+          fi
+          if test -n "$PAYMENT_SERVICE_TEST_MSISDN" && ! [[ "$PAYMENT_SERVICE_TEST_MSISDN" =~ ^[0-9]{11,15}$ ]]; then
+            blocked='Dedicated payment-service staging MSISDN must contain 11-15 digits'
+          fi
+          if test -n "$blocked"; then
+            jq -n --arg status BLOCKED --arg reason "$blocked" --arg sha "$RELEASE_SHA" --arg run "$STAGING_DEPLOYMENT_RUN_ID" \
+              '{schema_version:1,status:$status,reason:$reason,release_sha:$sha,staging_deployment_run_id:$run,production_charge_authorized:false}' \
+              > "$PAYMENT_SERVICE_PREFLIGHT_EVIDENCE_FILE"
+            echo "$blocked" >&2
+            exit 1
+          fi
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+
+      - name: Configure pinned staging SSH identity
+        if: steps.config.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Prove the selected release is the running staging release
+        if: steps.config.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            "$USER@$HOST:$APP_DIR/deployments/$RELEASE_SHA.identity.json" /tmp/staging-release-identity.json
+          node scripts/verify-release-identity.mjs /tmp/staging-release-identity.json "$RELEASE_SHA" "$STAGING_DEPLOYMENT_RUN_ID"
+
+      - name: Prepare secret runtime override without logging values
+        if: steps.config.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          values = {
+              'PAYMENT_SERVICE_ENABLED': 'true',
+              'PAYMENT_SERVICE_BASE_URL': os.environ['PAYMENT_SERVICE_BASE_URL'],
+              'PAYMENT_SERVICE_API_KEY': os.environ['PAYMENT_SERVICE_API_KEY'],
+              'PAYMENT_SERVICE_WEBHOOK_SECRET': os.environ['PAYMENT_SERVICE_WEBHOOK_SECRET'],
+              'PAYMENT_SERVICE_APP_RETURN_URL': f"https://{os.environ['DOMAIN']}/billing/wallet-return",
+              'PAYMENT_SERVICE_TIMEOUT_MS': '12000',
+              'ALLOW_MOCK_PAYMENTS': 'false',
+          }
+          for key, value in values.items():
+              if not value or '\n' in value or '\r' in value:
+                  raise SystemExit(f'{key} must be a non-empty single-line value')
+          path = '/tmp/jalwa-payment-service-preflight.env'
+          with open(path, 'w', encoding='utf-8') as handle:
+              for key, value in values.items():
+                  handle.write(f'{key}={value}\n')
+          os.chmod(path, 0o600)
+          PY
+
+      - name: Enable payment service on exact staging images
+        id: configure
+        if: steps.config.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          remote_override="$APP_DIR/payment-service-preflight-${GITHUB_RUN_ID}.env"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa /tmp/jalwa-payment-service-preflight.env "$USER@$HOST:$remote_override"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' OVERRIDE='$remote_override' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          env_file="$APP_DIR/.env.staging"
+          backup="$APP_DIR/.env.staging.before-payment-service-preflight-$RUN_ID"
+          compose_file="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml"
+          test -s "$env_file"
+          test ! -e "$backup"
+          cp -a "$env_file" "$backup"
+          chmod 600 "$backup"
+          upsert_env() {
+            local name="$1" value="$2" temporary
+            temporary="$(mktemp "${env_file}.XXXXXX")"
+            awk -v name="$name" -v value="$value" 'BEGIN{done=0} $0 ~ "^" name "=" {if(!done) print name "=" value; done=1; next} {print} END{if(!done) print name "=" value}' "$env_file" > "$temporary"
+            chmod 600 "$temporary"
+            mv -f "$temporary" "$env_file"
+          }
+          while IFS='=' read -r key value; do
+            case "$key" in
+              PAYMENT_SERVICE_ENABLED|PAYMENT_SERVICE_BASE_URL|PAYMENT_SERVICE_API_KEY|PAYMENT_SERVICE_WEBHOOK_SECRET|PAYMENT_SERVICE_APP_RETURN_URL|PAYMENT_SERVICE_TIMEOUT_MS|ALLOW_MOCK_PAYMENTS) ;;
+              *) echo 'Unexpected payment-service override key' >&2; exit 1 ;;
+            esac
+            upsert_env "$key" "$value"
+          done < "$OVERRIDE"
+          rm -f "$OVERRIDE"
+          export COMPOSE_PROJECT_NAME=jalwa-platform
+          export COMPOSE_FILE="$compose_file"
+          docker compose --env-file "$env_file" config --quiet
+          docker compose --env-file "$env_file" up -d --no-deps --force-recreate web --wait
+          REMOTE
+          rm -f /tmp/jalwa-payment-service-preflight.env
+
+      - name: Verify payment-service-enabled runtime is healthy
+        if: steps.configure.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          health="$(curl -fsS --max-time 30 "https://$DOMAIN/api/health")"
+          jq -e --arg sha "$RELEASE_SHA" '.service == "jalwa-web" and .status == "ready" and .version == $sha' <<<"$health" >/dev/null
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        if: steps.configure.outcome == 'success'
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Install pinned browser harness
+        if: steps.configure.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          npx playwright install --with-deps chromium
+
+      - name: Run authenticated payment-service/JazzCash boundary preflight
+        id: browser
+        if: steps.configure.outcome == 'success'
+        continue-on-error: true
+        env:
+          STAGING_PAYMENT_SERVICE_EXPECTED_PORTAL_HOST: ${{ vars.STAGING_PAYMENT_SERVICE_EXPECTED_PORTAL_HOST }}
+          STAGING_PAYMENT_SERVICE_TEST_MSISDN: ${{ secrets.STAGING_PAYMENT_SERVICE_TEST_MSISDN }}
+          PLAYWRIGHT_OUTPUT_DIR: ${{ github.workspace }}/payment-service-preflight-playwright-results
+          PLAYWRIGHT_HTML_REPORT: ${{ github.workspace }}/payment-service-preflight-playwright-html
+          PLAYWRIGHT_JUNIT_REPORT: ${{ github.workspace }}/payment-service-preflight-playwright-junit.xml
+        run: |
+          npx playwright test qa/playwright/payment-service-preflight.spec.mjs --config=playwright.staging.config.mjs
+
+      - name: Record failed browser preflight safely
+        if: always() && steps.configure.outcome == 'success' && steps.browser.outcome != 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          jq -n --arg status FAILED --arg reason 'Payment-service staging browser preflight failed' --arg sha "$RELEASE_SHA" --arg run "$STAGING_DEPLOYMENT_RUN_ID" \
+            '{schema_version:1,status:$status,reason:$reason,release_sha:$sha,staging_deployment_run_id:$run,production_charge_authorized:false}' \
+            > "$PAYMENT_SERVICE_PREFLIGHT_EVIDENCE_FILE"
+
+      - name: Restore ordinary mock staging runtime
+        if: always() && steps.configure.outcome == 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          env_file="$APP_DIR/.env.staging"
+          backup="$APP_DIR/.env.staging.before-payment-service-preflight-$RUN_ID"
+          compose_file="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml"
+          test -s "$backup" || { echo 'Payment-service preflight staging backup is missing.' >&2; exit 1; }
+          mv -f "$backup" "$env_file"
+          chmod 600 "$env_file"
+          rm -f "$APP_DIR/payment-service-preflight-$RUN_ID.env"
+          export COMPOSE_PROJECT_NAME=jalwa-platform
+          export COMPOSE_FILE="$compose_file"
+          docker compose --env-file "$env_file" config --quiet
+          docker compose --env-file "$env_file" up -d --no-deps --force-recreate web --wait
+          REMOTE
+          restored="$(curl -fsS --max-time 30 "https://$DOMAIN/api/health")"
+          jq -e --arg sha "$RELEASE_SHA" '.service == "jalwa-web" and .status == "ready" and .version == $sha' <<<"$restored" >/dev/null
+
+      - name: Upload sanitized payment-service preflight evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: payment-service-preflight-${{ env.RELEASE_SHA }}-${{ github.run_id }}
+          path: |
+            ${{ env.PAYMENT_SERVICE_PREFLIGHT_EVIDENCE_FILE }}
+            ${{ github.workspace }}/payment-service-preflight-playwright-junit.xml
+          if-no-files-found: error
+          retention-days: 30
+          include-hidden-files: false
+
+      - name: Enforce staging payment-service preflight gate
+        if: always()
+        env:
+          CONFIG_OUTCOME: ${{ steps.config.outcome }}
+          CONFIGURE_OUTCOME: ${{ steps.configure.outcome }}
+          BROWSER_OUTCOME: ${{ steps.browser.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test "$CONFIG_OUTCOME" != success; then
+            echo 'PAYMENT SERVICE PREFLIGHT BLOCKED — protected staging payment-service configuration is incomplete.' >&2
+            exit 1
+          fi
+          if test "$CONFIGURE_OUTCOME" != success; then
+            echo 'PAYMENT SERVICE PREFLIGHT FAILED — staging runtime could not be configured safely.' >&2
+            exit 1
+          fi
+          if test "$BROWSER_OUTCOME" != success; then
+            echo 'PAYMENT SERVICE PREFLIGHT FAILED — authenticated browser/payment-service boundary did not pass.' >&2
+            exit 1
+          fi
+          jq -e --arg sha "$RELEASE_SHA" --arg run "$STAGING_DEPLOYMENT_RUN_ID" \
+            '.status == "PREFLIGHT_PASS" and .release_sha == $sha and .staging_deployment_run_id == $run and .production_charge_authorized == false' \
+            "$PAYMENT_SERVICE_PREFLIGHT_EVIDENCE_FILE" >/dev/null
+          echo 'PAYMENT SERVICE PREFLIGHT PASSED — full hosted JazzCash completion still requires the supported sandbox/UAT flow.'
