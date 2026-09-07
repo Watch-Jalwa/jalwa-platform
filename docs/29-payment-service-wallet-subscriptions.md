@@ -1,165 +1,170 @@
 # Payment-service JazzCash wallet subscriptions
 
-Status: implementation and staging-integration contract. Production/live charging remains disabled until separate explicit approval.
+Status: repository implementation contract for the Jalwa Premium payment-service integration. Production/live charging is not authorized by this document.
 
 ## Architecture
 
-Jalwa uses the product payment service as the only JazzCash integration boundary for this flow:
+The supported integration path is:
 
-```text
-Browser / PWA
-  → Jalwa Next.js BFF (Better Auth session)
-  → Payment Service /v1 (X-Api-Key, server only)
-  → JazzCash hosted wallet-linking portal
+`Jalwa browser/PWA → Jalwa Next.js server/BFF → Payment Service → JazzCash hosted wallet portal`
 
-Payment Service
-  → signed product webhook
-  → Jalwa webhook receiver
-  → authoritative status reconciliation
-  → PostgreSQL subscription/entitlement projection
-  → Billing UI / benefit checks
-```
+The browser never calls the payment service directly and never receives the product API key or webhook shared secret. Jalwa collects only the JazzCash MSISDN plus explicit auto-pay consent. The user enters MPIN only on JazzCash's hosted page.
 
-Jalwa never calls JazzCash APIs directly for wallet subscriptions. The browser never receives the product API key. Jalwa collects the JazzCash MSISDN and consent only; JazzCash collects the MPIN on its hosted portal.
+The payment-service contract is authoritative for wallet state, remote subscription state, plan pricing and payment history. Jalwa remains authoritative for Jalwa access/entitlement decisions after verified server-side reconciliation.
 
-## Server configuration
+## Runtime configuration
 
-All integration credentials are server-only:
+Server-only values:
 
-- `PAYMENT_SERVICE_ENABLED` — `true` only in an environment intentionally using this integration.
-- `PAYMENT_SERVICE_BASE_URL` — staging/production payment-service origin. HTTPS is required except localhost development.
-- `PAYMENT_SERVICE_API_KEY` — product API key sent as `X-Api-Key`; never `NEXT_PUBLIC_*`.
-- `PAYMENT_SERVICE_WEBHOOK_SECRET` — HMAC secret for product webhooks; never exposed to the browser.
-- `PAYMENT_SERVICE_APP_RETURN_URL` — server-controlled Jalwa URL, normally `https://<domain>/billing/wallet-return`.
-- `PAYMENT_SERVICE_TIMEOUT_MS` — bounded upstream timeout, default 12000 ms.
+- `PAYMENT_SERVICE_ENABLED` — explicit integration flag; ordinary mock staging keeps the integration disabled except during the protected payment-service preflight.
+- `PAYMENT_SERVICE_BASE_URL` — HTTPS payment-service origin ending before `/v1`.
+- `PAYMENT_SERVICE_API_KEY` — product API key sent as `X-Api-Key` by Jalwa server requests only.
+- `PAYMENT_SERVICE_WEBHOOK_SECRET` — HMAC-SHA256 product webhook secret.
+- `PAYMENT_SERVICE_APP_RETURN_URL` — server-configured Jalwa wallet-return URL.
+- `PAYMENT_SERVICE_TIMEOUT_MS` — bounded upstream timeout, default 12 seconds.
 
-Do not commit real values.
-
-## External payment-service product configuration
-
-The payment-service product record must be configured with values matching the protected Jalwa environment:
-
-- Product API key → protected Jalwa `PAYMENT_SERVICE_API_KEY`.
-- Product webhook URL → `https://<jalwa-domain>/api/webhooks/payment-service`.
-- Product webhook secret → protected Jalwa `PAYMENT_SERVICE_WEBHOOK_SECRET`.
-- Wallet app-return allowlist → Jalwa staging/production origin as applicable.
-- Jalwa app return URL → `https://<jalwa-domain>/billing/wallet-return`.
-
-The payment-service/JazzCash sandbox must support the test states used during certification. The repository does not invent provider credentials or undocumented simulation endpoints.
+No payment-service credential may use a `NEXT_PUBLIC_*` name.
 
 ## Jalwa BFF routes
 
-The browser talks only to Jalwa:
+Jalwa exposes authenticated same-origin BFF routes that derive the payment-service `userId` from the Better Auth session:
 
-| Jalwa route | Upstream payment-service route | Purpose |
-|---|---|---|
-| `GET /api/payments/plans` | `GET /v1/plans` | authoritative plan catalog |
-| `POST /api/payments/wallets/link` | `POST /v1/wallets/link` | start JazzCash wallet link |
-| `GET /api/payments/wallets` | `GET /v1/wallets/:userId` | uncached wallet state |
-| `POST /api/payments/wallets/unlink` | `POST /v1/wallets/unlink` | delete wallet token / stop future debits |
-| `GET /api/payments/status` | `GET /v1/users/:userId/status` | main billing/subscription state |
-| `POST /api/payments/subscriptions` | `POST /v1/subscriptions` | resubscribe only when wallet is linked and no open subscription exists |
-| `POST /api/payments/subscriptions/:id/cancel` | `POST /v1/subscriptions/:id/cancel` | stop that subscription while keeping wallet linked |
-| `GET /api/payments/history` | `GET /v1/users/:userId/payments` | payment history |
-| `GET /api/payments/history/:id` | `GET /v1/payments/:id` | payment detail after ownership check |
+- `GET /api/payments/plans`
+- `POST /api/payments/wallets/link`
+- `GET /api/payments/wallets`
+- `POST /api/payments/wallets/unlink`
+- `GET /api/payments/status`
+- `POST /api/payments/subscriptions`
+- `POST /api/payments/subscriptions/:id/cancel`
+- `GET /api/payments/history`
+- `GET /api/payments/history/:id`
 
-Every user-scoped route derives `userId` from the Better Auth session. Browser-supplied user IDs are not accepted.
+The browser never supplies authoritative user ID or payment amount. Subscription and payment detail/cancel routes also prove that the remote resource appears in the current session user's authoritative payment-service state/history before forwarding the ID-based operation.
 
-## Wallet-link and first subscription flow
+## Wallet and first-subscription flow
 
-1. Pricing loads monthly/yearly plans from the payment service. Jalwa never sends an amount during subscribe/link.
-2. User enters an 11–15 digit JazzCash mobile number and explicitly agrees to automatic subscription debits.
-3. Jalwa BFF calls `/v1/wallets/link` with the session user ID, MSISDN, plan code and server-controlled return URL.
-4. Jalwa returns the hosted portal URL and transient hidden form fields to its client component.
-5. Client auto-submits those fields as POST to JazzCash. `pp_Password` / `pp_SecureHash` are never logged or persisted by Jalwa.
-6. JazzCash returns to the payment service; the payment service stores the wallet token and creates the first trial/subscription atomically according to its plan configuration.
-7. Browser returns to Jalwa and polls only Jalwa wallet/status APIs.
-8. Jalwa does **not** create another subscription merely because the wallet return succeeded. `already_linked` / `already_subscribed` are recovery states, not reasons to charge again.
-9. `/v1/subscriptions` is used only when a wallet is already linked and authoritative status shows no open subscription (for example, resubscribe after cancellation).
+1. User chooses the authoritative monthly/yearly plan and enters an 11–15 digit JazzCash MSISDN.
+2. User explicitly consents to wallet-linked recurring debits.
+3. Jalwa BFF posts `userId`, `msisdn`, `planCode` and the server-controlled app return URL to the payment service.
+4. Jalwa returns the documented hosted portal response to the browser.
+5. Browser creates an ephemeral hidden form and POSTs the returned fields to the validated JazzCash portal URL. Sensitive hosted fields are never logged or persisted by Jalwa.
+6. JazzCash returns to the payment service. The payment service stores the wallet token and automatically starts the first trial/subscription.
+7. Jalwa return UI polls Jalwa BFF wallet/status endpoints. Redirect query parameters are informational only and never grant Premium.
+8. Jalwa does not blindly call create-subscription after first wallet success. A linked wallet with no open remote subscription can use the create-subscription endpoint for the documented resubscribe/skip-trial case.
 
-Browser return query parameters are informational only and never grant Premium.
+A `409 already_linked` becomes status recovery. A `409 already_subscribed` becomes Already Premium rather than a second charge attempt.
 
-## Subscription and access projection
+## Authoritative plan and charge semantics
 
-The payment service is authoritative for wallet/subscription/payment state. Jalwa remains authoritative for Jalwa benefits.
+Only payment-service plan catalog values are displayed/sent as plan codes. The browser sends no amount.
 
-Remote → local subscription mapping:
+Supported initial Premium intervals are monthly and yearly. Full and step successful charges both grant the complete Premium period. Jalwa does not collect a later remainder after step success.
 
-| Payment-service status | Jalwa subscription projection | Entitlement rule |
-|---|---|---|
-| `initiated` | `incomplete` | no paid access unless another authoritative period remains paid |
-| `trialing` | `active` | grant through future `trial_ends_at` |
-| `active` | `active` | grant through future `current_period_end` when `current_period_paid=true` |
-| `past_due` | `past_due` | retain only an already-paid future period; automatic dunning continues remotely |
-| `paused` | `past_due` | no v1 customer pause control; retain only an authoritative already-paid future period |
-| `payment_failed` | `expired` | revoke unpaid access |
-| `expired` | `expired` | revoke access |
-| `canceled` | `cancelled` | stop renewal; retain only an authoritative already-paid future period |
+No customer pause/resume, plan switch/proration or ad-hoc `charge now` control is part of v1.
 
-A successful `full` or `step` charge grants the same Jalwa Premium benefits for the authoritative period. Jalwa never attempts to collect a remainder after a step charge.
+## Webhooks and entitlement projection
 
-## Webhook security and reconciliation
+Payment-service webhooks arrive at:
 
-Endpoint: `POST /api/webhooks/payment-service`.
+`POST /api/webhooks/payment-service`
 
-Required controls:
+The route:
 
-- `Content-Type: application/json`.
-- maximum request body 64 KiB.
-- exact raw request body retained only in memory for signature/hash processing.
-- `X-Payment-Signature` verified as HMAC-SHA256 hex with `PAYMENT_SERVICE_WEBHOOK_SECRET` using constant-time comparison.
-- `X-Payment-Event` must exactly equal body `type`.
-- body must contain bounded `eventId`, supported `type`, Jalwa `userId`, valid `createdAt`, and object `data`.
-- deduplicate on event ID and raw-body SHA-256 hash.
-- an identical retry is idempotent; a conflicting event-ID replay returns conflict.
-- before entitlement mutation, Jalwa fetches the current authoritative payment-service status and plan catalog.
-- remote subscription amount, step amount, currency and interval must match the current authoritative product plan.
-- unknown Jalwa users and invalid plan/state fail closed.
-- audit metadata is sanitized; JazzCash MPIN/token/merchant secrets are not stored.
+- reads the exact raw request body;
+- enforces a 64 KiB maximum body;
+- requires JSON;
+- verifies `X-Payment-Signature` using HMAC-SHA256 over exact raw bytes and the product webhook secret;
+- verifies `X-Payment-Event` equals the body `type`;
+- validates event ID, user ID and timestamp shape;
+- deduplicates by payment-service `eventId`;
+- rejects a conflicting payload replay using the same event ID;
+- retrieves authoritative user status and plan catalog before entitlement mutation;
+- validates remote subscription plan/currency/interval/full amount/step amount against the authoritative plan catalog;
+- projects the remote subscription into the existing local Jalwa subscription/entitlement model;
+- retains raw payload hash and sanitized audit metadata, not private JazzCash hosted fields.
 
-This status reconciliation is the stale/out-of-order protection: webhook data is a notification to reconcile, not a trusted instruction to set access blindly.
+The authoritative access rules are:
 
-## Cancel and unlink
+- `trialing` with a future `trial_ends_at` grants bounded trial Premium;
+- `active` with `current_period_paid=true` grants Premium through `current_period_end` for either full or step charge;
+- `past_due`/`paused` retains access only when the authoritative current period is already paid and still valid;
+- `canceled` can retain already-paid access through authoritative `current_period_end` while renewal is stopped;
+- `payment_failed` and `expired` do not retain unpaid Premium;
+- refund/other remote state is reconciled through the authoritative status/payment-service event sequence rather than browser claims.
 
-**Cancel subscription** and **unlink wallet** are separate operations.
+The webhook event itself is a notification, not the sole state source: current payment-service status is re-read before Jalwa grants or revokes access, protecting against stale/out-of-order delivery.
 
-- Cancel calls the remote subscription cancel endpoint. The wallet remains linked. Future renewal for that subscription stops. If the authoritative state still reports an already-paid future `current_period_end`, Jalwa retains Premium until that time.
-- Unlink deletes the remote wallet token and cancels open remote subscriptions. Future JazzCash debits stop. Jalwa still retains any already-paid future period reported by authoritative status; otherwise access is revoked.
+## Authoritative payment-history finance projection
 
-The first Premium release does not expose pause/resume, plan switching/proration or a manual “charge now” action.
+For payment/subscription lifecycle events that can change financial history, Jalwa also reads the payment service's uncached per-user payment history and upserts a sanitized local finance projection in `payment_service_payments`.
 
-## Refunds
+The projection contains only documented finance fields such as remote payment ID, amount, full/step charge kind, status, transaction reference, response code/message, RRN and remote timestamps. It never stores MPIN, wallet token, `pp_Password`, `pp_SecureHash` or other hosted wallet credentials.
 
-Refund initiation is an operations/backend concern and is intentionally not exposed as a customer checkout action.
+This table is readable only by Finance/Admin through RLS and is surfaced in Studio Finance. It deliberately does not fabricate checkout/subscription relationships that are absent from the documented payment-history response. Customer Billing continues to read authoritative payment history directly through the authenticated BFF.
 
-The product webhook contract includes `payment.refunded`. Jalwa reconciles authoritative status before changing entitlement. The contract does not define that every historical refund necessarily cancels the current subscription period, so Jalwa does not invent that behavior from the event name alone. If the payment service changes the authoritative subscription/period state, Jalwa follows that state; any exceptional refund requiring manual financial/access correction remains auditable operational work.
+## Customer Billing UX
 
-## Polling and rate limits
+When the integration is enabled, `/pricing` and `/billing` use payment-service state rather than the legacy local checkout assumptions.
 
-During wallet linking/first charge, the return page polls Jalwa wallet + status routes roughly every 2–3 seconds and stops after a terminal/usable state. HTTP 429 triggers a longer jittered backoff. The UI never offers a duplicate charge while the first payment is pending.
+Customer surfaces cover:
 
-Normal Billing page loads do not continuously poll.
+- authoritative monthly/yearly pricing;
+- JazzCash wallet linking and consent;
+- pending/waiting state;
+- trialing, initiated, active, past-due, payment-failed, expired and canceled states;
+- current period/trial/next-due dates when provided;
+- full/step success copy;
+- payment history;
+- stop renewal/cancel subscription while keeping the wallet linked;
+- unlink wallet as a distinct action that stops all future wallet debits;
+- recovery for already-linked/already-subscribed and rate-limited states.
 
-## Legacy checkout isolation
+The legacy `/api/checkout` path fails closed while `PAYMENT_SERVICE_ENABLED=true`, preventing two simultaneous live Premium purchase paths.
 
-When `PAYMENT_SERVICE_ENABLED=true`, the legacy `/api/checkout` order-based hosted-checkout route returns `wallet_link_required`. This prevents two customer Premium payment paths from being active at once.
+## Staging safety and certification
 
-The legacy generic/mock checkout remains available only when the new integration is disabled, preserving existing preview and isolated mock certification until the payment-service staging path has equivalent real evidence.
+Ordinary staging remains isolated/mock for general release certification. The dedicated **Payment service staging preflight** takes an exact deployed `main` SHA and deployment run ID, proves the running release identity, temporarily enables the real staging payment-service configuration on the same immutable web image, runs authenticated browser/API boundary checks, and then restores the previous staging environment even on failure.
 
-## Staging certification requirements
+Required protected staging inputs are documented in `docs/28-self-hosted-staging-environment.md`. Missing mandatory payment-service configuration produces a sanitized `BLOCKED` artifact. A reproducible product/integration failure is `FAILED`.
 
-Repository/CI success is not staging payment evidence. The exact deployed SHA must prove:
+The automated preflight proves:
 
-1. authenticated monthly wallet link;
-2. hosted JazzCash/payment-service sandbox return;
-3. authoritative trial/initiated/active status detection;
-4. verified webhook → Jalwa subscription/entitlement projection;
-5. payment history/account UI;
-6. cancel with correct paid-period behavior;
-7. wallet unlink with correct paid-period behavior;
-8. failed/past-due behavior supported by the sandbox;
-9. duplicate webhook retry idempotency;
-10. yearly flow;
-11. mobile purchase/return usability.
+- authenticated BFF boundary;
+- authoritative monthly/yearly plans/status;
+- JazzCash hosted portal URL boundary and POST-form response shape;
+- invalid webhook signature rejection;
+- representative desktop/mobile Premium UI;
+- exact release identity and safe restoration.
 
-Missing payment-service host/API key/webhook secret/product configuration or a required JazzCash sandbox capability is `BLOCKED`, not PASS. Production/live charging stays disabled until a separately approved production promotion of the exact staging-tested artifacts.
+The preflight does not claim that a hosted JazzCash MPIN/wallet-link flow completed unless the provider actually supplies a supported sandbox/test-wallet mechanism. The repository does not invent a sandbox MPIN or undocumented provider simulator.
+
+## Full payment UAT
+
+When the provider-owned sandbox/test-wallet capability is available, full UAT must prove on the exact staging release:
+
+1. user authentication;
+2. monthly plan selection;
+3. wallet link initiation;
+4. hosted JazzCash wallet completion;
+5. automatic first trial/subscription detection without duplicate create;
+6. trial/paid entitlement projection;
+7. full or step successful charge behavior as supported by the sandbox;
+8. account billing state and payment history;
+9. cancel/stop-renewal with paid-period retention where authoritative state permits;
+10. wallet unlink with no future debits and correct paid-period handling;
+11. failed payment/past-due behavior and automatic retry messaging;
+12. duplicate signed webhook idempotency/conflicting replay protection;
+13. yearly flow;
+14. mobile purchase/return behavior.
+
+No production money or production deployment is authorized by staging preflight/UAT.
+
+## Release decision
+
+Payment implementation may be merged only after normal repository CI is green. Deployment/UAT decisions remain separate:
+
+- missing mandatory external payment configuration/sandbox capability → `BLOCKED`;
+- reproducible integration defect → `FAILED`;
+- successful automated boundary preflight alone does not equal full payment UAT;
+- successful full staging UAT can advance to stakeholder approval;
+- production promotion still requires separate explicit approval and the exact tested immutable artifacts.
