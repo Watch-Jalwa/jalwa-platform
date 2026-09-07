@@ -1,0 +1,186 @@
+name: One-shot staging dispatcher 83d55bc
+
+on:
+  push:
+    branches:
+      - ops/dispatch-staging-83d55bc
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: jalwa-one-shot-staging-83d55bc
+  cancel-in-progress: false
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: 83d55bc263a9ffeac3957b091b9c0d5ba4a035b3
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Verify immutable target and wait for merged main CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          main_sha="$(gh api "repos/$REPO/commits/main" --jq .sha)"
+          test "$main_sha" = "$TARGET_SHA" || { echo "main moved from target: $main_sha" >&2; exit 1; }
+
+          ci_run=''
+          for attempt in $(seq 1 180); do
+            runs="$(gh api "repos/$REPO/actions/runs?head_sha=$TARGET_SHA&event=push&per_page=100")"
+            ci_run="$(jq -r '[.workflow_runs[] | select(.path == ".github/workflows/ci.yml")][0].id // empty' <<<"$runs")"
+            status="$(jq -r '[.workflow_runs[] | select(.path == ".github/workflows/ci.yml")][0].status // empty' <<<"$runs")"
+            conclusion="$(jq -r '[.workflow_runs[] | select(.path == ".github/workflows/ci.yml")][0].conclusion // empty' <<<"$runs")"
+            if test "$status" = completed; then
+              test "$conclusion" = success || { echo "Merged main CI failed: run $ci_run ($conclusion)" >&2; exit 1; }
+              echo "Merged main CI passed: $ci_run"
+              break
+            fi
+            test "$attempt" -lt 180 || { echo 'Timed out waiting for merged main CI.' >&2; exit 1; }
+            sleep 20
+          done
+
+          main_sha="$(gh api "repos/$REPO/commits/main" --jq .sha)"
+          test "$main_sha" = "$TARGET_SHA" || { echo "main moved after CI: $main_sha" >&2; exit 1; }
+
+      - name: Dispatch canonical staging deployment
+        id: deploy
+        shell: bash
+        run: |
+          set -euo pipefail
+          before_ids="$(gh api "repos/$REPO/actions/workflows/deploy-staging.yml/runs?event=workflow_dispatch&per_page=100" | jq -r '.workflow_runs[].id' | tr '\n' ' ')"
+          gh api --method POST "repos/$REPO/actions/workflows/deploy-staging.yml/dispatches" -f ref=main
+
+          deploy_id=''
+          for attempt in $(seq 1 90); do
+            runs="$(gh api "repos/$REPO/actions/workflows/deploy-staging.yml/runs?event=workflow_dispatch&per_page=100")"
+            while read -r id sha branch; do
+              test -n "$id" || continue
+              if test "$sha" = "$TARGET_SHA" && test "$branch" = main && ! grep -qw "$id" <<<"$before_ids"; then
+                deploy_id="$id"
+                break
+              fi
+            done < <(jq -r '.workflow_runs[] | [.id,.head_sha,.head_branch] | @tsv' <<<"$runs")
+            test -n "$deploy_id" && break
+            test "$attempt" -lt 90 || { echo 'Could not identify dispatched staging run.' >&2; exit 1; }
+            sleep 10
+          done
+          echo "deploy_id=$deploy_id" >> "$GITHUB_OUTPUT"
+          echo "Dispatched Deploy staging run $deploy_id"
+
+      - name: Wait for staging deployment
+        shell: bash
+        env:
+          DEPLOY_ID: ${{ steps.deploy.outputs.deploy_id }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 240); do
+            run="$(gh api "repos/$REPO/actions/runs/$DEPLOY_ID")"
+            status="$(jq -r .status <<<"$run")"
+            conclusion="$(jq -r '.conclusion // empty' <<<"$run")"
+            if test "$status" = completed; then
+              test "$conclusion" = success || { echo "Deploy staging failed: $DEPLOY_ID ($conclusion)" >&2; exit 1; }
+              echo "Deploy staging passed: $DEPLOY_ID"
+              exit 0
+            fi
+            test "$attempt" -lt 240 || { echo 'Timed out waiting for staging deployment.' >&2; exit 1; }
+            sleep 20
+          done
+
+      - name: Wait for automatic staging certification
+        id: certification
+        shell: bash
+        env:
+          DEPLOY_ID: ${{ steps.deploy.outputs.deploy_id }}
+        run: |
+          set -euo pipefail
+          cert_id=''
+          for attempt in $(seq 1 120); do
+            runs="$(gh api "repos/$REPO/actions/workflows/staging-acceptance.yml/runs?event=workflow_run&per_page=100")"
+            cert_id="$(jq -r --arg sha "$TARGET_SHA" '[.workflow_runs[] | select(.head_sha == $sha and .event == "workflow_run")][0].id // empty' <<<"$runs")"
+            test -n "$cert_id" && break
+            test "$attempt" -lt 120 || { echo 'Automatic staging certification did not start.' >&2; exit 1; }
+            sleep 10
+          done
+          echo "certification_id=$cert_id" >> "$GITHUB_OUTPUT"
+          for attempt in $(seq 1 240); do
+            run="$(gh api "repos/$REPO/actions/runs/$cert_id")"
+            status="$(jq -r .status <<<"$run")"
+            conclusion="$(jq -r '.conclusion // empty' <<<"$run")"
+            if test "$status" = completed; then
+              test "$conclusion" = success || { echo "Staging certification failed: $cert_id ($conclusion)" >&2; exit 1; }
+              echo "Staging certification passed: $cert_id"
+              exit 0
+            fi
+            test "$attempt" -lt 240 || { echo 'Timed out waiting for staging certification.' >&2; exit 1; }
+            sleep 20
+          done
+
+      - name: Dispatch payment-service staging preflight
+        id: preflight
+        shell: bash
+        env:
+          DEPLOY_ID: ${{ steps.deploy.outputs.deploy_id }}
+        run: |
+          set -euo pipefail
+          before_ids="$(gh api "repos/$REPO/actions/workflows/payment-service-staging-preflight.yml/runs?event=workflow_dispatch&per_page=100" | jq -r '.workflow_runs[].id' | tr '\n' ' ')"
+          gh api --method POST "repos/$REPO/actions/workflows/payment-service-staging-preflight.yml/dispatches" \
+            -f ref=main \
+            -f "inputs[release_sha]=$TARGET_SHA" \
+            -f "inputs[staging_deployment_run_id]=$DEPLOY_ID"
+
+          preflight_id=''
+          for attempt in $(seq 1 90); do
+            runs="$(gh api "repos/$REPO/actions/workflows/payment-service-staging-preflight.yml/runs?event=workflow_dispatch&per_page=100")"
+            while read -r id sha branch; do
+              test -n "$id" || continue
+              if test "$sha" = "$TARGET_SHA" && test "$branch" = main && ! grep -qw "$id" <<<"$before_ids"; then
+                preflight_id="$id"
+                break
+              fi
+            done < <(jq -r '.workflow_runs[] | [.id,.head_sha,.head_branch] | @tsv' <<<"$runs")
+            test -n "$preflight_id" && break
+            test "$attempt" -lt 90 || { echo 'Could not identify payment-service preflight run.' >&2; exit 1; }
+            sleep 10
+          done
+          echo "preflight_id=$preflight_id" >> "$GITHUB_OUTPUT"
+          echo "Dispatched payment-service preflight run $preflight_id"
+
+      - name: Wait for payment-service staging preflight
+        shell: bash
+        env:
+          PREFLIGHT_ID: ${{ steps.preflight.outputs.preflight_id }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 180); do
+            run="$(gh api "repos/$REPO/actions/runs/$PREFLIGHT_ID")"
+            status="$(jq -r .status <<<"$run")"
+            conclusion="$(jq -r '.conclusion // empty' <<<"$run")"
+            if test "$status" = completed; then
+              test "$conclusion" = success || { echo "Payment-service preflight did not pass: $PREFLIGHT_ID ($conclusion)" >&2; exit 1; }
+              echo "Payment-service staging preflight passed: $PREFLIGHT_ID"
+              exit 0
+            fi
+            test "$attempt" -lt 180 || { echo 'Timed out waiting for payment-service preflight.' >&2; exit 1; }
+            sleep 20
+          done
+
+      - name: Record completed release chain
+        if: success()
+        shell: bash
+        env:
+          DEPLOY_ID: ${{ steps.deploy.outputs.deploy_id }}
+          CERT_ID: ${{ steps.certification.outputs.certification_id }}
+          PREFLIGHT_ID: ${{ steps.preflight.outputs.preflight_id }}
+        run: |
+          {
+            echo '## Exact-SHA staging release chain'
+            echo "- release: $TARGET_SHA"
+            echo "- deploy staging: $DEPLOY_ID"
+            echo "- staging certification: $CERT_ID"
+            echo "- payment-service preflight: $PREFLIGHT_ID"
+          } >> "$GITHUB_STEP_SUMMARY"
