@@ -1,0 +1,15 @@
+import { NextResponse } from "next/server";
+import { requirePaymentUserId, paymentErrorResponse } from "@/lib/payments/bff";
+import { unlinkPaymentServiceWallet } from "@/lib/payments/payment-service";
+
+export const runtime = "nodejs";
+
+export async function POST() {
+  const userId = await requirePaymentUserId();
+  if (!userId) return NextResponse.json({ error: "unauthorized", message: "Sign in required." }, { status: 401 });
+  try {
+    return NextResponse.json(await unlinkPaymentServiceWallet(userId), { headers: { "Cache-Control": "no-store" } });
+  } catch (error) {
+    return paymentErrorResponse(error);
+  }
+}
