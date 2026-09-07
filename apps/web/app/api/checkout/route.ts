@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 import { createHostedCheckout } from "@/lib/payments/provider";
 import { createAdminClient } from "@/lib/database/admin";
+import { paymentServiceEnabled } from "@/lib/payments/payment-service";
 
 export const runtime = "nodejs";
 
@@ -9,6 +10,9 @@ export async function POST(request: Request) {
   const database = await createClient();
   const { data: { user } } = await database.auth.getUser();
   if (!user) return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  if (paymentServiceEnabled()) {
+    return NextResponse.json({ error: "wallet_link_required", message: "Use the JazzCash wallet subscription flow for Jalwa Premium." }, { status: 409 });
+  }
   const body = await request.json().catch(() => ({})) as { priceId?: string; idempotencyKey?: string };
   if (!body.priceId) return NextResponse.json({ error: "Price is required." }, { status: 400 });
   const idempotencyKey = body.idempotencyKey?.trim() || crypto.randomUUID();

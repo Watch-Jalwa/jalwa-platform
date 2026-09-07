@@ -135,38 +135,79 @@ jobs:
           set -euo pipefail
           db_container="$(docker ps --format '{{.ID}} {{.Image}}' | awk '$2 ~ /pgvector\/pgvector/ {print $1; exit}')"
           test -n "$db_container" || { echo 'Could not locate the CI PostgreSQL service container.' >&2; docker ps; exit 1; }
-          first_migration=202607300001_foundation.sql
-          first_checksum="$(sha256sum "database/migrations/$first_migration" | awk '{print $1}')"
 
+          legacy_db=jalwa_legacy_reconcile
+          legacy_dir="$RUNNER_TEMP/legacy-migrations"
+          legacy_cutoff=202608190001_better_auth.sql
+          mkdir -p "$legacy_dir"
+          found_cutoff=false
+          while IFS= read -r migration; do
+            cp "$migration" "$legacy_dir/"
+            if [[ "$(basename "$migration")" == "$legacy_cutoff" ]]; then
+              found_cutoff=true
+              break
+            fi
+          done < <(find database/migrations -maxdepth 1 -type f -name '*.sql' | sort)
+          test "$found_cutoff" = true || { echo "Legacy cutoff migration is missing: $legacy_cutoff" >&2; exit 1; }
+          legacy_count="$(find "$legacy_dir" -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d ' ')"
+          test "$legacy_count" = 29 || { echo "Expected the approved 29-migration legacy set, found $legacy_count" >&2; exit 1; }
+
+          psql -X -v ON_ERROR_STOP=1 -d postgres -c "drop database if exists $legacy_db;"
+          psql -X -v ON_ERROR_STOP=1 -d postgres -c "create database $legacy_db;"
+
+          POSTGRES_USER=postgres \
+          POSTGRES_DB="$legacy_db" \
+          DB_CONTAINER="$db_container" \
+          MIGRATIONS_DIR="$legacy_dir" \
+          BOOTSTRAP_SQL="$GITHUB_WORKSPACE/database/bootstrap.sql" \
+          MIGRATION_LOCK_FILE="$RUNNER_TEMP/jalwa-legacy-seed.lock" \
+            bash infrastructure/production/scripts/apply-migrations.sh \
+            | tee "$RUNNER_TEMP/migrations-legacy-seed.log"
+
+          first_migration=202607300001_foundation.sql
+          first_checksum="$(sha256sum "$legacy_dir/$first_migration" | awk '{print $1}')"
           printf '%s\n' \
             "delete from public.jalwa_schema_migrations;" \
             "insert into public.jalwa_schema_migrations(filename,checksum,status,started_at,applied_at,error_message) values (:'filename',:'checksum','failed',now(),null,'simulated legacy replay');" \
-            | psql -X -v ON_ERROR_STOP=1 -v filename="$first_migration" -v checksum="$first_checksum"
+            | psql -X -v ON_ERROR_STOP=1 -d "$legacy_db" -v filename="$first_migration" -v checksum="$first_checksum"
 
           ALLOW_LEGACY_MIGRATION_BASELINE=true \
           POSTGRES_USER=postgres \
-          POSTGRES_DB=postgres \
+          POSTGRES_DB="$legacy_db" \
           DB_CONTAINER="$db_container" \
-          MIGRATIONS_DIR="$GITHUB_WORKSPACE/database/migrations" \
+          MIGRATIONS_DIR="$legacy_dir" \
           MIGRATION_BASELINE_LOCK_FILE="$RUNNER_TEMP/jalwa-migration-baseline.lock" \
             bash infrastructure/production/scripts/reconcile-legacy-migration-ledger.sh \
             | tee "$RUNNER_TEMP/migration-baseline.log"
 
-          expected="$(find database/migrations -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d ' ')"
-          actual="$(psql -At -c "select count(*) from public.jalwa_schema_migrations where status='applied';")"
-          test "$actual" = "$expected" || { echo "Expected $expected reconciled migration rows, found $actual" >&2; exit 1; }
-          grep -Fq "recorded $expected migration checksums as applied" "$RUNNER_TEMP/migration-baseline.log"
+          actual_legacy="$(psql -X -At -d "$legacy_db" -c "select count(*) from public.jalwa_schema_migrations where status='applied';")"
+          test "$actual_legacy" = 29 || { echo "Expected 29 reconciled legacy migration rows, found $actual_legacy" >&2; exit 1; }
+          grep -Fq 'recorded 29 migration checksums as applied' "$RUNNER_TEMP/migration-baseline.log"
 
           POSTGRES_USER=postgres \
-          POSTGRES_DB=postgres \
+          POSTGRES_DB="$legacy_db" \
           DB_CONTAINER="$db_container" \
           MIGRATIONS_DIR="$GITHUB_WORKSPACE/database/migrations" \
           BOOTSTRAP_SQL="$GITHUB_WORKSPACE/database/bootstrap.sql" \
           MIGRATION_LOCK_FILE="$RUNNER_TEMP/jalwa-migrations-after-baseline.lock" \
             bash infrastructure/production/scripts/apply-migrations.sh \
             | tee "$RUNNER_TEMP/migrations-after-baseline.log"
-          grep -q '^SKIP ' "$RUNNER_TEMP/migrations-after-baseline.log"
-          ! grep -q '^APPLY ' "$RUNNER_TEMP/migrations-after-baseline.log"
+
+          expected_current="$(find database/migrations -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d ' ')"
+          actual_current="$(psql -X -At -d "$legacy_db" -c "select count(*) from public.jalwa_schema_migrations where status='applied';")"
+          test "$actual_current" = "$expected_current" || { echo "Expected $expected_current total applied migrations after forward migration, found $actual_current" >&2; exit 1; }
+          grep -Fq 'APPLY 202609070001_payment_service_finance_projection.sql' "$RUNNER_TEMP/migrations-after-baseline.log"
+
+          POSTGRES_USER=postgres \
+          POSTGRES_DB="$legacy_db" \
+          DB_CONTAINER="$db_container" \
+          MIGRATIONS_DIR="$GITHUB_WORKSPACE/database/migrations" \
+          BOOTSTRAP_SQL="$GITHUB_WORKSPACE/database/bootstrap.sql" \
+          MIGRATION_LOCK_FILE="$RUNNER_TEMP/jalwa-migrations-after-baseline-retry.lock" \
+            bash infrastructure/production/scripts/apply-migrations.sh \
+            | tee "$RUNNER_TEMP/migrations-after-baseline-retry.log"
+          grep -q '^SKIP ' "$RUNNER_TEMP/migrations-after-baseline-retry.log"
+          ! grep -q '^APPLY ' "$RUNNER_TEMP/migrations-after-baseline-retry.log"
 
           future_dir="$RUNNER_TEMP/future-migrations"
           mkdir -p "$future_dir"
@@ -174,7 +215,7 @@ jobs:
           printf '%s\n' '-- future migration placeholder for baseline no-op regression' > "$future_dir/209901010001_future_migration.sql"
           ALLOW_LEGACY_MIGRATION_BASELINE=true \
           POSTGRES_USER=postgres \
-          POSTGRES_DB=postgres \
+          POSTGRES_DB="$legacy_db" \
           DB_CONTAINER="$db_container" \
           MIGRATIONS_DIR="$future_dir" \
           MIGRATION_BASELINE_LOCK_FILE="$RUNNER_TEMP/jalwa-migration-baseline-future.lock" \

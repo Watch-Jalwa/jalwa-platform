@@ -126,6 +126,7 @@ docs/                          product, architecture, operations and handoff doc
 27. [AI-native development readiness — 2 August 2026](docs/26-ai-native-development-readiness.md)
 28. [Permanent staging certification](docs/27-staging-certification.md)
 29. [Self-hosted staging environment contract](docs/28-self-hosted-staging-environment.md)
+30. [Payment-service JazzCash wallet subscriptions](docs/29-payment-service-wallet-subscriptions.md)
 
 ## Open operational trackers
 
@@ -133,6 +134,7 @@ docs/                          product, architecture, operations and handoff doc
 - [#52](https://github.com/Watch-Jalwa/jalwa-platform/issues/52) — 46-entry governed live-catalogue staging and activation.
 - [#59](https://github.com/Watch-Jalwa/jalwa-platform/issues/59) — internal-alpha content/media deployment and 50-item acceptance.
 - [#71](https://github.com/Watch-Jalwa/jalwa-platform/issues/71) — permanent automated staging certification → UAT → production release-quality control.
+- [#110](https://github.com/Watch-Jalwa/jalwa-platform/issues/110) — payment-service/JazzCash wallet subscription integration and staged UAT.
 
 ## Non-negotiable release rules
 
