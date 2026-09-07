@@ -71,7 +71,8 @@ test("entitlements come from authoritative remote subscription state, including 
   const reconciliation = await file("apps/web/lib/payments/payment-service-webhook.ts");
   assert.match(reconciliation, /subscription\.status === "trialing"/);
   assert.match(reconciliation, /status\.status\.current_period_paid/);
-  assert.match(reconciliation, /subscription\.charge_tier/);
+  assert.match(reconciliation, /charge_tier/);
+  assert.match(reconciliation, /trial_ends_at/);
   assert.match(reconciliation, /insert into public\.entitlements/);
   assert.match(reconciliation, /status='revoked'/);
   assert.doesNotMatch(reconciliation, /wallet=linked.*grant/i);
