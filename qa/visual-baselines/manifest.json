@@ -1,5 +1,28 @@
 {
   "schema_version": 1,
   "policy": "Human-approved hashes only. Never update automatically from CI.",
-  "baselines": {}
+  "approval": {
+    "reference": "user-approved-2026-09-08-staging-certification-34152680896",
+    "approved_at": "2026-09-08",
+    "source_release_sha": "83d55bc263a9ffeac3957b091b9c0d5ba4a035b3",
+    "source_qa_run_id": "certification-34152680896"
+  },
+  "baselines": {
+    "home": {
+      "route": "/",
+      "sha256": "fce3fb77efe69f27b47cca206be17fd2f3536d4a509f5c442b47af730952f7e2"
+    },
+    "explore": {
+      "route": "/explore",
+      "sha256": "c16f881537290232131ac0e1c5c6b7383b61274d2807c5fa9745160d1ed0961a"
+    },
+    "pricing": {
+      "route": "/pricing",
+      "sha256": "fec4c63ee62c61e5870ef4621de20b2ba86c585d054fde4a88d0afcb3af80bb3"
+    },
+    "login": {
+      "route": "/login",
+      "sha256": "12137026d0595043702a869a496ee7b94c140e9975f536b59096dbdcf70d60d3"
+    }
+  }
 }
