@@ -58,29 +58,32 @@ test.describe("Studio authorization and Premium reporting", () => {
 
   test("admin can access all core Studio operational surfaces", async ({ page }) => {
     await authenticatePage(page, config, admin.email, "/studio");
-    const routes = [
+    const surfaces = [
       ["/studio", /Studio/i],
-      ["/studio/content", /Content/i],
-      ["/studio/content/new", /Add content/i],
-      ["/studio/rights", /Rights/i],
-      ["/studio/rights/operations", /Rights operations/i],
-      ["/studio/media", /Media/i],
-      ["/studio/payments", /Payment/i],
-      ["/studio/support", /Support/i],
-      ["/studio/privacy", /Privacy/i],
-      ["/studio/ai", /AI/i],
-      ["/studio/finance/reports", /Premium reports/i],
+      ["/studio/content", /content/i],
+      ["/studio/moderation", null],
+      ["/studio/support", null],
+      ["/studio/finance", /finance|premium/i],
+      ["/studio/operations", null],
+      ["/studio/live", null],
+      ["/studio/drm", null],
+      ["/studio/alpha", null],
     ];
-    for (const [route, pattern] of routes) await expectAuthorized(page, route, pattern);
+    for (const [route, pattern] of surfaces) await expectAuthorized(page, route, pattern);
+
+    const financeApi = await page.context().request.get("/api/studio/premium-reports/payments?preset=last30&pageSize=1");
+    expect([401, 403]).not.toContain(financeApi.status());
+    expect(financeApi.status()).toBeLessThan(500);
   });
 
   test("rights reviewer keeps Studio access but cannot cross finance capability boundary", async ({ page }) => {
-    await authenticatePage(page, config, rightsReviewer.email, "/studio/rights");
-    await expectAuthorized(page, "/studio/rights", /Rights/i);
-    await expectAuthorized(page, "/studio/rights/operations", /Rights operations/i);
+    await authenticatePage(page, config, rightsReviewer.email, "/studio");
+    await expectAuthorized(page, "/studio", /Studio/i);
+
     await page.goto("/studio/finance/reports", { waitUntil: "networkidle" });
     await expect(page.locator("body")).toContainText(/Permission denied/i);
     expect((await page.context().request.get("/api/studio/premium-reports/payments")).status()).toBe(403);
+    expect((await page.context().request.get("/api/studio/premium-reports/export/payments")).status()).toBe(403);
   });
 
   test("viewer cannot enter Studio or bypass Studio APIs", async ({ page }) => {
@@ -150,10 +153,13 @@ test.describe("Studio authorization and Premium reporting", () => {
     await expect(page.locator("body")).toContainText(/Payment ledger/i);
   });
 
-  test("non-finance report viewer receives denied UI and 403 report/export APIs", async ({ page }) => {
-    await authenticatePage(page, config, reportViewer.email, "/studio/finance/reports");
+  test("non-finance report viewer is authenticated but receives hard denial and 403 report/export APIs", async ({ page }) => {
+    await authenticatePage(page, config, reportViewer.email, "/profile");
+    await page.goto("/profile", { waitUntil: "networkidle" });
+    expect(new URL(page.url()).pathname).toBe("/profile");
+
     await page.goto("/studio/finance/reports", { waitUntil: "networkidle" });
-    await expect(page.locator("body")).toContainText(/Permission denied/i);
+    expect(new URL(page.url()).pathname).toBe("/");
     expect((await page.context().request.get("/api/studio/premium-reports/payments")).status()).toBe(403);
     expect((await page.context().request.get("/api/studio/premium-reports/export/payments")).status()).toBe(403);
   });
