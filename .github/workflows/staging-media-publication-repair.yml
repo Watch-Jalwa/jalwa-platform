@@ -1,0 +1,150 @@
+name: Staging media publication repair
+
+on:
+  push:
+    branches: ["fix/staging-certification-blockers"]
+    paths: [".github/workflows/staging-media-publication-repair.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-staging-media-publication-repair
+  cancel-in-progress: true
+
+env:
+  RELEASE_SHA: 83d55bc263a9ffeac3957b091b9c0d5ba4a035b3
+  HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+  USER: ${{ vars.STAGING_USER || 'codistan' }}
+  APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+  DB_CONTAINER: jalwa-postgres-staging
+  DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+  SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+  KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+  STAGING_BASE_URL: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+  MEDIA_SLUG: nasa-space-station-views
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: staging
+      url: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+    steps:
+      - name: Validate staging target
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Publish approved media with the actual staging runtime environment
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' DB_CONTAINER='$DB_CONTAINER' RELEASE_SHA='$RELEASE_SHA' MEDIA_SLUG='$MEDIA_SLUG' bash -s" <<'REMOTE'
+          set -euo pipefail
+          env_file="$APP_DIR/.env.staging"
+          test -f "$env_file"
+
+          upsert_env() {
+            local name="$1" value="$2" tmp
+            tmp="$(mktemp "${env_file}.XXXXXX")"
+            awk -v name="$name" -v value="$value" 'BEGIN{done=0} $0 ~ "^" name "=" {if(!done) print name "=" value; done=1; next} {print} END{if(!done) print name "=" value}' "$env_file" > "$tmp"
+            chmod 600 "$tmp"
+            mv -f "$tmp" "$env_file"
+          }
+
+          db_pair="$(docker exec "$DB_CONTAINER" sh -lc 'printf "%s|%s" "${POSTGRES_USER:-}" "${POSTGRES_DB:-}"')"
+          IFS='|' read -r db_user db_name <<<"$db_pair"
+          [[ -n "$db_user" && -n "$db_name" ]]
+
+          upsert_env JALWA_ENV_FILE "$env_file"
+          upsert_env PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED true
+
+          docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -v slug="$MEDIA_SLUG" <<'SQL'
+          begin;
+          update public.live_source_configs l
+          set enabled=true,
+              next_review_at=greatest(l.next_review_at,now()+interval '30 days')
+          from public.playback_sources p, public.content_items c
+          where l.playback_source_id=p.id
+            and p.content_id=c.id
+            and c.slug=:'slug';
+          update public.content_items
+          set status='published',
+              publish_at=coalesce(publish_at,now()),
+              unpublish_at=null
+          where slug=:'slug';
+          commit;
+          SQL
+
+          published="$(docker exec "$DB_CONTAINER" psql -X -At -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -v slug="$MEDIA_SLUG" <<'SQL'
+          select case when
+            c.status='published'
+            and exists(select 1 from public.rights_records r where r.content_id=c.id and r.status='approved')
+            and exists(
+              select 1
+              from public.playback_sources p
+              join public.live_source_configs l on l.playback_source_id=p.id
+              where p.content_id=c.id and p.is_primary and p.status='active' and l.enabled and l.next_review_at>now()
+            )
+          then 'ok' else 'not-ok' end
+          from public.content_items c where c.slug=:'slug';
+          SQL
+          )"
+          test "$published" = ok
+
+          cd "$APP_DIR"
+          JALWA_ENV_FILE="$env_file" COMPOSE_PROJECT_NAME=jalwa-platform \
+            docker compose -f "$APP_DIR/docker-compose.yml" -f "$APP_DIR/docker-compose.codistan-staging.yml" \
+            --env-file "$env_file" up -d --no-deps --force-recreate web >/dev/null
+
+          docker exec jalwa-web-staging sh -lc 'test "$PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED" = true'
+          docker exec jalwa-web-staging sh -lc 'test "$JALWA_ENV_FILE" = "/opt/codistan/jalwa-platform/.env.staging"'
+          REMOTE
+
+      - name: Verify exact release and public Explore to Watch path
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in {1..45}; do
+            health="$(curl -fsS --max-time 10 "$STAGING_BASE_URL/api/health" 2>/dev/null || true)"
+            if jq -e --arg sha "$RELEASE_SHA" '.status=="ready" and .version==$sha' <<<"$health" >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 2
+          done
+          test "$ready" = true
+
+          explore_html="$(curl -fsS --max-time 30 "$STAGING_BASE_URL/explore")"
+          grep -Fq "/watch/$MEDIA_SLUG" <<<"$explore_html"
+
+          watch_file="$(mktemp)"
+          watch_status="$(curl -fsS --max-time 30 -o "$watch_file" -w '%{http_code}' "$STAGING_BASE_URL/watch/$MEDIA_SLUG")"
+          test "$watch_status" = 200
+          grep -Fq 'player-shell' "$watch_file"
+
+          printf '{"release_sha":"%s","media_slug":"%s","explore_link":true,"watch_status":200,"production_changed":false}\n' \
+            "$RELEASE_SHA" "$MEDIA_SLUG" > media-publication-evidence.json
+
+      - name: Upload media publication evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: staging-media-publication-${{ env.RELEASE_SHA }}
+          path: media-publication-evidence.json
+          if-no-files-found: error
+          retention-days: 30
