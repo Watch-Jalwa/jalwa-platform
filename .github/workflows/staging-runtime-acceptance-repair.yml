@@ -1,0 +1,121 @@
+name: Staging runtime acceptance repair
+
+on:
+  push:
+    branches: ["fix/staging-certification-blockers"]
+    paths: [".github/workflows/staging-runtime-acceptance-repair.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-staging-runtime-acceptance-repair
+  cancel-in-progress: true
+
+env:
+  RELEASE_SHA: 83d55bc263a9ffeac3957b091b9c0d5ba4a035b3
+  HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+  USER: ${{ vars.STAGING_USER || 'codistan' }}
+  APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+  DB_CONTAINER: jalwa-postgres-staging
+  DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+  SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+  KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+  STAGING_BASE_URL: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: staging
+      url: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Validate exact staging target
+        run: |
+          set -euo pipefail
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Run host acceptance with bounded transient retries
+        run: |
+          set -euo pipefail
+          accepted=false
+          for attempt in {1..5}; do
+            tmp="$(mktemp)"
+            if ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" \
+              "APP_DIR='$APP_DIR' DB_CONTAINER='$DB_CONTAINER' JALWA_ENV_FILE='$APP_DIR/.env.staging' JALWA_COMPOSE_FILE='$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml' COMPOSE_PROJECT_NAME=jalwa-platform '$APP_DIR/scripts/host-acceptance.sh' 'https://$DOMAIN'" \
+              > "$tmp"; then
+              mv "$tmp" host-acceptance.json
+              accepted=true
+              break
+            fi
+            rm -f "$tmp"
+            echo "Host acceptance attempt $attempt failed; retrying within the bounded convergence window." >&2
+            sleep 5
+          done
+          test "$accepted" = true
+
+      - name: Prove exact public release health with bounded retries
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in {1..6}; do
+            health="$(curl -fsS --connect-timeout 10 --max-time 20 "$STAGING_BASE_URL/api/health" 2>/dev/null || true)"
+            if jq -e --arg release "$RELEASE_SHA" '.status=="ready" and .version==$release' <<<"$health" >/dev/null 2>&1; then
+              printf '%s\n' "$health" > exact-release-health.json
+              ready=true
+              break
+            fi
+            sleep 5
+          done
+          test "$ready" = true
+
+      - name: Run public production acceptance with bounded retries
+        run: |
+          set -euo pipefail
+          export BASE_URL="$STAGING_BASE_URL" REPORT_FILE="$PWD/platform-acceptance.json"
+          passed=false
+          for attempt in {1..3}; do
+            rm -f "$REPORT_FILE"
+            if infrastructure/production/scripts/production-acceptance.sh "$STAGING_BASE_URL"; then
+              passed=true
+              break
+            fi
+            echo "Public production acceptance attempt $attempt failed; retrying within the bounded convergence window." >&2
+            sleep 5
+          done
+          test "$passed" = true
+          test -s "$REPORT_FILE"
+
+      - name: Record runtime acceptance evidence
+        run: |
+          jq -n --arg release "$RELEASE_SHA" \
+            '{release_sha:$release,host_acceptance:true,exact_release_health:true,public_acceptance:true,production_changed:false}' \
+            > runtime-acceptance-evidence.json
+
+      - name: Upload runtime acceptance evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: staging-runtime-acceptance-${{ env.RELEASE_SHA }}
+          path: |
+            host-acceptance.json
+            exact-release-health.json
+            platform-acceptance.json
+            runtime-acceptance-evidence.json
+          if-no-files-found: error
+          retention-days: 30
