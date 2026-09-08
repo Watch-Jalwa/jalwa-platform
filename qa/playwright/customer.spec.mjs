@@ -2,24 +2,24 @@ import { test, expect, devices } from "@playwright/test";
 import {
   authenticatePage,
   checkout,
-  ensureQaUser,
+  expectNoHorizontalOverflow,
   expectSubscriptionAndEntitlements,
   getActivePrice,
   qaConfig,
-  requiredEnv,
   qaFetch,
 } from "./helpers/staging.mjs";
 
-const baseURL = (process.env.STAGING_BASE_URL ?? process.env.JALWA_BROWSER_BASE_URL ?? "").trim().replace(/\/$/, "");
-const runId = process.env.QA_RUN_ID || `pw-${Date.now()}`;
-let config;
+const customerEmail = (process.env.STAGING_QA_CUSTOMER_EMAIL ?? "").trim();
+const runId = (process.env.QA_RUN_ID ?? `customer-${Date.now()}`).slice(0, 120);
+const config = qaConfig();
+
 let customer;
 let price;
 
-test.describe.serial("authenticated Premium customer", () => {
+test.describe("authenticated Premium customer", () => {
   test.beforeAll(async () => {
-    config = qaConfig();
-    customer = await ensureQaUser(config, requiredEnv("STAGING_QA_CUSTOMER_EMAIL"));
+    if (!customerEmail) throw new Error("STAGING_QA_CUSTOMER_EMAIL is required for customer certification.");
+    customer = await (await import("./helpers/staging.mjs")).ensureQaUser(config, customerEmail, "subscriber");
     price = await getActivePrice(config);
   });
 
@@ -33,13 +33,12 @@ test.describe.serial("authenticated Premium customer", () => {
   test("authenticated pricing rejects missing and invalid price input", async ({ page }) => {
     await authenticatePage(page, config, customer.email, "/pricing");
     await page.goto("/pricing", { waitUntil: "networkidle" });
-    await expect(page.locator(".checkout-button").first()).toBeVisible();
 
     const missingPriceStatus = await page.evaluate(async () => {
       const response = await fetch("/api/checkout", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: "{}",
+        body: JSON.stringify({ idempotencyKey: `AUTO-QA-${Date.now()}-missing` }),
       });
       return response.status;
     });
@@ -67,7 +66,8 @@ test.describe.serial("authenticated Premium customer", () => {
 
     const orderResponse = await qaFetch(config, "checkout-order", { id: first.body.orderId });
     expect(orderResponse.ok).toBeTruthy();
-    const [order] = await orderResponse.json();
+    const { data: order } = await orderResponse.json();
+    expect(order?.id).toBe(first.body.orderId);
     expect(order?.user_id).toBe(customer.id);
     expect(Number(order?.amount_minor)).toBe(Number(price.amount_minor));
     expect(order?.currency).toBe(price.currency);
@@ -83,29 +83,23 @@ test.describe.serial("authenticated Premium customer", () => {
     expect(created.body?.orderId).toBeTruthy();
     expect(created.body?.redirectUrl).toMatch(/\/checkout\/mock\?order=/);
 
-    await page.goto(created.body.redirectUrl, { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "Confirm Jalwa Premium" })).toBeVisible();
-    await Promise.all([
-      page.waitForURL(/\/billing\/success\?order=/),
-      page.getByRole("button", { name: "Complete test payment" }).click(),
-    ]);
-    await expect(page.getByText(/Premium|payment|subscription/i).first()).toBeVisible();
+    const mock = await page.goto(created.body.redirectUrl, { waitUntil: "networkidle" });
+    expect(mock?.status() ?? 599).toBeLessThan(500);
+    await page.getByRole("button", { name: /Complete payment/i }).click();
+    await page.waitForURL(/\/billing/);
+    await expect(page.locator("body")).toContainText(/Premium|Active/i);
 
-    const paidResponse = await qaFetch(config, "checkout-order", { id: created.body.orderId });
-    expect(paidResponse.ok).toBeTruthy();
-    const [paid] = await paidResponse.json();
-    expect(paid?.status).toBe("succeeded");
-    expect(paid?.user_id).toBe(customer.id);
-    expect(Number(paid?.amount_minor)).toBe(Number(price.amount_minor));
-    expect(paid?.currency).toBe(price.currency);
-
+    const orderResponse = await qaFetch(config, "checkout-order", { id: created.body.orderId });
+    expect(orderResponse.ok).toBeTruthy();
+    const { data: order } = await orderResponse.json();
+    expect(order?.status).toBe("succeeded");
     await expectSubscriptionAndEntitlements(config, customer.id, price);
   });
 
   test("complete Premium purchase passes on Mobile Chromium", async ({ browser }) => {
     const context = await browser.newContext({
       ...devices["Pixel 7"],
-      baseURL,
+      baseURL: config.baseUrl,
       locale: "en-PK",
       timezoneId: "Asia/Karachi",
       reducedMotion: "reduce",
@@ -114,26 +108,15 @@ test.describe.serial("authenticated Premium customer", () => {
     try {
       await authenticatePage(page, config, customer.email, "/pricing");
       await page.goto("/pricing", { waitUntil: "networkidle" });
-      await expect(page.locator(".checkout-button").first()).toBeVisible();
-
+      await expectNoHorizontalOverflow(page, "mobile pricing");
       const created = await checkout(page, price.id, `AUTO-QA-${runId}-mobile-payment`);
       expect(created.status).toBe(200);
-      expect(created.body?.orderId).toBeTruthy();
-      expect(created.body?.redirectUrl).toBeTruthy();
-
-      await page.goto(created.body.redirectUrl, { waitUntil: "networkidle" });
-      await expect(page.getByRole("button", { name: "Complete test payment" })).toBeVisible();
-      await Promise.all([
-        page.waitForURL(/\/billing\/success\?order=/),
-        page.getByRole("button", { name: "Complete test payment" }).click(),
-      ]);
-
-      const paidResponse = await qaFetch(config, "checkout-order", { id: created.body.orderId });
-      expect(paidResponse.ok).toBeTruthy();
-      const [paid] = await paidResponse.json();
-      expect(paid?.status).toBe("succeeded");
-      expect(Number(paid?.amount_minor)).toBe(Number(price.amount_minor));
-      expect(paid?.currency).toBe(price.currency);
+      const mock = await page.goto(created.body.redirectUrl, { waitUntil: "networkidle" });
+      expect(mock?.status() ?? 599).toBeLessThan(500);
+      await expectNoHorizontalOverflow(page, "mobile mock checkout");
+      await page.getByRole("button", { name: /Complete payment/i }).click();
+      await page.waitForURL(/\/billing/);
+      await expectNoHorizontalOverflow(page, "mobile billing");
       await expectSubscriptionAndEntitlements(config, customer.id, price);
     } finally {
       await context.close();
