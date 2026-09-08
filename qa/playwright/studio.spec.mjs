@@ -13,6 +13,7 @@ const rightsEmail = (process.env.STAGING_QA_RESTRICTED_EMAIL ?? "").trim();
 const viewerEmail = (process.env.STAGING_QA_UNAUTHORIZED_EMAIL ?? "").trim();
 const financeEmail = (process.env.STAGING_QA_FINANCE_EMAIL ?? "").trim();
 const reportViewerEmail = (process.env.STAGING_QA_REPORT_VIEWER_EMAIL ?? "").trim();
+const reportProbe = "/api/studio/premium-reports/payments?preset=last30&pageSize=1";
 
 let admin;
 let rightsReviewer;
@@ -30,10 +31,36 @@ function karachiDate(daysAgo = 0) {
   }).format(date);
 }
 
+async function authenticateVerified(page, email, expectedReportStatus) {
+  const failures = [];
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    await page.context().clearCookies();
+    try {
+      await authenticatePage(page, config, email, "/profile");
+      const profile = await page.goto("/profile", { waitUntil: "networkidle" });
+      const pathname = new URL(page.url()).pathname;
+      if ((profile?.status() ?? 599) >= 500 || pathname !== "/profile") {
+        failures.push(`attempt ${attempt}: profile ended at ${pathname}`);
+        continue;
+      }
+      const report = await page.context().request.get(reportProbe);
+      if (report.status() !== expectedReportStatus) {
+        failures.push(`attempt ${attempt}: report probe returned ${report.status()}, expected ${expectedReportStatus}`);
+        continue;
+      }
+      return;
+    } catch (error) {
+      failures.push(`attempt ${attempt}: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  throw new Error(`Could not establish the expected Studio QA session for ${email}: ${failures.join("; ")}`);
+}
+
 async function expectAuthorized(page, route, pattern = null) {
   const response = await page.goto(route, { waitUntil: "networkidle" });
-  expect(response?.status() ?? 599).toBeLessThan(500);
-  expect(["/login", "/"]).not.toContain(new URL(page.url()).pathname);
+  expect(response?.status() ?? 599, `${route} returned a server error.`).toBeLessThan(500);
+  const pathname = new URL(page.url()).pathname;
+  expect(["/login", "/"], `${route} unexpectedly redirected to ${pathname}.`).not.toContain(pathname);
   if (pattern) await expect(page.locator("body")).toContainText(pattern);
 }
 
@@ -57,7 +84,7 @@ test.describe("Studio authorization and Premium reporting", () => {
   });
 
   test("admin can access all core Studio operational surfaces", async ({ page }) => {
-    await authenticatePage(page, config, admin.email, "/studio");
+    await authenticateVerified(page, admin.email, 200);
     const surfaces = [
       ["/studio", /Studio/i],
       ["/studio/content", /content/i],
@@ -71,13 +98,12 @@ test.describe("Studio authorization and Premium reporting", () => {
     ];
     for (const [route, pattern] of surfaces) await expectAuthorized(page, route, pattern);
 
-    const financeApi = await page.context().request.get("/api/studio/premium-reports/payments?preset=last30&pageSize=1");
-    expect([401, 403]).not.toContain(financeApi.status());
-    expect(financeApi.status()).toBeLessThan(500);
+    const financeApi = await page.context().request.get(reportProbe);
+    expect(financeApi.status()).toBe(200);
   });
 
   test("rights reviewer keeps Studio access but cannot cross finance capability boundary", async ({ page }) => {
-    await authenticatePage(page, config, rightsReviewer.email, "/studio");
+    await authenticateVerified(page, rightsReviewer.email, 403);
     await expectAuthorized(page, "/studio", /Studio/i);
 
     await page.goto("/studio/finance/reports", { waitUntil: "networkidle" });
@@ -154,9 +180,7 @@ test.describe("Studio authorization and Premium reporting", () => {
   });
 
   test("non-finance report viewer is authenticated but receives hard denial and 403 report/export APIs", async ({ page }) => {
-    await authenticatePage(page, config, reportViewer.email, "/profile");
-    await page.goto("/profile", { waitUntil: "networkidle" });
-    expect(new URL(page.url()).pathname).toBe("/profile");
+    await authenticateVerified(page, reportViewer.email, 403);
 
     await page.goto("/studio/finance/reports", { waitUntil: "networkidle" });
     expect(new URL(page.url()).pathname).toBe("/");
