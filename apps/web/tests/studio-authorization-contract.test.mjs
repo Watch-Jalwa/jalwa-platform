@@ -42,8 +42,8 @@ test("rights surfaces explicitly admit rights reviewers and administrators", asy
 
 test("server session lookup retries once but still fails closed", async () => {
   const server = await file("apps/web/lib/database/server.ts");
-  const lookups = server.match(/auth\.api\.getSession/g) ?? [];
-  assert.equal(lookups.length, 2);
+  const runtimeLookups = server.match(/await auth\.api\.getSession/g) ?? [];
+  assert.equal(runtimeLookups.length, 2);
   assert.match(server, /auth_session_lookup_retry/);
   assert.match(server, /catch \{ session = null; \}/);
 });
