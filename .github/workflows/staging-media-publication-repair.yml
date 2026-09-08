@@ -91,6 +91,21 @@ jobs:
           commit;
           SQL
 
+          diagnostics="$(docker exec "$DB_CONTAINER" psql -X -At -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -v slug="$MEDIA_SLUG" <<'SQL'
+          select format(
+            'content_rows=%s content_status=%s approved_rights=%s total_sources=%s primary_active_sources=%s eligible_live_sources=%s',
+            count(*),
+            coalesce(max(c.status::text),'missing'),
+            coalesce((select count(*) from public.rights_records r where r.content_id=max(c.id) and r.status='approved'),0),
+            coalesce((select count(*) from public.playback_sources p where p.content_id=max(c.id)),0),
+            coalesce((select count(*) from public.playback_sources p where p.content_id=max(c.id) and p.is_primary and p.status='active'),0),
+            coalesce((select count(*) from public.playback_sources p join public.live_source_configs l on l.playback_source_id=p.id where p.content_id=max(c.id) and p.is_primary and p.status='active' and l.enabled and l.next_review_at>now()),0)
+          )
+          from public.content_items c where c.slug=:'slug';
+          SQL
+          )"
+          echo "NASA eligibility diagnostics: $diagnostics"
+
           published="$(docker exec "$DB_CONTAINER" psql -X -At -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -v slug="$MEDIA_SLUG" <<'SQL'
           select case when
             c.status='published'
