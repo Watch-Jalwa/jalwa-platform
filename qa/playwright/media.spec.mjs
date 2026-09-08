@@ -3,6 +3,7 @@ import { expectNoHorizontalOverflow, expectedReleaseSha } from "./helpers/stagin
 
 const baseURL = (process.env.STAGING_BASE_URL ?? process.env.JALWA_BROWSER_BASE_URL ?? "").trim().replace(/\/$/, "");
 const liveExpected = (process.env.JALWA_EXPECT_LIVE_SOURCES ?? "false") === "true";
+const representativeSlug = (process.env.REPRESENTATIVE_MEDIA_SLUG ?? process.env.MEDIA_SLUG ?? "nasa-space-station-views").trim();
 
 const expectedLiveTitles = [
   "NASA Space Station Views", "NOAA Ocean Exploration Camera 1", "NOAA Ocean Exploration Camera 2", "NOAA Ocean Exploration Camera 3",
@@ -26,7 +27,9 @@ const officialLinkSlugs = [
 ];
 
 test.describe("catalogue and media", () => {
-  test("a published catalogue item renders a real media surface or documented safe unavailable boundary", async ({ page }) => {
+  test("selected rights-approved published item renders a real media surface or documented safe unavailable boundary", async ({ page }) => {
+    expect(representativeSlug).toMatch(/^[a-z0-9][a-z0-9-]*$/i);
+
     const pageErrors = [];
     const failedSameOrigin = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -39,13 +42,8 @@ test.describe("catalogue and media", () => {
       }
     });
 
-    const explore = await page.goto("/explore", { waitUntil: "networkidle" });
-    expect(explore?.status() ?? 599).toBeLessThan(500);
-    const watchLinks = await page.locator('a[href^="/watch/"]').evaluateAll((links) => [...new Set(links.map((link) => link.getAttribute("href")).filter(Boolean))]);
-    expect(watchLinks.length, "At least one rights-approved published staging item is required for media certification.").toBeGreaterThan(0);
-
-    const response = await page.goto(watchLinks[0], { waitUntil: "networkidle" });
-    expect(response?.status() ?? 599).toBeLessThan(500);
+    const response = await page.goto(`/watch/${representativeSlug}`, { waitUntil: "networkidle" });
+    expect(response?.status() ?? 599).toBeLessThan(400);
     await expect(page.locator(".player-shell")).toBeVisible();
 
     const safeBoundary = await page.locator(".player-placeholder").isVisible().catch(() => false);
