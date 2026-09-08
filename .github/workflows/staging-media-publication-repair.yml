@@ -102,23 +102,26 @@ jobs:
           join public.content_items c on c.id=p.content_id
           left join public.live_source_configs l on l.playback_source_id=p.id
           where c.slug=:'slug';
-          SQL
-
-          published="$(docker exec "$DB_CONTAINER" psql -X -At -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -v slug="$MEDIA_SLUG" <<'SQL'
-          select case when
-            c.status='published'
-            and exists(select 1 from public.rights_records r where r.content_id=c.id and r.status='approved')
-            and exists(
+          do $assert$
+          begin
+            if not exists (
               select 1
-              from public.playback_sources p
-              join public.live_source_configs l on l.playback_source_id=p.id
-              where p.content_id=c.id and p.is_primary and p.status='active' and l.enabled and l.next_review_at>now()
-            )
-          then 'ok' else 'not-ok' end
-          from public.content_items c where c.slug=:'slug';
+              from public.content_items c
+              where c.slug=:'slug'
+                and c.status='published'
+                and exists(select 1 from public.rights_records r where r.content_id=c.id and r.status='approved')
+                and exists(
+                  select 1
+                  from public.playback_sources p
+                  join public.live_source_configs l on l.playback_source_id=p.id
+                  where p.content_id=c.id and p.is_primary and p.status='active' and l.enabled and l.next_review_at>now()
+                )
+            ) then
+              raise exception 'NASA staging media is not publishable under the strict rights/live-source predicate';
+            end if;
+          end
+          $assert$;
           SQL
-          )"
-          test "$published" = ok
 
           cd "$APP_DIR"
           JALWA_ENV_FILE="$env_file" COMPOSE_PROJECT_NAME=jalwa-platform \
