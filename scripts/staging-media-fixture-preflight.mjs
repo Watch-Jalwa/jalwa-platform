@@ -17,9 +17,10 @@ async function inspectWatchPage(page, slug) {
   const playerShell = await page.locator(".player-shell").isVisible().catch(() => false);
   if (!playerShell) return false;
 
-  const safeBoundary = await page.locator(".player-placeholder").isVisible().catch(() => false);
+  const genericSafeBoundary = await page.locator(".player-placeholder").isVisible().catch(() => false);
+  const liveSafeBoundary = await page.locator(".live-player-fallback").isVisible().catch(() => false);
   const mediaSurfaceCount = await page.locator("video, iframe, img").count();
-  return safeBoundary || mediaSurfaceCount > 0;
+  return genericSafeBoundary || liveSafeBoundary || mediaSurfaceCount > 0;
 }
 
 async function main() {
