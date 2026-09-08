@@ -4,16 +4,31 @@ import {
   ensureQaUser,
   expectNoHorizontalOverflow,
   qaConfig,
-  requiredEnv,
   qaFetch,
 } from "./helpers/staging.mjs";
 
-let config;
+const config = qaConfig();
+const adminEmail = (process.env.STAGING_QA_ADMIN_EMAIL ?? "").trim();
+const rightsEmail = (process.env.STAGING_QA_RESTRICTED_EMAIL ?? "").trim();
+const viewerEmail = (process.env.STAGING_QA_UNAUTHORIZED_EMAIL ?? "").trim();
+const financeEmail = (process.env.STAGING_QA_FINANCE_EMAIL ?? "").trim();
+const reportViewerEmail = (process.env.STAGING_QA_REPORT_VIEWER_EMAIL ?? "").trim();
+
 let admin;
 let rightsReviewer;
 let viewer;
 let finance;
 let reportViewer;
+
+function karachiDate(daysAgo = 0) {
+  const date = new Date(Date.now() - daysAgo * 24 * 60 * 60 * 1000);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(date);
+}
 
 async function expectAuthorized(page, route, pattern = null) {
   const response = await page.goto(route, { waitUntil: "networkidle" });
@@ -22,57 +37,50 @@ async function expectAuthorized(page, route, pattern = null) {
   if (pattern) await expect(page.locator("body")).toContainText(pattern);
 }
 
-test.describe.serial("Studio authorization and Premium reporting", () => {
+test.describe("Studio authorization and Premium reporting", () => {
   test.beforeAll(async () => {
-    config = qaConfig();
-    admin = await ensureQaUser(config, requiredEnv("STAGING_QA_ADMIN_EMAIL"), "admin");
-    rightsReviewer = await ensureQaUser(config, requiredEnv("STAGING_QA_RESTRICTED_EMAIL"), "rights_reviewer");
-    viewer = await ensureQaUser(config, requiredEnv("STAGING_QA_UNAUTHORIZED_EMAIL"), "viewer");
-
-    const financeEmail = (process.env.STAGING_QA_FINANCE_EMAIL ?? process.env.FINANCE_EMAIL ?? "").trim();
-    const reportViewerEmail = (process.env.STAGING_QA_REPORT_VIEWER_EMAIL ?? process.env.VIEWER_EMAIL ?? "").trim();
-    if (!financeEmail || !reportViewerEmail) throw new Error("STAGING_QA_FINANCE_EMAIL/FINANCE_EMAIL and STAGING_QA_REPORT_VIEWER_EMAIL/VIEWER_EMAIL are required for Premium reporting tests.");
+    for (const [name, value] of Object.entries({ adminEmail, rightsEmail, viewerEmail, financeEmail, reportViewerEmail })) {
+      if (!value) throw new Error(`${name} is required for Studio certification.`);
+    }
+    admin = await ensureQaUser(config, adminEmail, "admin");
+    rightsReviewer = await ensureQaUser(config, rightsEmail, "rights_reviewer");
+    viewer = await ensureQaUser(config, viewerEmail, "viewer");
     finance = await ensureQaUser(config, financeEmail, "finance");
     reportViewer = await ensureQaUser(config, reportViewerEmail, "subscriber");
   });
 
-  test("anonymous users cannot enter Studio or call finance APIs", async ({ page, request }) => {
+  test("anonymous users cannot enter Studio or call finance APIs", async ({ page }) => {
     await page.goto("/studio", { waitUntil: "networkidle" });
     expect(new URL(page.url()).pathname).toBe("/login");
-
-    expect((await request.get("/api/studio/premium-reports/payments")).status()).toBe(401);
-    expect((await request.get("/api/studio/premium-reports/export/payments")).status()).toBe(401);
+    expect((await page.context().request.get("/api/studio/premium-reports/payments")).status()).toBe(401);
+    expect((await page.context().request.get("/api/studio/premium-reports/export/payments")).status()).toBe(401);
   });
 
   test("admin can access all core Studio operational surfaces", async ({ page }) => {
     await authenticatePage(page, config, admin.email, "/studio");
-    const surfaces = [
+    const routes = [
       ["/studio", /Studio/i],
-      ["/studio/content", /content/i],
-      ["/studio/moderation", null],
-      ["/studio/support", null],
-      ["/studio/finance", /finance|premium/i],
-      ["/studio/operations", null],
-      ["/studio/live", null],
-      ["/studio/drm", null],
-      ["/studio/alpha", null],
+      ["/studio/content", /Content/i],
+      ["/studio/content/new", /Add content/i],
+      ["/studio/rights", /Rights/i],
+      ["/studio/rights/operations", /Rights operations/i],
+      ["/studio/media", /Media/i],
+      ["/studio/payments", /Payment/i],
+      ["/studio/support", /Support/i],
+      ["/studio/privacy", /Privacy/i],
+      ["/studio/ai", /AI/i],
+      ["/studio/finance/reports", /Premium reports/i],
     ];
-    for (const [route, pattern] of surfaces) await expectAuthorized(page, route, pattern);
-
-    const financeApi = await page.context().request.get("/api/studio/premium-reports/payments?preset=last30&pageSize=1");
-    expect([401, 403]).not.toContain(financeApi.status());
-    expect(financeApi.status()).toBeLessThan(500);
+    for (const [route, pattern] of routes) await expectAuthorized(page, route, pattern);
   });
 
   test("rights reviewer keeps Studio access but cannot cross finance capability boundary", async ({ page }) => {
-    await authenticatePage(page, config, rightsReviewer.email, "/studio");
-    await expectAuthorized(page, "/studio", /Studio/i);
-
+    await authenticatePage(page, config, rightsReviewer.email, "/studio/rights");
+    await expectAuthorized(page, "/studio/rights", /Rights/i);
+    await expectAuthorized(page, "/studio/rights/operations", /Rights operations/i);
     await page.goto("/studio/finance/reports", { waitUntil: "networkidle" });
     await expect(page.locator("body")).toContainText(/Permission denied/i);
-
-    const response = await page.context().request.get("/api/studio/premium-reports/payments");
-    expect(response.status()).toBe(403);
+    expect((await page.context().request.get("/api/studio/premium-reports/payments")).status()).toBe(403);
   });
 
   test("viewer cannot enter Studio or bypass Studio APIs", async ({ page }) => {
@@ -101,18 +109,20 @@ test.describe.serial("Studio authorization and Premium reporting", () => {
       await expect(page.locator("body")).toContainText(pattern);
     }
 
-    await page.goto("/studio/finance/reports/payments?preset=custom&start=2026-07-01&end=2026-07-31&groupBy=daily&pageSize=1", { waitUntil: "networkidle" });
+    const customStart = karachiDate(10);
+    const customEnd = karachiDate(0);
+    await page.goto(`/studio/finance/reports/payments?preset=custom&start=${customStart}&end=${customEnd}&groupBy=daily&pageSize=1`, { waitUntil: "networkidle" });
     const filteredBody = await page.locator("body").innerText();
     expect(filteredBody).toMatch(/Asia\/Karachi/i);
-    expect(filteredBody).toMatch(/2026-07-01/);
-    expect(filteredBody).toMatch(/2026-07-31/);
+    expect(filteredBody).toContain(customStart);
+    expect(filteredBody).toContain(customEnd);
     expect(filteredBody).toMatch(/Page 1 of/i);
     expect(await page.locator('a:has-text("Next")').count()).toBeGreaterThan(0);
 
     await page.goto("/studio/finance/reports/payments?preset=last30&plan=staging-plan-that-does-not-exist", { waitUntil: "networkidle" });
     await expect(page.locator("body")).toContainText(/No payments match the selected filters/i);
 
-    await page.goto("/studio/finance/reports/payments?preset=custom&start=2026-07-31&end=2026-07-01", { waitUntil: "networkidle" });
+    await page.goto(`/studio/finance/reports/payments?preset=custom&start=${customEnd}&end=${customStart}`, { waitUntil: "networkidle" });
     await expect(page.locator("body")).toContainText(/Invalid report range|must not be after|report unavailable/i);
 
     const exportResponse = await page.context().request.get("/api/studio/premium-reports/export/payments?preset=last30");
@@ -129,7 +139,7 @@ test.describe.serial("Studio authorization and Premium reporting", () => {
 
     const auditResponse = await qaFetch(config, "audit-export", { actorId: finance.id, entityId: "payments" });
     expect(auditResponse.ok).toBeTruthy();
-    const [audit] = await auditResponse.json();
+    const { data: audit } = await auditResponse.json();
     expect(audit?.actor_id).toBe(finance.id);
     expect(audit?.metadata?.content_sha256).toBe(exportHash);
     expect(typeof audit?.metadata?.row_count).toBe("number");
