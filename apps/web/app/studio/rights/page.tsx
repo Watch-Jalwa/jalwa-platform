@@ -23,7 +23,7 @@ export default async function RightsPage() {
   const { data, error } = await database
     .from("rights_operations")
     .select("content_id,status,creator,expires_at,is_expired,expires_within_30_days")
-    .order("expires_at", { ascending: true, nullsFirst: false })
+    .order("expires_at", { ascending: true })
     .limit(200);
   if (error) throw error;
   const rows = (data ?? []) as RightsRow[];
