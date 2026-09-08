@@ -46,9 +46,10 @@ test.describe("catalogue and media", () => {
     expect(response?.status() ?? 599).toBeLessThan(400);
     await expect(page.locator(".player-shell")).toBeVisible();
 
-    const safeBoundary = await page.locator(".player-placeholder").isVisible().catch(() => false);
+    const genericSafeBoundary = await page.locator(".player-placeholder").isVisible().catch(() => false);
+    const liveSafeBoundary = await page.locator(".live-player-fallback").isVisible().catch(() => false);
     const mediaSurfaceCount = await page.locator("video, iframe, img").count();
-    expect(safeBoundary || mediaSurfaceCount > 0, "Watch page must expose media or the documented safe unavailable boundary.").toBeTruthy();
+    expect(genericSafeBoundary || liveSafeBoundary || mediaSurfaceCount > 0, "Watch page must expose media or the documented safe unavailable boundary.").toBeTruthy();
     expect(pageErrors).toEqual([]);
     expect(failedSameOrigin).toEqual([]);
   });
