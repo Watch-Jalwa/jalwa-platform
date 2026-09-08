@@ -1,0 +1,49 @@
+name: Staging media diagnostic
+
+on:
+  push:
+    branches: ["fix/staging-certification-permanent"]
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      DB_CONTAINER: jalwa-postgres-staging
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Configure SSH
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+      - name: Inspect publication state and route
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "DB_CONTAINER='$DB_CONTAINER' APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          pair="$(docker exec "$DB_CONTAINER" sh -lc 'printf "%s|%s" "${POSTGRES_USER:-}" "${POSTGRES_DB:-}"')"
+          IFS='|' read -r db_user db_name <<<"$pair"
+          docker exec "$DB_CONTAINER" psql -X -At -F '|' -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -c \
+            "select c.slug,c.status::text,public.has_publishable_rights(c.id,c.hosting_mode,c.access_level),coalesce(l.enabled,false),exists(select 1 from public.playback_sources p2 where p2.content_id=c.id and p2.is_primary and p2.status='active') from public.content_items c left join public.playback_sources p on p.content_id=c.id and p.is_primary left join public.live_source_configs l on l.playback_source_id=p.id where c.slug='nasa-space-station-views';"
+          awk -F= '$1=="PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED" {print "live_env_enabled=" ($2=="true" ? "true" : "false"); found=1} END{if(!found) print "live_env_enabled=false"}' "$APP_DIR/.env.staging"
+          REMOTE
+          explore_status="$(curl -fsS -o /tmp/explore.html -w '%{http_code}' "https://$DOMAIN/explore")"
+          watch_status="$(curl -sS -o /tmp/watch.html -w '%{http_code}' "https://$DOMAIN/watch/nasa-space-station-views")"
+          echo "explore_status=$explore_status"
+          echo "watch_status=$watch_status"
+          if grep -Fq '/watch/nasa-space-station-views' /tmp/explore.html; then echo 'explore_link=true'; else echo 'explore_link=false'; fi
+          if grep -Fq 'player-shell' /tmp/watch.html; then echo 'watch_player_shell=true'; else echo 'watch_player_shell=false'; fi
