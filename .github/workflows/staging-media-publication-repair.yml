@@ -75,6 +75,7 @@ jobs:
           upsert_env PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED true
 
           docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -v slug="$MEDIA_SLUG" <<'SQL'
+          \pset pager off
           begin;
           update public.live_source_configs l
           set enabled=true,
@@ -89,22 +90,19 @@ jobs:
               unpublish_at=null
           where slug=:'slug';
           commit;
-          SQL
-
-          diagnostics="$(docker exec "$DB_CONTAINER" psql -X -At -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -v slug="$MEDIA_SLUG" <<'SQL'
-          select format(
-            'content_rows=%s content_status=%s approved_rights=%s total_sources=%s primary_active_sources=%s eligible_live_sources=%s',
-            count(*),
-            coalesce(max(c.status::text),'missing'),
-            coalesce((select count(*) from public.rights_records r where r.content_id=max(c.id) and r.status='approved'),0),
-            coalesce((select count(*) from public.playback_sources p where p.content_id=max(c.id)),0),
-            coalesce((select count(*) from public.playback_sources p where p.content_id=max(c.id) and p.is_primary and p.status='active'),0),
-            coalesce((select count(*) from public.playback_sources p join public.live_source_configs l on l.playback_source_id=p.id where p.content_id=max(c.id) and p.is_primary and p.status='active' and l.enabled and l.next_review_at>now()),0)
-          )
+          select 'content' as diagnostic,c.id::text as content_id,c.status::text as status
           from public.content_items c where c.slug=:'slug';
+          select 'approved_rights' as diagnostic,count(*)::text as value
+          from public.rights_records r join public.content_items c on c.id=r.content_id
+          where c.slug=:'slug' and r.status='approved';
+          select 'playback_source' as diagnostic,p.id::text as source_id,p.is_primary::text as is_primary,p.status::text as source_status,
+                 coalesce(l.enabled,false)::text as live_enabled,
+                 coalesce((l.next_review_at>now()),false)::text as review_current
+          from public.playback_sources p
+          join public.content_items c on c.id=p.content_id
+          left join public.live_source_configs l on l.playback_source_id=p.id
+          where c.slug=:'slug';
           SQL
-          )"
-          echo "NASA eligibility diagnostics: $diagnostics"
 
           published="$(docker exec "$DB_CONTAINER" psql -X -At -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -v slug="$MEDIA_SLUG" <<'SQL'
           select case when
