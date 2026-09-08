@@ -9,7 +9,7 @@ permissions:
 
 concurrency:
   group: jalwa-staging-certification-completion
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 env:
   RELEASE_SHA: 83d55bc263a9ffeac3957b091b9c0d5ba4a035b3
