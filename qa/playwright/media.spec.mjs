@@ -27,7 +27,7 @@ const officialLinkSlugs = [
 ];
 
 test.describe("catalogue and media", () => {
-  test("selected rights-approved published item renders a real media surface or documented safe unavailable boundary", async ({ page }) => {
+  test("rights-approved published staging item renders a real media surface or documented safe unavailable boundary", async ({ page }) => {
     expect(representativeSlug).toMatch(/^[a-z0-9][a-z0-9-]*$/i);
 
     const pageErrors = [];
