@@ -130,8 +130,19 @@ jobs:
           done
           test "$ready" = true
 
-          explore_html="$(curl -fsS --max-time 30 "$STAGING_BASE_URL/explore")"
-          grep -Fq "/watch/$MEDIA_SLUG" <<<"$explore_html"
+          explore_visible=false
+          for attempt in {1..30}; do
+            explore_html="$(curl -fsS --max-time 15 "$STAGING_BASE_URL/explore" 2>/dev/null || true)"
+            if grep -Fq "/watch/$MEDIA_SLUG" <<<"$explore_html"; then
+              explore_visible=true
+              break
+            fi
+            sleep 2
+          done
+          if [[ "$explore_visible" != true ]]; then
+            echo "Published media is not linked from /explore after bounded runtime convergence: $MEDIA_SLUG" >&2
+            exit 1
+          fi
 
           watch_file="$(mktemp)"
           watch_status="$(curl -fsS --max-time 30 -o "$watch_file" -w '%{http_code}' "$STAGING_BASE_URL/watch/$MEDIA_SLUG")"
