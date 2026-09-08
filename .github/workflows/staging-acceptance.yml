@@ -55,7 +55,7 @@ jobs:
           set -euo pipefail
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'A deployed commit SHA is required.' >&2; exit 1; }
           test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS" && test -n "$STAGING_QA_SECRET"
+          test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
           test "$USER" = codistan
           test "$APP_DIR" = /opt/codistan/jalwa-platform
           grep -q "Premium reporting fixtures may run only in staging" scripts/seed-premium-reporting-staging.sql
@@ -69,6 +69,25 @@ jobs:
           chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
+      - name: Hydrate protected staging QA secret when GitHub value is empty
+        run: |
+          set -euo pipefail
+          value="${STAGING_QA_SECRET:-}"
+          if [[ -z "$value" ]]; then
+            value="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+              "awk -v key='STAGING_QA_SECRET' 'index(\$0,key \"=\")==1 {print substr(\$0,length(key)+2); exit}' '$APP_DIR/.env.staging'")"
+          fi
+          [[ -n "$value" ]] || { echo 'Protected staging QA value is unavailable.' >&2; exit 1; }
+          echo "::add-mask::$value"
+          printf 'STAGING_QA_SECRET=%s\n' "$value" >> "$GITHUB_ENV"
+      - name: Resolve running PostgreSQL identity
+        run: |
+          set -euo pipefail
+          pair="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec '$DB_CONTAINER' sh -lc 'printf \"%s|%s\" \"\${POSTGRES_USER:-}\" \"\${POSTGRES_DB:-}\"'")"
+          IFS='|' read -r db_user db_name <<<"$pair"
+          [[ -n "$db_user" && -n "$db_name" ]] || { echo 'Running PostgreSQL identity could not be resolved.' >&2; exit 1; }
+          printf 'DB_USER=%s\nDB_NAME=%s\n' "$db_user" "$db_name" >> "$GITHUB_ENV"
       - name: Ensure deterministic Better Auth acceptance users
         id: users
         run: |
@@ -83,7 +102,7 @@ jobs:
             printf '%s' "$id"
           }
           finance_id="$(ensure_user "$FINANCE_EMAIL" finance)"
-          viewer_id="$(ensure_user "$VIEWER_EMAIL" viewer)"
+          viewer_id="$(ensure_user "$VIEWER_EMAIL" subscriber)"
           manual_id="$(ensure_user "$MANUAL_EMAIL" subscriber)"
           echo "finance_id=$finance_id" >> "$GITHUB_OUTPUT"
           echo "viewer_id=$viewer_id" >> "$GITHUB_OUTPUT"
@@ -96,20 +115,20 @@ jobs:
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec -i '$DB_CONTAINER' psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            "docker exec -i '$DB_CONTAINER' psql -X -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' \
               -v deployment_environment=staging \
               -v fixture_user_id='$FINANCE_ID' \
               -v fixture_user_id_2='$VIEWER_ID' \
               -v fixture_user_id_3='$MANUAL_ID'" \
             < scripts/seed-premium-reporting-staging.sql
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec '$DB_CONTAINER' psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            "docker exec '$DB_CONTAINER' psql -X -At -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' \
               -c \"select count(*) >= 5 from public.checkout_orders where idempotency_key like 'staging-report-%';\"" | grep -qx t
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec -i '$DB_CONTAINER' psql -v ON_ERROR_STOP=1 -U postgres -d postgres -v deployment_environment=staging" \
+            "docker exec -i '$DB_CONTAINER' psql -X -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -v deployment_environment=staging" \
             < scripts/seed-public-domain-live-sources.sql
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec '$DB_CONTAINER' psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres \
+            "docker exec '$DB_CONTAINER' psql -X -At -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' \
               -c \"select count(*) >= 15 from public.live_source_configs;\"" | grep -qx t
 
   certify:
@@ -192,6 +211,32 @@ jobs:
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity FAIL "Running artifact identity does not match the selected source SHA and deployment run." tests=10
           fi
           exit 0
+      - name: Hydrate protected certification inputs from server-managed staging when needed
+        run: |
+          set -euo pipefail
+          if [[ ! -s ~/.ssh/jalwa || -z "$HOST" ]]; then exit 0; fi
+          remote_value() {
+            local key="$1"
+            ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+              "awk -v key='$key' 'index(\$0,key \"=\")==1 {print substr(\$0,length(key)+2); exit}' '$APP_DIR/.env.staging'"
+          }
+          hydrate_secret() {
+            local key="$1" current="$2" value="$current"
+            if [[ -z "$value" ]]; then value="$(remote_value "$key")"; fi
+            if [[ -n "$value" ]]; then
+              echo "::add-mask::$value"
+              printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
+            fi
+          }
+          hydrate_value() {
+            local target="$1" source="$2" current="$3" value="$current"
+            if [[ -z "$value" ]]; then value="$(remote_value "$source")"; fi
+            if [[ -n "$value" ]]; then printf '%s=%s\n' "$target" "$value" >> "$GITHUB_ENV"; fi
+          }
+          hydrate_secret STAGING_QA_SECRET "${STAGING_QA_SECRET:-}"
+          hydrate_secret OPERATIONS_DIAGNOSTICS_SECRET "${OPERATIONS_DIAGNOSTICS_SECRET:-}"
+          hydrate_value VISUAL_REVIEW_ACCEPTED STAGING_VISUAL_REVIEW_ACCEPTED "${VISUAL_REVIEW_ACCEPTED:-}"
+          hydrate_value VISUAL_REVIEW_ACCEPTANCE_REFERENCE STAGING_VISUAL_REVIEW_ACCEPTANCE_REFERENCE "${VISUAL_REVIEW_ACCEPTANCE_REFERENCE:-}"
       - name: Verify API and runtime health
         run: |
           set +e
@@ -269,8 +314,8 @@ jobs:
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" payments PASS "Playwright mock payment produced the authoritative succeeded order, active subscription and exact entitlements." tests=1
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" mobile_purchase PASS "The full authenticated Premium purchase passed on Mobile Chromium." tests=1
           else
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" authenticated_checkout FAIL "A mandatory Playwright checkout/pricing/idempotency assertion failed." tests=3
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" payments FAIL "A mandatory Playwright payment/subscription/entitlement assertion failed." tests=1
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" authenticated_checkout FAIL "A mandatory Playwright checkout, pricing or idempotency assertion failed." tests=3
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" payments FAIL "A mandatory Playwright payment, subscription or entitlement assertion failed." tests=1
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" mobile_purchase FAIL "The mandatory Mobile Chromium Premium purchase assertion failed." tests=1
           fi
           exit 0
@@ -294,7 +339,7 @@ jobs:
           if npm run test:staging:playwright:studio; then
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization PASS "Playwright proved anonymous denial, admin operations, rights-reviewer least privilege, viewer denial, Finance reporting and audited CSV export." tests=6
           else
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization FAIL "A mandatory Playwright Studio authorization or Finance reporting assertion failed." tests=6
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization FAIL "A mandatory Studio access or Finance reporting assertion failed." tests=6
           fi
           exit 0
       - name: Playwright catalogue and media certification
