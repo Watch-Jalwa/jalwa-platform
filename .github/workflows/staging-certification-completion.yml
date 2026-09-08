@@ -103,6 +103,38 @@ jobs:
           [[ -n "$db_user" && -n "$db_name" ]] || { echo 'Running PostgreSQL identity could not be resolved.' >&2; exit 1; }
           printf 'DB_USER=%s\nDB_NAME=%s\n' "$db_user" "$db_name" >> "$GITHUB_ENV"
 
+      - name: Normalize server-held SMTP password alias
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          env_file="$APP_DIR/.env.staging"
+          read_env() { awk -v key="$1" 'index($0,key "=")==1 {print substr($0,length(key)+2); exit}' "$env_file"; }
+          upsert_env() {
+            local name="$1" value="$2" tmp
+            tmp="$(mktemp "${env_file}.XXXXXX")"
+            awk -v name="$name" -v value="$value" 'BEGIN{done=0} $0 ~ "^" name "=" {if(!done) print name "=" value; done=1; next} {print} END{if(!done) print name "=" value}' "$env_file" > "$tmp"
+            chmod 600 "$tmp"
+            mv -f "$tmp" "$env_file"
+          }
+          smtp_password="$(read_env SMTP_PASSWORD)"
+          smtp_pass="$(read_env SMTP_PASS)"
+          if [[ -z "$smtp_password" ]]; then
+            [[ -n "$smtp_pass" ]] || { echo 'Server-held SMTP password is unavailable.' >&2; exit 1; }
+            upsert_env SMTP_PASSWORD "$smtp_pass"
+          fi
+          REMOTE
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "cd '$APP_DIR' && COMPOSE_PROJECT_NAME=jalwa-platform docker compose -f '$APP_DIR/docker-compose.yml' -f '$APP_DIR/docker-compose.codistan-staging.yml' --env-file '$APP_DIR/.env.staging' up -d --no-deps --force-recreate web >/dev/null"
+          for attempt in {1..30}; do
+            health="$(curl -fsS --max-time 10 "$STAGING_BASE_URL/api/health" 2>/dev/null || true)"
+            if jq -e --arg sha "$RELEASE_SHA" '.status=="ready" and .version==$sha' <<<"$health" >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          echo 'Web did not return to exact-release ready state after SMTP alias normalization.' >&2
+          exit 1
+
       - name: Preseed deterministic QA identities under service-role context
         run: |
           set -euo pipefail
@@ -130,10 +162,38 @@ jobs:
           seed_identity "$VIEWER_EMAIL" subscriber
           seed_identity "$MANUAL_EMAIL" subscriber
 
+      - name: Ensure deterministic QA users and reporting fixtures
+        if: always()
+        run: |
+          set -euo pipefail
+          test -n "${STAGING_QA_SECRET:-}" && test -n "${DB_USER:-}" && test -n "${DB_NAME:-}"
+          ensure_user() {
+            local email="$1" role="$2" payload id
+            payload="$(jq -nc --arg email "$email" --arg role "$role" '{email:$email,role:$role,issueLink:false}')"
+            id="$(curl -fsS -X POST "$STAGING_BASE_URL/api/internal/qa/session" \
+              -H "x-jalwa-qa-token: $STAGING_QA_SECRET" -H 'content-type: application/json' \
+              --data "$payload" | jq -r '.user.id // empty')"
+            [[ "$id" =~ ^[0-9a-f-]{36}$ ]] || { echo "Could not resolve acceptance user $email" >&2; exit 1; }
+            printf '%s' "$id"
+          }
+          finance_id="$(ensure_user "$FINANCE_EMAIL" finance)"
+          viewer_id="$(ensure_user "$VIEWER_EMAIL" subscriber)"
+          manual_id="$(ensure_user "$MANUAL_EMAIL" subscriber)"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i '$DB_CONTAINER' psql -X -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -v deployment_environment=staging -v fixture_user_id='$finance_id' -v fixture_user_id_2='$viewer_id' -v fixture_user_id_3='$manual_id'" \
+            < scripts/seed-premium-reporting-staging.sql
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec '$DB_CONTAINER' psql -X -At -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -c \"select count(*) >= 5 from public.checkout_orders where idempotency_key like 'staging-report-%';\"" | grep -qx t
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i '$DB_CONTAINER' psql -X -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -v deployment_environment=staging" \
+            < scripts/seed-public-domain-live-sources.sql
+
       - name: Record visual approval and publish one rights-approved staging item
+        if: always()
         id: media
         run: |
           set -euo pipefail
+          test -n "${DB_USER:-}" && test -n "${DB_NAME:-}"
           selected="$(ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
             "APP_DIR='$APP_DIR' DB_CONTAINER='$DB_CONTAINER' DB_USER='$DB_USER' DB_NAME='$DB_NAME' RELEASE_SHA='$RELEASE_SHA' VISUAL_REF='$VISUAL_REVIEW_ACCEPTANCE_REFERENCE' bash -s" <<'REMOTE'
           set -euo pipefail
@@ -146,6 +206,10 @@ jobs:
             mv -f "$tmp" "$env_file"
           }
           psql_cmd() { docker exec "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" "$@"; }
+          run_sql() {
+            local sql="$1"; shift
+            printf '%s\n' "$sql" | docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" "$@"
+          }
           upsert_env STAGING_VISUAL_REVIEW_ACCEPTED "$RELEASE_SHA"
           upsert_env STAGING_VISUAL_REVIEW_ACCEPTANCE_REFERENCE "$VISUAL_REF"
 
@@ -164,15 +228,13 @@ jobs:
             limit 1;")"
 
           if [[ -n "$candidate" ]]; then
-            psql_cmd -v slug="$candidate" -c \
-              "update public.content_items set status='published',publish_at=coalesce(publish_at,now()),unpublish_at=null where slug=:'slug';" >/dev/null
+            run_sql "update public.content_items set status='published',publish_at=coalesce(publish_at,now()),unpublish_at=null where slug=:'slug';" -v slug="$candidate" >/dev/null
             printf '%s' "$candidate"
             exit 0
           fi
 
           candidate=nasa-space-station-views
-          psql_cmd -v slug="$candidate" -c \
-            "update public.live_source_configs l set enabled=true,next_review_at=greatest(l.next_review_at,now()+interval '30 days') from public.playback_sources p,public.content_items c where l.playback_source_id=p.id and p.content_id=c.id and c.slug=:'slug'; update public.content_items set status='published',publish_at=coalesce(publish_at,now()),unpublish_at=null where slug=:'slug';" >/dev/null
+          run_sql "update public.live_source_configs l set enabled=true,next_review_at=greatest(l.next_review_at,now()+interval '30 days') from public.playback_sources p,public.content_items c where l.playback_source_id=p.id and p.content_id=c.id and c.slug=:'slug'; update public.content_items set status='published',publish_at=coalesce(publish_at,now()),unpublish_at=null where slug=:'slug';" -v slug="$candidate" >/dev/null
           upsert_env PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED true
           export COMPOSE_PROJECT_NAME=jalwa-platform
           export COMPOSE_FILE="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml"
@@ -197,31 +259,8 @@ jobs:
           test "$watch_status" = 200
           grep -Fq 'player-shell' "$watch_file" || { echo "Watch route does not expose the player shell: $selected" >&2; exit 1; }
 
-      - name: Ensure deterministic QA users and reporting fixtures
-        run: |
-          set -euo pipefail
-          ensure_user() {
-            local email="$1" role="$2" payload id
-            payload="$(jq -nc --arg email "$email" --arg role "$role" '{email:$email,role:$role,issueLink:false}')"
-            id="$(curl -fsS -X POST "$STAGING_BASE_URL/api/internal/qa/session" \
-              -H "x-jalwa-qa-token: $STAGING_QA_SECRET" -H 'content-type: application/json' \
-              --data "$payload" | jq -r '.user.id // empty')"
-            [[ "$id" =~ ^[0-9a-f-]{36}$ ]] || { echo "Could not resolve acceptance user $email" >&2; exit 1; }
-            printf '%s' "$id"
-          }
-          finance_id="$(ensure_user "$FINANCE_EMAIL" finance)"
-          viewer_id="$(ensure_user "$VIEWER_EMAIL" subscriber)"
-          manual_id="$(ensure_user "$MANUAL_EMAIL" subscriber)"
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec -i '$DB_CONTAINER' psql -X -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -v deployment_environment=staging -v fixture_user_id='$finance_id' -v fixture_user_id_2='$viewer_id' -v fixture_user_id_3='$manual_id'" \
-            < scripts/seed-premium-reporting-staging.sql
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec '$DB_CONTAINER' psql -X -At -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -c \"select count(*) >= 5 from public.checkout_orders where idempotency_key like 'staging-report-%';\"" | grep -qx t
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker exec -i '$DB_CONTAINER' psql -X -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -v deployment_environment=staging" \
-            < scripts/seed-public-domain-live-sources.sql
-
       - name: Gate zero — prove deployed artifact identity
+        if: always()
         run: |
           set +e
           identity="$CERTIFICATION_EVIDENCE_DIR/release-identity.json"
@@ -235,6 +274,7 @@ jobs:
           exit 0
 
       - name: Verify API and runtime health
+        if: always()
         run: |
           set +e
           if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
@@ -307,8 +347,8 @@ jobs:
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" payments PASS "Playwright mock payment produced the authoritative succeeded order, active subscription and exact entitlements." tests=1
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" mobile_purchase PASS "The full authenticated Premium purchase passed on Mobile Chromium." tests=1
           else
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" authenticated_checkout FAIL "A mandatory Playwright checkout/pricing/idempotency assertion failed." tests=3
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" payments FAIL "A mandatory Playwright payment/subscription/entitlement assertion failed." tests=1
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" authenticated_checkout FAIL "A mandatory Playwright checkout, pricing or idempotency assertion failed." tests=3
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" payments FAIL "A mandatory Playwright payment, subscription or entitlement assertion failed." tests=1
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" mobile_purchase FAIL "The mandatory Mobile Chromium Premium purchase assertion failed." tests=1
           fi
           exit 0
@@ -320,11 +360,11 @@ jobs:
         run: |
           set +e
           if [[ "$HARNESS_OUTCOME" != success ]]; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization BLOCKED "Pinned browser harness is unavailable." tests=6
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization BLOCKED "Pinned browser harness is unavailable for Studio checks." tests=6
           elif npm run test:staging:playwright:studio; then
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization PASS "Playwright proved anonymous denial, admin operations, rights-reviewer least privilege, viewer denial, Finance reporting and audited CSV export." tests=6
           else
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization FAIL "A mandatory Playwright Studio authorization or Finance reporting assertion failed." tests=6
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" studio_authorization FAIL "A mandatory Studio access or Finance reporting assertion failed." tests=6
           fi
           exit 0
 
@@ -340,7 +380,7 @@ jobs:
           if [[ "$preflight" -eq 2 ]]; then node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue BLOCKED "No rights-approved published staging item is available." tests=4; exit 0; fi
           if [[ "$preflight" -ne 0 ]]; then node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue FAIL "The staging catalogue could not be inspected safely." tests=4; exit 0; fi
           if npm run test:staging:playwright:media; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue PASS "Playwright representative watch/media boundaries passed for the published rights-approved staging item." tests=4
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue PASS "Playwright representative watch and media boundaries passed for the published rights-approved staging item." tests=4
           else
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue FAIL "A mandatory Playwright catalogue or playback assertion failed." tests=4
           fi
