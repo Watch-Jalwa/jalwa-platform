@@ -28,14 +28,19 @@ jobs:
           const fs = require('fs');
           const webPath = 'apps/web/package.json';
           const rootPath = 'package.json';
+          const lockPath = 'package-lock.json';
           const web = JSON.parse(fs.readFileSync(webPath, 'utf8'));
           const root = JSON.parse(fs.readFileSync(rootPath, 'utf8'));
+          const lock = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
           web.dependencies.nodemailer = '^9.1.1';
           root.overrides.next.sharp = '0.35.4';
+          if (lock.packages?.['apps/web']) lock.packages['apps/web'].dependencies.nodemailer = '^9.1.1';
+          if (lock.packages) delete lock.packages['apps/web/node_modules/nodemailer'];
           fs.writeFileSync(webPath, JSON.stringify(web, null, 2) + '\n');
           fs.writeFileSync(rootPath, JSON.stringify(root, null, 2) + '\n');
+          fs.writeFileSync(lockPath, JSON.stringify(lock, null, 2) + '\n');
           NODE
-          npm install nodemailer@9.1.1 --workspace=@jalwa/web --package-lock-only --force --ignore-scripts --no-audit --no-fund
+          npm install --package-lock-only --force --ignore-scripts --no-audit --no-fund
           npm update sharp --package-lock-only --force --ignore-scripts --no-audit --no-fund
           npm ci --ignore-scripts --no-audit --no-fund
           npm audit --omit=dev --audit-level=high
