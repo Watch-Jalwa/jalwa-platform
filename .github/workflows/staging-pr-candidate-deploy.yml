@@ -186,6 +186,7 @@ jobs:
             database/migrations/202609090003_public_live_source_lookup.sql \
             database/migrations/202609090004_public_live_catalogue_availability.sql \
             database/migrations/202609090005_public_live_catalogue_availability_v2.sql \
+            database/migrations/202609090006_public_live_publish_readiness.sql \
             "$USER@$HOST:$remote_db/migrations/"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
             database/migration-history/202609090004_public_live_catalogue_availability.staging-applied.sql \
