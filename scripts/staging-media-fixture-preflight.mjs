@@ -10,11 +10,13 @@ function blocked(message) {
 }
 
 async function inspectWatchPage(page, slug) {
-  const response = await page.goto(`/watch/${encodeURIComponent(slug)}`, { waitUntil: "networkidle" });
+  const response = await page.goto(`/watch/${encodeURIComponent(slug)}`, { waitUntil: "domcontentloaded" });
   if (!response || response.status() >= 500) throw new Error(`Representative watch page returned HTTP ${response?.status() ?? "none"}.`);
   if (response.status() >= 400) return false;
 
-  const playerShell = await page.locator(".player-shell").isVisible().catch(() => false);
+  const playerShell = await page.locator(".player-shell").waitFor({ state: "visible", timeout: 10000 })
+    .then(() => true)
+    .catch(() => false);
   if (!playerShell) return false;
 
   const genericSafeBoundary = await page.locator(".player-placeholder").isVisible().catch(() => false);
@@ -36,8 +38,9 @@ async function main() {
       return;
     }
 
-    const explore = await page.goto("/explore", { waitUntil: "networkidle" });
+    const explore = await page.goto("/explore", { waitUntil: "domcontentloaded" });
     if (!explore || explore.status() >= 500) throw new Error(`Catalogue explore page returned HTTP ${explore?.status() ?? "none"}.`);
+    await page.locator("body").waitFor({ state: "visible" });
     const watchLinks = await page.locator('a[href^="/watch/"]').evaluateAll((links) => [...new Set(links.map((link) => link.getAttribute("href")).filter(Boolean))]);
     for (const href of watchLinks) {
       const slug = href?.match(/^\/watch\/([a-z0-9][a-z0-9-]*)$/i)?.[1];

@@ -111,9 +111,10 @@ jobs:
           set -euo pipefail
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/deploy-release.sh "$USER@$HOST:$APP_DIR/scripts/deploy-release.sh"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/smoke-test.sh "$USER@$HOST:$APP_DIR/scripts/smoke-test.sh"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/host-acceptance.sh "$USER@$HOST:$APP_DIR/scripts/host-acceptance.sh"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/capture-release-identity.sh "$USER@$HOST:$APP_DIR/scripts/capture-release-identity.sh"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/apply-migrations.sh "$USER@$HOST:$APP_DIR/scripts/apply-migrations.sh"
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "chmod 755 '$APP_DIR/scripts/deploy-release.sh' '$APP_DIR/scripts/smoke-test.sh' '$APP_DIR/scripts/capture-release-identity.sh' '$APP_DIR/scripts/apply-migrations.sh'"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "chmod 755 '$APP_DIR/scripts/deploy-release.sh' '$APP_DIR/scripts/smoke-test.sh' '$APP_DIR/scripts/host-acceptance.sh' '$APP_DIR/scripts/capture-release-identity.sh' '$APP_DIR/scripts/apply-migrations.sh'"
 
       - name: Authenticate host to immutable image registry
         env:

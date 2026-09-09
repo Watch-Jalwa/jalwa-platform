@@ -57,7 +57,8 @@ async function authenticateVerified(page, email, expectedReportStatus) {
 }
 
 async function expectAuthorized(page, route, pattern = null) {
-  const response = await page.goto(route, { waitUntil: "networkidle" });
+  const response = await page.goto(route, { waitUntil: "domcontentloaded" });
+  await page.locator("body").waitFor({ state: "visible" });
   expect(response?.status() ?? 599, `${route} returned a server error.`).toBeLessThan(500);
   const pathname = new URL(page.url()).pathname;
   expect(["/login", "/"], `${route} unexpectedly redirected to ${pathname}.`).not.toContain(pathname);
