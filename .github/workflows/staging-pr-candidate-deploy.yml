@@ -132,6 +132,9 @@ jobs:
           set -Eeuo pipefail
           declare -A keep=()
 
+          echo 'Docker disk usage before safe reclaim:'
+          docker system df
+
           while read -r ref; do
             [[ -n "$ref" ]] && keep["$ref"]=1
           done < <(docker ps --format '{{.Image}}' | sort -u)
@@ -159,6 +162,9 @@ jobs:
             | sort -u)
 
           docker image prune -f >/dev/null
+          docker builder prune -af >/dev/null
+          echo 'Docker disk usage after safe reclaim:'
+          docker system df
           usage="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
           echo "Removed $removed stale Jalwa release image tags; root filesystem usage is ${usage}%."
           [[ "$usage" =~ ^[0-9]+$ ]]
