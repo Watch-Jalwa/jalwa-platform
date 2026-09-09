@@ -171,6 +171,29 @@ jobs:
           test "$usage" -lt 85
           REMOTE
 
+      - name: Apply tracked candidate catalogue migrations before cutover
+        run: |
+          set -euo pipefail
+          remote_db="$APP_DIR/candidate-db/$GITHUB_SHA"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "install -d -m 700 '$remote_db/migrations'"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            database/bootstrap.sql "$USER@$HOST:$remote_db/bootstrap.sql"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            database/migrations/202609090001_public_catalogue_launch.sql \
+            database/migrations/202609090002_nasa_public_availability.sql \
+            database/migrations/202609090003_public_live_source_lookup.sql \
+            database/migrations/202609090004_public_live_catalogue_availability.sql \
+            "$USER@$HOST:$remote_db/migrations/"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "chmod 600 '$remote_db/bootstrap.sql' '$remote_db/migrations/202609090001_public_catalogue_launch.sql' '$remote_db/migrations/202609090002_nasa_public_availability.sql' '$remote_db/migrations/202609090003_public_live_source_lookup.sql' '$remote_db/migrations/202609090004_public_live_catalogue_availability.sql' && MIGRATIONS_DIR='$remote_db/migrations' BOOTSTRAP_SQL='$remote_db/bootstrap.sql' DB_CONTAINER='jalwa-postgres-staging' MIGRATION_LOCK_FILE='$APP_DIR/.candidate-migration.lock' '$APP_DIR/scripts/apply-migrations.sh'"
+
+      - name: Verify current staging runtime is ready after migrations
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec jalwa-web-staging node -e 'const token=process.env.OPERATIONS_DIAGNOSTICS_SECRET||\"\"; fetch(\"http://127.0.0.1:3000/api/readiness\",{headers:{\"x-jalwa-operations-token\":token}}).then(async r=>{const body=await r.text(); console.log(body); if(r.status!==200) process.exit(1)}).catch(e=>{console.error(e);process.exit(1)})'"
+
       - name: Deploy exact PR SHA without restarting PostgreSQL
         run: |
           set -euo pipefail
@@ -214,23 +237,6 @@ jobs:
           docker logout ghcr.io >/dev/null 2>&1 || true
           REMOTE
 
-      - name: Apply tracked candidate catalogue migrations
-        run: |
-          set -euo pipefail
-          remote_db="$APP_DIR/candidate-db/$GITHUB_SHA"
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "install -d -m 700 '$remote_db/migrations'"
-          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
-            database/bootstrap.sql "$USER@$HOST:$remote_db/bootstrap.sql"
-          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
-            database/migrations/202609090001_public_catalogue_launch.sql \
-            database/migrations/202609090002_nasa_public_availability.sql \
-            database/migrations/202609090003_public_live_source_lookup.sql \
-            database/migrations/202609090004_public_live_catalogue_availability.sql \
-            "$USER@$HOST:$remote_db/migrations/"
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "chmod 600 '$remote_db/bootstrap.sql' '$remote_db/migrations/202609090001_public_catalogue_launch.sql' '$remote_db/migrations/202609090002_nasa_public_availability.sql' '$remote_db/migrations/202609090003_public_live_source_lookup.sql' '$remote_db/migrations/202609090004_public_live_catalogue_availability.sql' && MIGRATIONS_DIR='$remote_db/migrations' BOOTSTRAP_SQL='$remote_db/bootstrap.sql' DB_CONTAINER='jalwa-postgres-staging' MIGRATION_LOCK_FILE='$APP_DIR/.candidate-migration.lock' '$APP_DIR/scripts/apply-migrations.sh'"
-
       - name: Activate governed live catalogue in staging
         run: |
           set -euo pipefail
@@ -266,5 +272,5 @@ jobs:
             echo "- Exact SHA: $GITHUB_SHA"
             echo "- Deployment run: $GITHUB_RUN_ID"
             echo '- Boundary: staging only; production unchanged'
-            echo '- PostgreSQL: existing container/data preserved; tracked candidate catalogue migrations applied; approved live catalogue activated only in staging; no direct payment/order/subscription mutation'
+            echo '- PostgreSQL: existing container/data preserved; tracked candidate catalogue migrations applied before application cutover; approved live catalogue activated only in staging; no direct payment/order/subscription mutation'
           } >> "$GITHUB_STEP_SUMMARY"
