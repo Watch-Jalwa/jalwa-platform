@@ -51,6 +51,20 @@ jobs:
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
 
+      - name: Wait for exact-release readiness convergence
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in {1..24}; do
+            health="$(curl -fsS --connect-timeout 5 --max-time 12 "$STAGING_BASE_URL/api/health" 2>/dev/null || true)"
+            if jq -e --arg release "$RELEASE_SHA" '.status=="ready" and .version==$release' <<<"$health" >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 5
+          done
+          test "$ready" = true
+
       - name: Run host acceptance with bounded transient retries
         run: |
           set -euo pipefail
