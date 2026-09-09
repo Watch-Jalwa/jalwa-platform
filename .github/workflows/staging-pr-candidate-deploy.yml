@@ -124,6 +124,47 @@ jobs:
           printf '%s' "$GHCR_TOKEN" | ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
             "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin"
 
+      - name: Reclaim stale staging release images safely
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          declare -A keep=()
+
+          while read -r ref; do
+            [[ -n "$ref" ]] && keep["$ref"]=1
+          done < <(docker ps --format '{{.Image}}' | sort -u)
+
+          for marker in "$APP_DIR/.last-good-image" "$APP_DIR/.previous-good-image"; do
+            if [[ -s "$marker" ]]; then
+              tag="$(tr -d '[:space:]' < "$marker")"
+              if [[ "$tag" =~ ^[0-9a-f]{40}$ ]]; then
+                keep["ghcr.io/watch-jalwa/jalwa-platform-web:$tag"]=1
+                keep["ghcr.io/watch-jalwa/jalwa-platform-worker:$tag"]=1
+              fi
+            fi
+          done
+
+          removed=0
+          while read -r image; do
+            [[ -n "$image" ]] || continue
+            if [[ -z "${keep[$image]:-}" ]]; then
+              if docker image rm "$image" >/dev/null 2>&1; then
+                removed=$((removed + 1))
+              fi
+            fi
+          done < <(docker image ls --format '{{.Repository}}:{{.Tag}}' \
+            | grep -E '^ghcr\.io/watch-jalwa/jalwa-platform-(web|worker):[0-9a-f]{40}$' \
+            | sort -u)
+
+          docker image prune -f >/dev/null
+          usage="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+          echo "Removed $removed stale Jalwa release image tags; root filesystem usage is ${usage}%."
+          [[ "$usage" =~ ^[0-9]+$ ]]
+          test "$usage" -lt 85
+          REMOTE
+
       - name: Deploy exact PR SHA without restarting PostgreSQL
         run: |
           set -euo pipefail
@@ -179,9 +220,10 @@ jobs:
             database/migrations/202609090001_public_catalogue_launch.sql \
             database/migrations/202609090002_nasa_public_availability.sql \
             database/migrations/202609090003_public_live_source_lookup.sql \
+            database/migrations/202609090004_public_live_catalogue_availability.sql \
             "$USER@$HOST:$remote_db/migrations/"
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "chmod 600 '$remote_db/bootstrap.sql' '$remote_db/migrations/202609090001_public_catalogue_launch.sql' '$remote_db/migrations/202609090002_nasa_public_availability.sql' '$remote_db/migrations/202609090003_public_live_source_lookup.sql' && MIGRATIONS_DIR='$remote_db/migrations' BOOTSTRAP_SQL='$remote_db/bootstrap.sql' DB_CONTAINER='jalwa-postgres-staging' MIGRATION_LOCK_FILE='$APP_DIR/.candidate-migration.lock' '$APP_DIR/scripts/apply-migrations.sh'"
+            "chmod 600 '$remote_db/bootstrap.sql' '$remote_db/migrations/202609090001_public_catalogue_launch.sql' '$remote_db/migrations/202609090002_nasa_public_availability.sql' '$remote_db/migrations/202609090003_public_live_source_lookup.sql' '$remote_db/migrations/202609090004_public_live_catalogue_availability.sql' && MIGRATIONS_DIR='$remote_db/migrations' BOOTSTRAP_SQL='$remote_db/bootstrap.sql' DB_CONTAINER='jalwa-postgres-staging' MIGRATION_LOCK_FILE='$APP_DIR/.candidate-migration.lock' '$APP_DIR/scripts/apply-migrations.sh'"
 
       - name: Verify exact candidate is publicly ready
         run: |
