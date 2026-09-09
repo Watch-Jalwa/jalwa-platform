@@ -166,7 +166,7 @@ jobs:
           docker logout ghcr.io >/dev/null 2>&1 || true
           REMOTE
 
-      - name: Apply tracked candidate catalogue migration
+      - name: Apply tracked candidate catalogue migration and availability fixture
         run: |
           set -euo pipefail
           remote_db="$APP_DIR/candidate-db/$GITHUB_SHA"
@@ -179,6 +179,39 @@ jobs:
             "$USER@$HOST:$remote_db/migrations/202609090001_public_catalogue_launch.sql"
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
             "chmod 600 '$remote_db/bootstrap.sql' '$remote_db/migrations/202609090001_public_catalogue_launch.sql' && MIGRATIONS_DIR='$remote_db/migrations' BOOTSTRAP_SQL='$remote_db/bootstrap.sql' DB_CONTAINER='jalwa-postgres-staging' MIGRATION_LOCK_FILE='$APP_DIR/.candidate-migration.lock' '$APP_DIR/scripts/apply-migrations.sh'"
+
+          # The approved live inventory predates the separate availability flags.
+          # Stage only those flags here; publication itself remains owned by the
+          # certification fixture and the rights/source/live checks remain intact.
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i jalwa-postgres-staging sh -lc 'psql -X -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\"'" <<'SQL'
+          begin;
+          update public.content_items c
+          set is_available=true,
+              disabled_reason=null,
+              disabled_at=null,
+              disabled_by=null,
+              updated_at=now()
+          where c.slug='nasa-space-station-views'
+            and exists(
+              select 1
+              from public.rights_records r
+              where r.content_id=c.id
+                and r.status='approved'
+            );
+
+          update public.playback_sources p
+          set is_available=true,
+              disabled_reason=null,
+              disabled_at=null,
+              disabled_by=null
+          from public.content_items c
+          where p.content_id=c.id
+            and c.slug='nasa-space-station-views'
+            and p.is_primary
+            and p.status='active';
+          commit;
+          SQL
 
       - name: Verify exact candidate is publicly ready
         run: |
@@ -202,5 +235,5 @@ jobs:
             echo "- Exact SHA: $GITHUB_SHA"
             echo "- Deployment run: $GITHUB_RUN_ID"
             echo '- Boundary: staging only; production unchanged'
-            echo '- PostgreSQL: existing container/data preserved; tracked candidate catalogue migration applied; no direct payment/order/subscription mutation'
+            echo '- PostgreSQL: existing container/data preserved; tracked catalogue migration plus deterministic staging availability fixture applied; no direct payment/order/subscription mutation'
           } >> "$GITHUB_STEP_SUMMARY"
