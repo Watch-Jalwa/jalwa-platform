@@ -3,6 +3,7 @@ import { ContentCard } from "@/components/content-card";
 import { getCategories, searchCatalogue } from "@/lib/catalogue/repository";
 
 export const metadata = { title: "Explore" };
+export const dynamic = "force-dynamic";
 type SearchParams = Promise<{ q?: string; category?: string }>;
 
 export default async function ExplorePage({ searchParams }: { searchParams: SearchParams }) {
