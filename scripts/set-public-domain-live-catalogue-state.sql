@@ -58,14 +58,17 @@ begin
     from approved_live_state_inventory i
     where l.source_key=i.source_key;
 
-    update public.content_items c
-    set status='published',
-        publish_at=coalesce(c.publish_at, now()),
-        unpublish_at=null,
-        is_available=true,
+    -- Prepare every usable playback path before changing content to published.
+    -- The self-hosted publication trigger remains fail-closed and validates this
+    -- state transition, including the narrow reviewed remote live-image adapter.
+    update public.media_assets a
+    set is_available=true,
         updated_at=now()
-    from approved_live_state_inventory i
-    where c.slug=i.slug;
+    from public.content_items c, approved_live_state_inventory i
+    where a.content_id=c.id
+      and c.slug=i.slug
+      and a.status='ready'
+      and a.disabled_at is null;
 
     update public.playback_sources p
     set is_available=true
@@ -76,14 +79,14 @@ begin
       and p.status='active'
       and p.disabled_at is null;
 
-    update public.media_assets a
-    set is_available=true,
+    update public.content_items c
+    set status='published',
+        publish_at=coalesce(c.publish_at, now()),
+        unpublish_at=null,
+        is_available=true,
         updated_at=now()
-    from public.content_items c, approved_live_state_inventory i
-    where a.content_id=c.id
-      and c.slug=i.slug
-      and a.status='ready'
-      and a.disabled_at is null;
+    from approved_live_state_inventory i
+    where c.slug=i.slug;
 
     update public.collections
     set status='published'
