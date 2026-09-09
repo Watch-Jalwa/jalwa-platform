@@ -101,16 +101,15 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
     let liveHealth: Record<string, unknown> | null = null;
     if (data.content_type === "live" && playback?.id) {
       const [configResult, healthResult] = await Promise.all([
-        database.from("live_source_configs")
-          .select("source_key,delivery_adapter,official_source_url,terms_url,required_attribution,refresh_interval_seconds,enabled,next_review_at")
-          .eq("playback_source_id", playback.id).maybeSingle(),
+        database.rpc("get_public_live_source_config", { p_playback_source_id: playback.id }),
         database.from("playback_source_health")
           .select("status,availability,checked_at,last_success_at,source_timestamp,message,availability_reason")
           .eq("playback_source_id", playback.id).maybeSingle(),
       ]);
       if (configResult.error) throw configResult.error;
       if (healthResult.error) throw healthResult.error;
-      liveConfig = configResult.data as Record<string, unknown> | null;
+      const configRows = (configResult.data ?? []) as Record<string, unknown>[];
+      liveConfig = configRows[0] ?? null;
       liveHealth = healthResult.data as Record<string, unknown> | null;
       if (!liveConfig || liveConfig.enabled !== true) return null;
       const review = asString(liveConfig.next_review_at);
