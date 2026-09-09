@@ -112,7 +112,8 @@ jobs:
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/deploy-release.sh "$USER@$HOST:$APP_DIR/scripts/deploy-release.sh"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/smoke-test.sh "$USER@$HOST:$APP_DIR/scripts/smoke-test.sh"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/capture-release-identity.sh "$USER@$HOST:$APP_DIR/scripts/capture-release-identity.sh"
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "chmod 755 '$APP_DIR/scripts/deploy-release.sh' '$APP_DIR/scripts/smoke-test.sh' '$APP_DIR/scripts/capture-release-identity.sh'"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/apply-migrations.sh "$USER@$HOST:$APP_DIR/scripts/apply-migrations.sh"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "chmod 755 '$APP_DIR/scripts/deploy-release.sh' '$APP_DIR/scripts/smoke-test.sh' '$APP_DIR/scripts/capture-release-identity.sh' '$APP_DIR/scripts/apply-migrations.sh'"
 
       - name: Authenticate host to immutable image registry
         env:
@@ -122,7 +123,7 @@ jobs:
           printf '%s' "$GHCR_TOKEN" | ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
             "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin"
 
-      - name: Deploy exact PR SHA without touching PostgreSQL
+      - name: Deploy exact PR SHA without restarting PostgreSQL
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
@@ -165,6 +166,20 @@ jobs:
           docker logout ghcr.io >/dev/null 2>&1 || true
           REMOTE
 
+      - name: Apply tracked candidate catalogue migration
+        run: |
+          set -euo pipefail
+          remote_db="$APP_DIR/candidate-db/$GITHUB_SHA"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "install -d -m 700 '$remote_db/migrations'"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            database/bootstrap.sql "$USER@$HOST:$remote_db/bootstrap.sql"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            database/migrations/202609090001_public_catalogue_launch.sql \
+            "$USER@$HOST:$remote_db/migrations/202609090001_public_catalogue_launch.sql"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "chmod 600 '$remote_db/bootstrap.sql' '$remote_db/migrations/202609090001_public_catalogue_launch.sql' && MIGRATIONS_DIR='$remote_db/migrations' BOOTSTRAP_SQL='$remote_db/bootstrap.sql' DB_CONTAINER='jalwa-postgres-staging' MIGRATION_LOCK_FILE='$APP_DIR/.candidate-migration.lock' '$APP_DIR/scripts/apply-migrations.sh'"
+
       - name: Verify exact candidate is publicly ready
         run: |
           set -euo pipefail
@@ -187,5 +202,5 @@ jobs:
             echo "- Exact SHA: $GITHUB_SHA"
             echo "- Deployment run: $GITHUB_RUN_ID"
             echo '- Boundary: staging only; production unchanged'
-            echo '- PostgreSQL: existing container/data preserved; no direct payment/order/subscription mutation'
+            echo '- PostgreSQL: existing container/data preserved; tracked candidate catalogue migration applied; no direct payment/order/subscription mutation'
           } >> "$GITHUB_STEP_SUMMARY"
