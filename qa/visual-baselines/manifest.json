@@ -2,19 +2,19 @@
   "schema_version": 1,
   "policy": "Human-approved hashes only. Never update automatically from CI.",
   "approval": {
-    "reference": "user-approved-2026-09-08-staging-certification-34152680896",
-    "approved_at": "2026-09-08",
-    "source_release_sha": "83d55bc263a9ffeac3957b091b9c0d5ba4a035b3",
-    "source_qa_run_id": "certification-34152680896"
+    "reference": "user-approved-2026-09-09-chat-proceed-c49b19662cfc1ce128ef12aa5cdc5222044fd86c",
+    "approved_at": "2026-09-09",
+    "source_release_sha": "c49b19662cfc1ce128ef12aa5cdc5222044fd86c",
+    "source_qa_run_id": "completion-34367455099"
   },
   "baselines": {
     "home": {
       "route": "/",
-      "sha256": "fce3fb77efe69f27b47cca206be17fd2f3536d4a509f5c442b47af730952f7e2"
+      "sha256": "f5ea3e06beecea84be1eef992a47aff117b9eb49c0776dcc19ad6038c1d699f8"
     },
     "explore": {
       "route": "/explore",
-      "sha256": "c16f881537290232131ac0e1c5c6b7383b61274d2807c5fa9745160d1ed0961a"
+      "sha256": "2863109f86349773a4a7e21690ee4d190e141074305c6d847883d1392ded723f"
     },
     "pricing": {
       "route": "/pricing",
