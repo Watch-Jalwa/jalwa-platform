@@ -4,6 +4,9 @@ const required = (name) => {
   return value;
 };
 
+const retryableQaStatuses = new Set([429, 502, 503, 504]);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export function qaConfig() {
   return {
     baseUrl: ((process.env.STAGING_BASE_URL ?? process.env.JALWA_BROWSER_BASE_URL ?? "").trim() || required("STAGING_BASE_URL")).replace(/\/$/, ""),
@@ -13,11 +16,27 @@ export function qaConfig() {
 }
 
 async function qaPost(config, body) {
-  return fetch(`${config.baseUrl}/api/internal/qa/session`, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-jalwa-qa-token": config.qaSecret },
-    body: JSON.stringify(body),
-  });
+  const payload = JSON.stringify(body);
+  let lastTransportError = null;
+
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    try {
+      const response = await fetch(`${config.baseUrl}/api/internal/qa/session`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-jalwa-qa-token": config.qaSecret },
+        body: payload,
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!retryableQaStatuses.has(response.status) || attempt === 5) return response;
+    } catch (error) {
+      lastTransportError = error;
+      if (attempt === 5) throw error;
+    }
+
+    await sleep(Math.min(2_000, 300 * (2 ** (attempt - 1))));
+  }
+
+  throw lastTransportError ?? new Error("Jalwa QA session request did not complete.");
 }
 
 export async function ensureQaUser(config, email, role = null) {
@@ -42,10 +61,9 @@ export async function authenticatePage(page, config, email, nextPath = "/") {
   const actionLink = await generateMagicLink(config, email, nextPath);
   const response = await page.goto(actionLink, { waitUntil: "domcontentloaded" });
   if (!response || response.status() >= 500) throw new Error("Staging QA authentication navigation failed.");
-  await page.waitForLoadState("networkidle");
   if (new URL(page.url()).pathname === "/login") throw new Error("Staging QA authentication did not create a session.");
 
-  const deadline = Date.now() + 15_000;
+  const deadline = Date.now() + 25_000;
   let lastStatus = 0;
   let lastError = null;
   while (Date.now() < deadline) {
