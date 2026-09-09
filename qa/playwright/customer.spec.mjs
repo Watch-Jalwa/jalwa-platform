@@ -84,8 +84,8 @@ test.describe("authenticated Premium customer", () => {
     expect(created.body?.redirectUrl).toMatch(/\/checkout\/mock\?order=/);
 
     const mock = await page.goto(created.body.redirectUrl, { waitUntil: "networkidle" });
-    expect(mock?.status() ?? 599).toBeLessThan(500);
-    await page.getByRole("button", { name: /Complete payment/i }).click();
+    expect(mock?.ok()).toBeTruthy();
+    await page.getByRole("button", { name: "Complete test payment" }).click();
     await page.waitForURL(/\/billing/);
     await expect(page.locator("body")).toContainText(/Premium|Active/i);
 
@@ -112,9 +112,9 @@ test.describe("authenticated Premium customer", () => {
       const created = await checkout(page, price.id, `AUTO-QA-${runId}-mobile-payment`);
       expect(created.status).toBe(200);
       const mock = await page.goto(created.body.redirectUrl, { waitUntil: "networkidle" });
-      expect(mock?.status() ?? 599).toBeLessThan(500);
+      expect(mock?.ok()).toBeTruthy();
       await expectNoHorizontalOverflow(page, "mobile mock checkout");
-      await page.getByRole("button", { name: /Complete payment/i }).click();
+      await page.getByRole("button", { name: "Complete test payment" }).click();
       await page.waitForURL(/\/billing/);
       await expectNoHorizontalOverflow(page, "mobile billing");
       await expectSubscriptionAndEntitlements(config, customer.id, price);
