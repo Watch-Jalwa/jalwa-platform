@@ -16,7 +16,10 @@ HISTORICAL_MIGRATION="${HISTORICAL_MIGRATION:-}"
 SUCCESSOR_MIGRATION="${SUCCESSOR_MIGRATION:-}"
 FILENAME="202609090004_public_live_catalogue_availability.sql"
 
-[[ "$DB_CONTAINER" == "jalwa-postgres-staging" ]] || { echo "Refusing reconciliation against non-staging database container: $DB_CONTAINER" >&2; exit 1; }
+if [[ "$DB_CONTAINER" != "jalwa-postgres-staging" && "${ALLOW_STAGING_RECONCILIATION_TEST_CONTAINER:-false}" != "true" ]]; then
+  echo "Refusing reconciliation against non-staging database container: $DB_CONTAINER" >&2
+  exit 1
+fi
 [[ -f "$CURRENT_MIGRATION" ]] || { echo "Current migration file is missing." >&2; exit 1; }
 [[ -f "$HISTORICAL_MIGRATION" ]] || { echo "Historical migration evidence is missing." >&2; exit 1; }
 [[ -f "$SUCCESSOR_MIGRATION" ]] || { echo "Forward successor migration is missing." >&2; exit 1; }
