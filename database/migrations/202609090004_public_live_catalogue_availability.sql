@@ -1,9 +1,10 @@
 begin;
 
 -- Public live catalogue availability hardening.
--- The approved live inventory predates the internal-alpha availability columns,
--- which were introduced fail-closed. Re-enable only manifest-backed live items
--- that still satisfy publication, rights, source and live-config governance.
+-- Approved live inventory is installed fail-closed by earlier migrations and is
+-- activated separately by the controlled environment state workflow. This
+-- migration only teaches the shared availability predicate how reviewed remote
+-- live-image adapters satisfy playback without a stored media asset.
 
 create or replace function public.is_content_effectively_available(p_content_id uuid)
 returns boolean
@@ -50,6 +51,7 @@ as $$
           where lp.content_id = c.id
             and lp.is_primary
             and lp.status = 'active'
+            and lp.is_available
             and lp.disabled_at is null
             and l.enabled
             and l.rights_verified_at is not null
@@ -98,88 +100,13 @@ as $$
   )
 $$;
 
-update public.content_items c
-set is_available = true,
-    updated_at = now()
-where c.id in (
-  select c2.id
-  from public.approved_live_catalogue_manifest m
-  join public.content_items c2 on c2.slug = m.slug
-  join public.playback_sources p on p.content_id = c2.id and p.is_primary
-  join public.live_source_configs l on l.playback_source_id = p.id and l.source_key = m.source_key
-  left join public.source_accounts s on s.id = c2.source_account_id
-  where c2.content_type = 'live'
-    and c2.status = 'published'
-    and c2.disabled_at is null
-    and p.status = 'active'
-    and p.disabled_at is null
-    and l.enabled
-    and l.rights_verified_at is not null
-    and l.next_review_at > now()
-    and (
-      c2.source_account_id is null
-      or (
-        s.is_enabled
-        and s.approved_for_discovery
-        and s.copyright_approved
-        and s.disabled_at is null
-      )
-    )
-    and public.has_publishable_rights(c2.id, c2.hosting_mode, c2.access_level)
-    and not exists(
-      select 1
-      from public.rights_records r
-      where r.content_id = c2.id
-        and r.rights_hold
-    )
-);
-
-update public.playback_sources p
-set is_available = true
-where p.id in (
-  select p2.id
-  from public.approved_live_catalogue_manifest m
-  join public.content_items c on c.slug = m.slug
-  join public.playback_sources p2 on p2.content_id = c.id and p2.is_primary
-  join public.live_source_configs l on l.playback_source_id = p2.id and l.source_key = m.source_key
-  where c.is_available
-    and c.disabled_at is null
-    and p2.status = 'active'
-    and p2.disabled_at is null
-    and l.enabled
-    and l.rights_verified_at is not null
-    and l.next_review_at > now()
-);
-
-update public.media_assets a
-set is_available = true
-where a.status = 'ready'
-  and a.disabled_at is null
-  and a.content_id in (
-    select c.id
-    from public.approved_live_catalogue_manifest m
-    join public.content_items c on c.slug = m.slug
-    where c.is_available
-  );
-
 do $$
 declare
   v_manifest integer;
-  v_available integer;
 begin
-  select count(*) into v_manifest
-  from public.approved_live_catalogue_manifest;
-
-  select count(*) into v_available
-  from public.approved_live_catalogue_manifest m
-  join public.content_items c on c.slug = m.slug
-  where public.is_content_effectively_available(c.id);
-
+  select count(*) into v_manifest from public.approved_live_catalogue_manifest;
   if v_manifest <> 52 then
     raise exception 'Approved live manifest must contain 52 underlying sources';
-  end if;
-  if v_available <> v_manifest then
-    raise exception 'Approved live catalogue availability is incomplete: % of % items are public', v_available, v_manifest;
   end if;
 end $$;
 
