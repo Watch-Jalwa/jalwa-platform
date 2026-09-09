@@ -42,7 +42,7 @@ test.describe("catalogue and media", () => {
       }
     });
 
-    const response = await page.goto(`/watch/${representativeSlug}`, { waitUntil: "networkidle" });
+    const response = await page.goto(`/watch/${representativeSlug}`, { waitUntil: "domcontentloaded" });
     expect(response?.status() ?? 599).toBeLessThan(400);
     await expect(page.locator(".player-shell")).toBeVisible();
 
@@ -97,14 +97,20 @@ test.describe("catalogue and media", () => {
     }
   });
 
-  test("allowlisted public-domain live image routes return only image content with cache/source metadata", async ({ request }) => {
+  test("allowlisted public-domain live image routes expose only image content or the documented temporary-unavailable boundary", async ({ request }) => {
     test.skip(!liveExpected, "Governed live sources are not enabled for this staging run.");
     for (const sourceKey of ["usgs-mauna-loa-mlcam", "usgs-river-pequest", "nps-devils-tower-entrance"]) {
       const response = await request.get(`/api/live-sources/${sourceKey}/image`);
-      expect(response.status()).toBe(200);
-      expect(response.headers()["content-type"] ?? "").toMatch(/^image\//i);
-      expect(response.headers()["x-jalwa-live-source"]).toBe(sourceKey);
-      expect(response.headers()["cache-control"] ?? "").toMatch(/s-maxage=/i);
+      expect([200, 503]).toContain(response.status());
+      if (response.status() === 200) {
+        expect(response.headers()["content-type"] ?? "").toMatch(/^image\//i);
+        expect(response.headers()["x-jalwa-live-source"]).toBe(sourceKey);
+        expect(response.headers()["cache-control"] ?? "").toMatch(/s-maxage=/i);
+      } else {
+        expect(response.headers()["content-type"] ?? "").toMatch(/^application\/json/i);
+        expect(response.headers()["cache-control"] ?? "").toMatch(/no-store/i);
+        expect(await response.json()).toEqual({ error: "Official live image temporarily unavailable." });
+      }
     }
   });
 });
