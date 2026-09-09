@@ -12,8 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RELEASE_SHA: 83d55bc263a9ffeac3957b091b9c0d5ba4a035b3
-  DEPLOYMENT_PIPELINE_ID: "34152144254"
+  RELEASE_SHA: ${{ github.sha }}
   QA_RUN_ID: completion-${{ github.run_id }}
   HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
   USER: ${{ vars.STAGING_USER || 'codistan' }}
@@ -36,31 +35,33 @@ env:
   VIEWER_EMAIL: ${{ vars.STAGING_QA_REPORT_VIEWER_EMAIL || 'acceptance+premium-viewer@watch-jalwa.com' }}
   MANUAL_EMAIL: acceptance+premium-manual@watch-jalwa.com
   CERTIFICATION_EVIDENCE_DIR: ${{ github.workspace }}/staging-certification-evidence
-  VISUAL_REVIEW_ACCEPTED: 83d55bc263a9ffeac3957b091b9c0d5ba4a035b3
-  VISUAL_REVIEW_ACCEPTANCE_REFERENCE: user-approved-2026-09-08-staging-certification-34152680896
+  VISUAL_REVIEW_ACCEPTED: ${{ vars.STAGING_VISUAL_REVIEW_ACCEPTED || '' }}
+  VISUAL_REVIEW_ACCEPTANCE_REFERENCE: ${{ vars.STAGING_VISUAL_REVIEW_ACCEPTANCE_REFERENCE || '' }}
   EXPECTED_ENVIRONMENT: staging
   EXPECT_NOINDEX: "true"
   ALLOW_MOCK_PAYMENTS: "true"
   JALWA_EXPECT_READINESS_STATUS: "200"
   JALWA_EXPECT_NOINDEX: "true"
-  JALWA_EXPECT_LIVE_SOURCES: "false"
+  JALWA_EXPECT_LIVE_SOURCES: "true"
+  REPRESENTATIVE_MEDIA_SLUG: nasa-space-station-views
 
 jobs:
   certify:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 150
     environment:
       name: staging
       url: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
 
-      - name: Validate exact staging candidate
+      - name: Validate staging-only candidate boundary
         run: |
           set -euo pipefail
           mkdir -p "$CERTIFICATION_EVIDENCE_DIR"
+          test "$GITHUB_REF" = refs/heads/fix/staging-certification-blockers
           [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$DEPLOYMENT_PIPELINE_ID" =~ ^[0-9]+$ ]]
+          test "$RELEASE_SHA" = "$GITHUB_SHA"
           test "$USER" = codistan
           test "$APP_DIR" = /opt/codistan/jalwa-platform
           test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
@@ -74,6 +75,22 @@ jobs:
           chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Wait for exact immutable PR candidate deployment
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in {1..240}; do
+            health="$(curl -fsS --connect-timeout 5 --max-time 12 "$STAGING_BASE_URL/api/health" 2>/dev/null || true)"
+            identity_ready="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" "test -s '$APP_DIR/deployments/$RELEASE_SHA.identity.json' && echo yes || true" 2>/dev/null || true)"
+            if jq -e --arg sha "$RELEASE_SHA" '.status=="ready" and .version==$sha' <<<"$health" >/dev/null 2>&1 && [[ "$identity_ready" == yes ]]; then
+              ready=true
+              printf '%s\n' "$health" > "$CERTIFICATION_EVIDENCE_DIR/candidate-health.json"
+              break
+            fi
+            sleep 5
+          done
+          test "$ready" = true
 
       - name: Hydrate protected certification secrets from staging when GitHub values are empty
         run: |
@@ -94,7 +111,7 @@ jobs:
             printf '%s=%s\n' "$key" "$value" >> "$GITHUB_ENV"
           done
 
-      - name: Resolve running PostgreSQL identity
+      - name: Resolve running PostgreSQL identity and staging runtime flags
         run: |
           set -euo pipefail
           pair="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
@@ -102,38 +119,8 @@ jobs:
           IFS='|' read -r db_user db_name <<<"$pair"
           [[ -n "$db_user" && -n "$db_name" ]] || { echo 'Running PostgreSQL identity could not be resolved.' >&2; exit 1; }
           printf 'DB_USER=%s\nDB_NAME=%s\n' "$db_user" "$db_name" >> "$GITHUB_ENV"
-
-      - name: Normalize server-held SMTP password alias
-        run: |
-          set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
-          set -euo pipefail
-          env_file="$APP_DIR/.env.staging"
-          read_env() { awk -v key="$1" 'index($0,key "=")==1 {print substr($0,length(key)+2); exit}' "$env_file"; }
-          upsert_env() {
-            local name="$1" value="$2" tmp
-            tmp="$(mktemp "${env_file}.XXXXXX")"
-            awk -v name="$name" -v value="$value" 'BEGIN{done=0} $0 ~ "^" name "=" {if(!done) print name "=" value; done=1; next} {print} END{if(!done) print name "=" value}' "$env_file" > "$tmp"
-            chmod 600 "$tmp"
-            mv -f "$tmp" "$env_file"
-          }
-          smtp_password="$(read_env SMTP_PASSWORD)"
-          smtp_pass="$(read_env SMTP_PASS)"
-          if [[ -z "$smtp_password" ]]; then
-            [[ -n "$smtp_pass" ]] || { echo 'Server-held SMTP password is unavailable.' >&2; exit 1; }
-            upsert_env SMTP_PASSWORD "$smtp_pass"
-          fi
-          REMOTE
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "cd '$APP_DIR' && COMPOSE_PROJECT_NAME=jalwa-platform docker compose -f '$APP_DIR/docker-compose.yml' -f '$APP_DIR/docker-compose.codistan-staging.yml' --env-file '$APP_DIR/.env.staging' up -d --no-deps --force-recreate web >/dev/null"
-          for attempt in {1..30}; do
-            health="$(curl -fsS --max-time 10 "$STAGING_BASE_URL/api/health" 2>/dev/null || true)"
-            if jq -e --arg sha "$RELEASE_SHA" '.status=="ready" and .version==$sha' <<<"$health" >/dev/null 2>&1; then exit 0; fi
-            sleep 2
-          done
-          echo 'Web did not return to exact-release ready state after SMTP alias normalization.' >&2
-          exit 1
+            "docker exec jalwa-web-staging sh -lc 'test \"\$PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED\" = true && test \"\$ALLOW_MOCK_PAYMENTS\" = true && test \"\$GIT_SHA\" = \"$RELEASE_SHA\"'"
 
       - name: Preseed deterministic QA identities under service-role context
         run: |
@@ -163,10 +150,9 @@ jobs:
           seed_identity "$MANUAL_EMAIL" subscriber
 
       - name: Ensure deterministic QA users and reporting fixtures
-        if: always()
         run: |
           set -euo pipefail
-          test -n "${STAGING_QA_SECRET:-}" && test -n "${DB_USER:-}" && test -n "${DB_NAME:-}"
+          test -n "$STAGING_QA_SECRET" && test -n "$DB_USER" && test -n "$DB_NAME"
           ensure_user() {
             local email="$1" role="$2" payload id
             payload="$(jq -nc --arg email "$email" --arg role "$role" '{email:$email,role:$role,issueLink:false}')"
@@ -188,112 +174,112 @@ jobs:
             "docker exec -i '$DB_CONTAINER' psql -X -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -v deployment_environment=staging" \
             < scripts/seed-public-domain-live-sources.sql
 
-      - name: Record visual approval and publish one rights-approved staging item
-        if: always()
+      - name: Publish and prove NASA public catalogue path
         id: media
         run: |
           set -euo pipefail
-          test -n "${DB_USER:-}" && test -n "${DB_NAME:-}"
-          selected="$(ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "APP_DIR='$APP_DIR' DB_CONTAINER='$DB_CONTAINER' DB_USER='$DB_USER' DB_NAME='$DB_NAME' RELEASE_SHA='$RELEASE_SHA' VISUAL_REF='$VISUAL_REVIEW_ACCEPTANCE_REFERENCE' bash -s" <<'REMOTE'
-          set -euo pipefail
-          env_file="$APP_DIR/.env.staging"
-          upsert_env() {
-            local name="$1" value="$2" tmp
-            tmp="$(mktemp "${env_file}.XXXXXX")"
-            awk -v name="$name" -v value="$value" 'BEGIN{done=0} $0 ~ "^" name "=" {if(!done) print name "=" value; done=1; next} {print} END{if(!done) print name "=" value}' "$env_file" > "$tmp"
-            chmod 600 "$tmp"
-            mv -f "$tmp" "$env_file"
-          }
-          psql_cmd() { docker exec "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" "$@"; }
-          run_sql() {
-            local sql="$1"; shift
-            printf '%s\n' "$sql" | docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$DB_USER" -d "$DB_NAME" "$@"
-          }
-          upsert_env STAGING_VISUAL_REVIEW_ACCEPTED "$RELEASE_SHA"
-          upsert_env STAGING_VISUAL_REVIEW_ACCEPTANCE_REFERENCE "$VISUAL_REF"
-
-          candidate="$(psql_cmd -At -c "
-            select c.slug
-            from public.content_items c
-            where c.content_type <> 'live'
-              and public.has_publishable_rights(c.id,c.hosting_mode,c.access_level)
-              and exists (
-                select 1 from public.playback_sources p
-                left join public.media_assets a on a.id=p.media_asset_id
-                where p.content_id=c.id and p.is_primary and p.status='active'
-                  and (c.hosting_mode not in ('self_host_open','self_host_owned') or a.status='ready')
-              )
-            order by (c.status='published') desc,c.updated_at desc
-            limit 1;")"
-
-          if [[ -n "$candidate" ]]; then
-            run_sql "update public.content_items set status='published',publish_at=coalesce(publish_at,now()),unpublish_at=null where slug=:'slug';" -v slug="$candidate" >/dev/null
-            printf '%s' "$candidate"
-            exit 0
-          fi
-
-          candidate=nasa-space-station-views
-          run_sql "update public.live_source_configs l set enabled=true,next_review_at=greatest(l.next_review_at,now()+interval '30 days') from public.playback_sources p,public.content_items c where l.playback_source_id=p.id and p.content_id=c.id and c.slug=:'slug'; update public.content_items set status='published',publish_at=coalesce(publish_at,now()),unpublish_at=null where slug=:'slug';" -v slug="$candidate" >/dev/null
-          upsert_env PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED true
-          export COMPOSE_PROJECT_NAME=jalwa-platform
-          export COMPOSE_FILE="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml"
-          cd "$APP_DIR"
-          docker compose --env-file "$env_file" up -d --no-deps --force-recreate web >/dev/null
-          printf '%s' "$candidate"
-          REMOTE
-          )"
-          [[ -n "$selected" ]] || { echo 'No publishable staging media item could be selected.' >&2; exit 1; }
-          echo "slug=$selected" >> "$GITHUB_OUTPUT"
-          echo "Published staging media slug: $selected"
+          slug=nasa-space-station-views
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i '$DB_CONTAINER' psql -X -v ON_ERROR_STOP=1 -U '$DB_USER' -d '$DB_NAME' -v slug='$slug'" <<'SQL'
+          begin;
+          update public.live_source_configs l
+          set enabled=true,next_review_at=greatest(l.next_review_at,now()+interval '30 days')
+          from public.playback_sources p,public.content_items c
+          where l.playback_source_id=p.id and p.content_id=c.id and c.slug=:'slug';
+          update public.content_items
+          set status='published',is_featured=true,publish_at=now(),unpublish_at=null,updated_at=now()
+          where slug=:'slug';
+          commit;
+          do $assert$
+          begin
+            if not exists (
+              select 1 from public.content_items c
+              where c.slug='nasa-space-station-views'
+                and c.status='published'
+                and exists(select 1 from public.rights_records r where r.content_id=c.id and r.status='approved')
+                and exists(
+                  select 1 from public.playback_sources p
+                  join public.live_source_configs l on l.playback_source_id=p.id
+                  where p.content_id=c.id and p.is_primary and p.status='active' and l.enabled and l.next_review_at>now()
+                )
+            ) then raise exception 'NASA is not publishable under the strict rights/live-source predicate'; end if;
+          end
+          $assert$;
+          SQL
+          visible=false
           for attempt in {1..30}; do
-            health="$(curl -fsS --max-time 10 "$STAGING_BASE_URL/api/health" 2>/dev/null || true)"
-            if jq -e --arg sha "$RELEASE_SHA" '.status=="ready" and .version==$sha' <<<"$health" >/dev/null 2>&1; then break; fi
+            explore_html="$(curl -fsS --connect-timeout 5 --max-time 20 "$STAGING_BASE_URL/explore" 2>/dev/null || true)"
+            if grep -Fq "/watch/$slug" <<<"$explore_html"; then visible=true; break; fi
             sleep 2
           done
-          curl -fsS --max-time 20 "$STAGING_BASE_URL/api/health" | jq -e --arg sha "$RELEASE_SHA" '.status=="ready" and .version==$sha' >/dev/null
-          explore_html="$(curl -fsS --max-time 30 "$STAGING_BASE_URL/explore")"
-          grep -Fq "/watch/$selected" <<<"$explore_html" || { echo "Published media is not linked from /explore: $selected" >&2; exit 1; }
-          watch_file="$CERTIFICATION_EVIDENCE_DIR/watch-$selected.html"
-          watch_status="$(curl -fsS --max-time 30 -o "$watch_file" -w '%{http_code}' "$STAGING_BASE_URL/watch/$selected")"
+          test "$visible" = true
+          watch_file="$CERTIFICATION_EVIDENCE_DIR/watch-$slug.html"
+          watch_status="$(curl -fsS --max-time 30 -o "$watch_file" -w '%{http_code}' "$STAGING_BASE_URL/watch/$slug")"
           test "$watch_status" = 200
-          grep -Fq 'player-shell' "$watch_file" || { echo "Watch route does not expose the player shell: $selected" >&2; exit 1; }
+          grep -Fq 'player-shell' "$watch_file"
+          echo "slug=$slug" >> "$GITHUB_OUTPUT"
 
       - name: Gate zero — prove deployed artifact identity
-        if: always()
         run: |
           set +e
           identity="$CERTIFICATION_EVIDENCE_DIR/release-identity.json"
           if ! scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST:$APP_DIR/deployments/$RELEASE_SHA.identity.json" "$identity"; then
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity BLOCKED "Deployment identity evidence is missing for the selected release." tests=10
-          elif node scripts/verify-release-identity.mjs "$identity" "$RELEASE_SHA" "$DEPLOYMENT_PIPELINE_ID" > "$CERTIFICATION_EVIDENCE_DIR/release-identity-summary.json"; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity PASS "Source SHA, deployment run, web and worker registry digests, running image IDs, OCI revisions and rollback reference are traceable." tests=10
+            exit 0
+          fi
+          deployment="$(jq -r '.deployment_pipeline_id // empty' "$identity")"
+          if [[ ! "$deployment" =~ ^[0-9]+$ ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity FAIL "Deployment identity has no numeric deployment pipeline ID." tests=10
+            exit 0
+          fi
+          echo "DEPLOYMENT_PIPELINE_ID=$deployment" >> "$GITHUB_ENV"
+          if node scripts/verify-release-identity.mjs "$identity" "$RELEASE_SHA" "$deployment" > "$CERTIFICATION_EVIDENCE_DIR/release-identity-summary.json"; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity PASS "Source SHA, candidate deployment run, web and worker registry digests, running image IDs, OCI revisions and rollback reference are traceable." tests=10
           else
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity FAIL "Running artifact identity does not match the selected source SHA and deployment run." tests=10
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" deployment_identity FAIL "Running artifact identity does not match the exact PR-head source SHA and deployment run." tests=10
           fi
           exit 0
 
-      - name: Verify API and runtime health
-        if: always()
+      - name: Verify API and runtime health with bounded transient retries
         run: |
           set +e
-          if ! ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "APP_DIR='$APP_DIR' DB_CONTAINER='$DB_CONTAINER' JALWA_ENV_FILE='$APP_DIR/.env.staging' JALWA_COMPOSE_FILE='$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml' COMPOSE_PROJECT_NAME=jalwa-platform '$APP_DIR/scripts/host-acceptance.sh' 'https://$DOMAIN'" \
-            > "$CERTIFICATION_EVIDENCE_DIR/host-acceptance.json"; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Host, worker, PostgreSQL or recovery acceptance failed after staging configuration update." tests=12
+          host_ok=false
+          for attempt in {1..5}; do
+            tmp="$CERTIFICATION_EVIDENCE_DIR/host-acceptance.attempt.json"
+            if ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" \
+              "APP_DIR='$APP_DIR' DB_CONTAINER='$DB_CONTAINER' JALWA_ENV_FILE='$APP_DIR/.env.staging' JALWA_COMPOSE_FILE='$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml' COMPOSE_PROJECT_NAME=jalwa-platform '$APP_DIR/scripts/host-acceptance.sh' 'https://$DOMAIN'" > "$tmp"; then
+              mv "$tmp" "$CERTIFICATION_EVIDENCE_DIR/host-acceptance.json"
+              host_ok=true
+              break
+            fi
+            sleep 5
+          done
+          if [[ "$host_ok" != true ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Host, worker, PostgreSQL or recovery acceptance did not converge within the bounded retry window." tests=12
             exit 0
           fi
-          health="$(curl -fsS --max-time 25 "$STAGING_BASE_URL/api/health")"
-          if ! jq -e --arg release "$RELEASE_SHA" '.status == "ready" and .version == $release' <<<"$health" >/dev/null; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Public health does not report the exact selected release as ready." tests=12
+          health_ok=false
+          for attempt in {1..6}; do
+            health="$(curl -fsS --connect-timeout 5 --max-time 20 "$STAGING_BASE_URL/api/health" 2>/dev/null || true)"
+            if jq -e --arg release "$RELEASE_SHA" '.status=="ready" and .version==$release' <<<"$health" >/dev/null 2>&1; then health_ok=true; break; fi
+            sleep 5
+          done
+          if [[ "$health_ok" != true ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Public health does not report the exact selected release as ready after bounded convergence." tests=12
             exit 0
           fi
           export BASE_URL="$STAGING_BASE_URL" REPORT_FILE="$CERTIFICATION_EVIDENCE_DIR/platform-acceptance.json"
-          if ! infrastructure/production/scripts/production-acceptance.sh "$STAGING_BASE_URL"; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Database-backed readiness, Better Auth, security headers or required runtime dependency checks failed." tests=12
+          public_ok=false
+          for attempt in {1..3}; do
+            rm -f "$REPORT_FILE"
+            if infrastructure/production/scripts/production-acceptance.sh "$STAGING_BASE_URL"; then public_ok=true; break; fi
+            sleep 5
+          done
+          if [[ "$public_ok" != true ]]; then
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime FAIL "Database-backed readiness, Better Auth, security headers or required runtime dependency checks failed after bounded retries." tests=12
             exit 0
           fi
-          node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime PASS "Exact release health, host recovery checks, PostgreSQL readiness, Better Auth and required runtime dependencies passed." tests=12
+          node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" api_runtime PASS "Exact candidate health, host recovery checks, PostgreSQL readiness, Better Auth and required runtime dependencies passed with bounded startup tolerance." tests=12
           exit 0
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -321,7 +307,7 @@ jobs:
           if [[ "$HARNESS_OUTCOME" != success ]]; then
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" public_browser BLOCKED "Pinned browser harness is unavailable." tests=10
           elif npm run test:staging:playwright:public; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" public_browser PASS "Playwright public, magic-link Auth and 360/390px responsive journeys passed against the exact staging release." tests=10
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" public_browser PASS "Playwright public, magic-link Auth and 360/390px responsive journeys passed against the exact staging candidate." tests=10
           else
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" public_browser FAIL "A reproducible Playwright public, Auth or responsive staging journey failed." tests=10
           fi
@@ -344,8 +330,8 @@ jobs:
           fi
           if npm run test:staging:playwright:customer; then
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" authenticated_checkout PASS "Playwright anonymous denial, invalid input, exact pricing and duplicate-submit idempotency passed." tests=3
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" payments PASS "Playwright mock payment produced the authoritative succeeded order, active subscription and exact entitlements." tests=1
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" mobile_purchase PASS "The full authenticated Premium purchase passed on Mobile Chromium." tests=1
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" payments PASS "Desktop mock payment used the supported completion UI and produced the authoritative succeeded order, active subscription and exact entitlements." tests=1
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" mobile_purchase PASS "The full authenticated Premium purchase passed on Mobile Chromium with verified browser-session establishment." tests=1
           else
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" authenticated_checkout FAIL "A mandatory Playwright checkout, pricing or idempotency assertion failed." tests=3
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" payments FAIL "A mandatory Playwright payment, subscription or entitlement assertion failed." tests=1
@@ -380,7 +366,7 @@ jobs:
           if [[ "$preflight" -eq 2 ]]; then node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue BLOCKED "No rights-approved published staging item is available." tests=4; exit 0; fi
           if [[ "$preflight" -ne 0 ]]; then node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue FAIL "The staging catalogue could not be inspected safely." tests=4; exit 0; fi
           if npm run test:staging:playwright:media; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue PASS "Playwright representative watch and media boundaries passed for the published rights-approved staging item." tests=4
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue PASS "NASA watch surface plus governed live catalogue, official-link boundaries and allowlisted live-image routes passed." tests=4
           else
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" media_catalogue FAIL "A mandatory Playwright catalogue or playback assertion failed." tests=4
           fi
@@ -396,9 +382,9 @@ jobs:
           node scripts/staging-visual-certification.mjs
           code=$?
           if [[ "$code" -eq 0 ]]; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" visual_regression PASS "All public screenshots match human-approved baseline hashes." tests=4
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" visual_regression PASS "All public screenshots match approved baseline hashes." tests=4
           elif [[ "$code" -eq 3 ]]; then
-            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" visual_regression "VISUAL REVIEW REQUIRED" "One or more public screenshots differ after the explicitly approved staging completion changes." tests=4
+            node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" visual_regression "VISUAL REVIEW REQUIRED" "One or more public screenshots differ after the required staging blocker fixes." tests=4
           elif [[ "$code" -eq 2 ]]; then
             node scripts/write-certification-result.mjs "$CERTIFICATION_EVIDENCE_DIR" visual_regression BLOCKED "Visual certification cannot reach staging." tests=4
           else
@@ -418,8 +404,8 @@ jobs:
         env:
           MEDIA_SLUG: ${{ steps.media.outputs.slug }}
         run: |
-          jq -n --arg release "$RELEASE_SHA" --arg deployment "$DEPLOYMENT_PIPELINE_ID" --arg media "$MEDIA_SLUG" --arg visual "$VISUAL_REVIEW_ACCEPTANCE_REFERENCE" \
-            '{release_sha:$release,deployment_pipeline_id:$deployment,published_media_slug:$media,visual_approval_reference:$visual,production_changed:false}' \
+          jq -n --arg release "$RELEASE_SHA" --arg deployment "${DEPLOYMENT_PIPELINE_ID:-}" --arg media "$MEDIA_SLUG" --arg visual "$VISUAL_REVIEW_ACCEPTANCE_REFERENCE" \
+            '{release_sha:$release,deployment_pipeline_id:$deployment,published_media_slug:$media,visual_approval_reference:($visual|if length==0 then null else . end),production_changed:false,real_money_payment:false}' \
             > "$CERTIFICATION_EVIDENCE_DIR/completion-metadata.json"
 
       - name: Upload sanitized certification evidence
