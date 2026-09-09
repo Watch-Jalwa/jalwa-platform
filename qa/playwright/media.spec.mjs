@@ -71,7 +71,7 @@ test.describe("catalogue and media", () => {
       const body = await page.locator("body").innerText();
       for (const title of expectedLiveTitles) expect(body).toContain(title);
       expect(body).not.toMatch(/Premium/i);
-      expect(body).toMatch(/does not sponsor or endorse Jalwa/i);
+      expect(body).toMatch(/do not sponsor or endorse Jalwa/i);
       expect(body).toMatch(/official source/i);
       await expectNoHorizontalOverflow(page, "mobile live catalogue");
 
