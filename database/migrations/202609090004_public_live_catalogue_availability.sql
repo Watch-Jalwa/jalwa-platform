@@ -39,6 +39,24 @@ as $$
           and r.rights_hold
       )
       and (
+        c.content_type <> 'live'
+        or exists(
+          select 1
+          from public.playback_sources lp
+          join public.live_source_configs l on l.playback_source_id = lp.id
+          join public.approved_live_catalogue_manifest m
+            on m.source_key = l.source_key
+           and m.slug = c.slug
+          where lp.content_id = c.id
+            and lp.is_primary
+            and lp.status = 'active'
+            and lp.disabled_at is null
+            and l.enabled
+            and l.rights_verified_at is not null
+            and l.next_review_at > now()
+        )
+      )
+      and (
         c.hosting_mode = 'text_database'
         or exists(
           select 1
@@ -166,6 +184,6 @@ begin
 end $$;
 
 comment on function public.is_content_effectively_available(uuid) is
-  'True only for published, enabled, rights-valid content with usable playback. Approved public-domain live-image adapters may use their reviewed remote proxy instead of a stored media asset.';
+  'True only for published, enabled, rights-valid content with usable playback. Live content also requires a current reviewed manifest-backed live-source config; approved public-domain live-image adapters may use their reviewed remote proxy instead of a stored media asset.';
 
 commit;
