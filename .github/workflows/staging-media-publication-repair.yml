@@ -73,6 +73,7 @@ jobs:
 
           upsert_env JALWA_ENV_FILE "$env_file"
           upsert_env PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED true
+          upsert_env ALLOW_MOCK_PAYMENTS true
 
           docker exec -i "$DB_CONTAINER" psql -X -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -v slug="$MEDIA_SLUG" <<'SQL'
           \pset pager off
@@ -86,8 +87,10 @@ jobs:
             and c.slug=:'slug';
           update public.content_items
           set status='published',
-              publish_at=coalesce(publish_at,now()),
-              unpublish_at=null
+              is_featured=true,
+              publish_at=now(),
+              unpublish_at=null,
+              updated_at=now()
           where slug=:'slug';
           commit;
           select 'content' as diagnostic,c.id::text as content_id,c.status::text as status
@@ -129,6 +132,7 @@ jobs:
             --env-file "$env_file" up -d --no-deps --force-recreate web >/dev/null
 
           docker exec jalwa-web-staging sh -lc 'test "$PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED" = true'
+          docker exec jalwa-web-staging sh -lc 'test "$ALLOW_MOCK_PAYMENTS" = true'
           docker exec jalwa-web-staging sh -lc 'test "$JALWA_ENV_FILE" = "/opt/codistan/jalwa-platform/.env.staging"'
           REMOTE
 
@@ -165,7 +169,7 @@ jobs:
           test "$watch_status" = 200
           grep -Fq 'player-shell' "$watch_file"
 
-          printf '{"release_sha":"%s","media_slug":"%s","explore_link":true,"watch_status":200,"production_changed":false}\n' \
+          printf '{"release_sha":"%s","media_slug":"%s","explore_link":true,"watch_status":200,"mock_payments_enabled":true,"production_changed":false}\n' \
             "$RELEASE_SHA" "$MEDIA_SLUG" > media-publication-evidence.json
 
       - name: Upload media publication evidence
