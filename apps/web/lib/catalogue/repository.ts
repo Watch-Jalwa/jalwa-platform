@@ -5,6 +5,11 @@ import { categories as demoCategories, featuredContent } from "./demo-data";
 import type { CatalogueCategory, CatalogueItem, LiveCatalogueCollection, PlaybackSource } from "./types";
 
 function asString(value: unknown) { return typeof value === "string" ? value : null; }
+function asTimestamp(value: unknown) {
+  if (typeof value === "string") return value;
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString();
+  return null;
+}
 function asNumber(value: unknown) { return typeof value === "number" ? value : null; }
 function mapSearchRow(row: Record<string, unknown>): CatalogueItem {
   return {
@@ -112,7 +117,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       liveConfig = configRows[0] ?? null;
       liveHealth = healthResult.data as Record<string, unknown> | null;
       if (!liveConfig || liveConfig.enabled !== true) return null;
-      const review = asString(liveConfig.next_review_at);
+      const review = asTimestamp(liveConfig.next_review_at);
       if (!review || new Date(review).getTime() <= Date.now()) return null;
     }
 
@@ -129,9 +134,9 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       deliveryAdapter: asString(liveConfig?.delivery_adapter) as PlaybackSource["deliveryAdapter"],
       availability: (asString(liveHealth?.availability) ?? asString(liveHealth?.status) ?? "degraded") as PlaybackSource["availability"],
       availabilityMessage: asString(liveHealth?.availability_reason) ?? asString(liveHealth?.message),
-      checkedAt: asString(liveHealth?.checked_at),
-      lastSuccessAt: asString(liveHealth?.last_success_at),
-      sourceTimestamp: asString(liveHealth?.source_timestamp),
+      checkedAt: asTimestamp(liveHealth?.checked_at),
+      lastSuccessAt: asTimestamp(liveHealth?.last_success_at),
+      sourceTimestamp: asTimestamp(liveHealth?.source_timestamp),
       refreshIntervalSeconds: asNumber(liveConfig?.refresh_interval_seconds),
       officialSourceUrl: asString(liveConfig?.official_source_url),
       termsUrl: asString(liveConfig?.terms_url),
