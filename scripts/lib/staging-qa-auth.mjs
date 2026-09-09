@@ -50,10 +50,14 @@ export async function authenticatePage(page, config, email, nextPath = "/") {
   let lastError = null;
   while (Date.now() < deadline) {
     try {
-      const sessionProbe = await page.request.get(`${config.baseUrl}/api/payments/history`);
+      const sessionProbe = await page.request.get(`${config.baseUrl}/api/auth/get-session`, {
+        headers: { "Cache-Control": "no-store" },
+      });
       lastStatus = sessionProbe.status();
-      if (sessionProbe.ok()) return;
-      if (lastStatus !== 401 && lastStatus !== 429 && lastStatus < 500) {
+      if (sessionProbe.ok()) {
+        const payload = await sessionProbe.json().catch(() => null);
+        if (payload?.user?.id) return;
+      } else if (lastStatus !== 401 && lastStatus !== 429 && lastStatus < 500) {
         throw new Error(`authenticated session probe returned HTTP ${lastStatus}`);
       }
     } catch (error) {
