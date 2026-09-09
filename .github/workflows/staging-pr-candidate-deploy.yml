@@ -225,6 +225,19 @@ jobs:
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
             "chmod 600 '$remote_db/bootstrap.sql' '$remote_db/migrations/202609090001_public_catalogue_launch.sql' '$remote_db/migrations/202609090002_nasa_public_availability.sql' '$remote_db/migrations/202609090003_public_live_source_lookup.sql' '$remote_db/migrations/202609090004_public_live_catalogue_availability.sql' && MIGRATIONS_DIR='$remote_db/migrations' BOOTSTRAP_SQL='$remote_db/bootstrap.sql' DB_CONTAINER='jalwa-postgres-staging' MIGRATION_LOCK_FILE='$APP_DIR/.candidate-migration.lock' '$APP_DIR/scripts/apply-migrations.sh'"
 
+      - name: Activate governed live catalogue in staging
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i jalwa-postgres-staging sh -lc 'psql -X -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v deployment_environment=staging -v desired_state=true'" \
+            < scripts/set-public-domain-live-catalogue-state.sql
+
+      - name: Verify staging disk remains below acceptance threshold
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker image prune -f >/dev/null; usage=\$(df -P / | awk 'NR==2 {gsub(/%/,\"\",\$5); print \$5}'); echo \"Post-deploy root filesystem usage is \${usage}%.\"; [[ \"\$usage\" =~ ^[0-9]+$ ]] && test \"\$usage\" -lt 85"
+
       - name: Verify exact candidate is publicly ready
         run: |
           set -euo pipefail
@@ -247,5 +260,5 @@ jobs:
             echo "- Exact SHA: $GITHUB_SHA"
             echo "- Deployment run: $GITHUB_RUN_ID"
             echo '- Boundary: staging only; production unchanged'
-            echo '- PostgreSQL: existing container/data preserved; tracked candidate catalogue migrations applied; no direct payment/order/subscription mutation'
+            echo '- PostgreSQL: existing container/data preserved; tracked candidate catalogue migrations applied; approved live catalogue activated only in staging; no direct payment/order/subscription mutation'
           } >> "$GITHUB_STEP_SUMMARY"
