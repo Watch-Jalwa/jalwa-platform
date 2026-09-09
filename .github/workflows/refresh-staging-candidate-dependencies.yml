@@ -35,7 +35,8 @@ jobs:
           fs.writeFileSync(webPath, JSON.stringify(web, null, 2) + '\n');
           fs.writeFileSync(rootPath, JSON.stringify(root, null, 2) + '\n');
           NODE
-          npm update nodemailer sharp --package-lock-only --force --ignore-scripts --no-audit --no-fund
+          npm install nodemailer@9.1.1 --workspace=@jalwa/web --package-lock-only --force --ignore-scripts --no-audit --no-fund
+          npm update sharp --package-lock-only --force --ignore-scripts --no-audit --no-fund
           npm ci --ignore-scripts --no-audit --no-fund
           npm audit --omit=dev --audit-level=high
           node -e "const l=require('./package-lock.json'); if(l.packages['apps/web/node_modules/nodemailer']?.version!=='9.1.1') process.exit(1); if(l.packages['node_modules/sharp']?.version!=='0.35.4') process.exit(1)"
