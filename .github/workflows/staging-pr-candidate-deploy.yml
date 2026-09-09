@@ -114,7 +114,8 @@ jobs:
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/host-acceptance.sh "$USER@$HOST:$APP_DIR/scripts/host-acceptance.sh"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/capture-release-identity.sh "$USER@$HOST:$APP_DIR/scripts/capture-release-identity.sh"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/apply-migrations.sh "$USER@$HOST:$APP_DIR/scripts/apply-migrations.sh"
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "chmod 755 '$APP_DIR/scripts/deploy-release.sh' '$APP_DIR/scripts/smoke-test.sh' '$APP_DIR/scripts/host-acceptance.sh' '$APP_DIR/scripts/capture-release-identity.sh' '$APP_DIR/scripts/apply-migrations.sh'"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/reconcile-staging-migration-090004.sh "$USER@$HOST:$APP_DIR/scripts/reconcile-staging-migration-090004.sh"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "chmod 755 '$APP_DIR/scripts/deploy-release.sh' '$APP_DIR/scripts/smoke-test.sh' '$APP_DIR/scripts/host-acceptance.sh' '$APP_DIR/scripts/capture-release-identity.sh' '$APP_DIR/scripts/apply-migrations.sh' '$APP_DIR/scripts/reconcile-staging-migration-090004.sh'"
 
       - name: Authenticate host to immutable image registry
         env:
@@ -171,12 +172,12 @@ jobs:
           test "$usage" -lt 85
           REMOTE
 
-      - name: Apply tracked candidate catalogue migrations before cutover
+      - name: Reconcile staging migration history and apply forward migrations before cutover
         run: |
           set -euo pipefail
           remote_db="$APP_DIR/candidate-db/$GITHUB_SHA"
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "install -d -m 700 '$remote_db/migrations'"
+            "install -d -m 700 '$remote_db/migrations' '$remote_db/history'"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
             database/bootstrap.sql "$USER@$HOST:$remote_db/bootstrap.sql"
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
@@ -184,9 +185,13 @@ jobs:
             database/migrations/202609090002_nasa_public_availability.sql \
             database/migrations/202609090003_public_live_source_lookup.sql \
             database/migrations/202609090004_public_live_catalogue_availability.sql \
+            database/migrations/202609090005_public_live_catalogue_availability_v2.sql \
             "$USER@$HOST:$remote_db/migrations/"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            database/migration-history/202609090004_public_live_catalogue_availability.staging-applied.sql \
+            "$USER@$HOST:$remote_db/history/"
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "chmod 600 '$remote_db/bootstrap.sql' '$remote_db/migrations/202609090001_public_catalogue_launch.sql' '$remote_db/migrations/202609090002_nasa_public_availability.sql' '$remote_db/migrations/202609090003_public_live_source_lookup.sql' '$remote_db/migrations/202609090004_public_live_catalogue_availability.sql' && MIGRATIONS_DIR='$remote_db/migrations' BOOTSTRAP_SQL='$remote_db/bootstrap.sql' DB_CONTAINER='jalwa-postgres-staging' MIGRATION_LOCK_FILE='$APP_DIR/.candidate-migration.lock' '$APP_DIR/scripts/apply-migrations.sh'"
+            "chmod 600 '$remote_db/bootstrap.sql' '$remote_db/migrations/'*.sql '$remote_db/history/'*.sql && ALLOW_STAGING_MIGRATION_090004_RECONCILIATION=true DEPLOYMENT_ENVIRONMENT=staging DB_CONTAINER='jalwa-postgres-staging' CURRENT_MIGRATION='$remote_db/migrations/202609090004_public_live_catalogue_availability.sql' HISTORICAL_MIGRATION='$remote_db/history/202609090004_public_live_catalogue_availability.staging-applied.sql' SUCCESSOR_MIGRATION='$remote_db/migrations/202609090005_public_live_catalogue_availability_v2.sql' '$APP_DIR/scripts/reconcile-staging-migration-090004.sh' && MIGRATIONS_DIR='$remote_db/migrations' BOOTSTRAP_SQL='$remote_db/bootstrap.sql' DB_CONTAINER='jalwa-postgres-staging' MIGRATION_LOCK_FILE='$APP_DIR/.candidate-migration.lock' '$APP_DIR/scripts/apply-migrations.sh'"
 
       - name: Verify current staging runtime is ready after migrations
         run: |
@@ -272,5 +277,5 @@ jobs:
             echo "- Exact SHA: $GITHUB_SHA"
             echo "- Deployment run: $GITHUB_RUN_ID"
             echo '- Boundary: staging only; production unchanged'
-            echo '- PostgreSQL: existing container/data preserved; tracked candidate catalogue migrations applied before application cutover; approved live catalogue activated only in staging; no direct payment/order/subscription mutation'
+            echo '- PostgreSQL: existing container/data preserved; historical staging migration checksum reconciled only against preserved exact evidence; forward migration applied before application cutover; approved live catalogue activated only in staging; no direct payment/order/subscription mutation'
           } >> "$GITHUB_STEP_SUMMARY"
