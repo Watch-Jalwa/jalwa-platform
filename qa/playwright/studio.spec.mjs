@@ -183,7 +183,9 @@ test.describe("Studio authorization and Premium reporting", () => {
     await authenticateVerified(page, reportViewer.email, 403);
 
     await page.goto("/studio/finance/reports", { waitUntil: "networkidle" });
-    expect(new URL(page.url()).pathname).toBe("/");
+    const denialUrl = new URL(page.url());
+    expect(denialUrl.pathname).toBe("/permission-denied");
+    expect(denialUrl.searchParams.get("scope")).toBe("studio");
     expect((await page.context().request.get("/api/studio/premium-reports/payments")).status()).toBe(403);
     expect((await page.context().request.get("/api/studio/premium-reports/export/payments")).status()).toBe(403);
   });
