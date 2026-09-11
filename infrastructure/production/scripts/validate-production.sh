@@ -14,6 +14,49 @@ require_count() {
   [[ "$actual" == "$expected" ]] || { echo "$message (expected $expected, found $actual)" >&2; exit 1; }
 }
 
+verify_uat_approval_runtime() {
+  [[ "${GITHUB_WORKFLOW:-}" == "Deploy production" ]] || return 0
+
+  local approval_run_id="${UAT_APPROVAL_REFERENCE:-}"
+  [[ "$approval_run_id" =~ ^[0-9]+$ ]] || {
+    echo 'Production UAT approval reference must be the numeric run ID of a successful Record UAT approval workflow.' >&2
+    exit 1
+  }
+  for name in GH_TOKEN GITHUB_REPOSITORY RELEASE_SHA CERTIFICATION_RUN_ID; do
+    [[ -n "${!name:-}" ]] || { echo "Missing production UAT verification value $name" >&2; exit 1; }
+  done
+  [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Production UAT release SHA is malformed.' >&2; exit 1; }
+  [[ "$CERTIFICATION_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'Production UAT certification run ID is malformed.' >&2; exit 1; }
+
+  local work=/tmp/jalwa-production-uat-approval
+  rm -rf "$work" /tmp/jalwa-production-uat-approval.zip
+  mkdir -p "$work"
+
+  local run artifacts artifact_id report
+  run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$approval_run_id")"
+  jq -e '.name == "Record UAT approval" and .event == "workflow_dispatch" and .head_branch == "main" and .conclusion == "success"' <<<"$run" >/dev/null \
+    || { echo 'The supplied UAT approval reference is not a successful manual Record UAT approval run from main.' >&2; exit 1; }
+
+  artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$approval_run_id/artifacts?per_page=100")"
+  artifact_id="$(jq -r --arg sha "$RELEASE_SHA" '.artifacts[] | select(.expired == false and (.name | startswith("uat-approval-" + $sha + "-"))) | .id' <<<"$artifacts" | head -n1)"
+  [[ "$artifact_id" =~ ^[0-9]+$ ]] || { echo 'No retained UAT approval artifact exists for the selected release.' >&2; exit 1; }
+
+  gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > /tmp/jalwa-production-uat-approval.zip
+  unzip -q /tmp/jalwa-production-uat-approval.zip -d "$work"
+  report="$(find "$work" -name uat-approval.json -type f -print -quit)"
+  [[ -s "$report" ]] || { echo 'UAT approval artifact is missing uat-approval.json.' >&2; exit 1; }
+
+  jq -e \
+    --arg sha "$RELEASE_SHA" \
+    --arg cert "$CERTIFICATION_RUN_ID" \
+    --arg approval "$approval_run_id" \
+    '.status == "PASS" and .release_sha == $sha and .certification_run_id == $cert and .approval_run_id == $approval and (.approved_by | length > 0) and (.approval_reference | length >= 4)' \
+    "$report" >/dev/null \
+    || { echo 'Human UAT approval evidence does not match the exact release and certification.' >&2; exit 1; }
+
+  echo "Verified exact-release human UAT approval run $approval_run_id."
+}
+
 echo "Checking shell scripts"
 for script in infrastructure/production/scripts/*.sh scripts/test-production-*.sh scripts/test-*-readiness.sh; do bash -n "$script"; done
 
@@ -29,6 +72,12 @@ if grep -R -n -E '^  contents: write$' .github/workflows; then
   echo 'Repository workflows must not retain general contents:write permission.' >&2
   exit 1
 fi
+require_match 'name: Record UAT approval' .github/workflows/record-uat-approval.yml 'Auditable UAT approval workflow is missing.'
+require_match 'confirm_uat:' .github/workflows/record-uat-approval.yml 'UAT approval workflow lacks explicit human confirmation.'
+require_match 'uat-approval-${{ inputs.release_sha }}-${{ github.run_id }}-${{ github.run_attempt }}' .github/workflows/record-uat-approval.yml 'UAT approval artifact is not exact-release/run scoped.'
+require_match 'uat_approval_reference:' .github/workflows/deploy-production.yml 'Production does not require a UAT approval run reference.'
+
+verify_uat_approval_runtime
 
 echo "Checking JavaScript utilities and generated secrets"
 node --check scripts/generate-database-secrets.mjs
@@ -114,7 +163,7 @@ require_match 'deploy-release.sh' .github/workflows/deploy-production.yml 'Trans
 require_match 'PRODUCTION_SSH_KNOWN_HOSTS' .github/workflows/deploy-production.yml 'Pinned production SSH identity is missing.'
 require_match 'certification_run_id:' .github/workflows/deploy-production.yml 'Production does not require retained staging certification evidence.'
 require_match 'payment_sandbox_run_id:' .github/workflows/deploy-production.yml 'Production does not require real-provider sandbox evidence.'
-require_match 'uat_approval_reference:' .github/workflows/deploy-production.yml 'Production does not require a human UAT reference.'
+require_match 'uat_approval_reference:' .github/workflows/deploy-production.yml 'Production does not require a human UAT approval run reference.'
 require_match 'READY FOR UAT' .github/workflows/deploy-production.yml 'Production does not validate the READY FOR UAT decision.'
 require_match '.services.web.repo_digest' .github/workflows/deploy-production.yml 'Production does not promote the certified web digest.'
 require_match '.services.worker.repo_digest' .github/workflows/deploy-production.yml 'Production does not promote the certified worker digest.'

@@ -94,6 +94,10 @@ jobs:
           set -euo pipefail
           test "$USER" = codistan
           test "$APP_DIR" = /opt/codistan/jalwa-platform
+          test -s .github/workflows/record-uat-approval.yml || { echo 'Release predates the auditable UAT approval contract; production promotion is blocked.' >&2; exit 1; }
+          grep -Fq 'name: Record UAT approval' .github/workflows/record-uat-approval.yml || { echo 'Release UAT approval workflow contract is invalid.' >&2; exit 1; }
+          grep -Fq 'verify_uat_approval_runtime' infrastructure/production/scripts/validate-production.sh || { echo 'Release does not enforce UAT approval evidence during production validation.' >&2; exit 1; }
+          grep -Fq 'uat-approval-' infrastructure/production/scripts/validate-production.sh || { echo 'Release does not require retained UAT approval artifacts.' >&2; exit 1; }
           for name in HOST DOMAIN SSH_KEY KNOWN_HOSTS STAGING_QA_CUSTOMER_EMAIL STAGING_PAYMENT_PROVIDER STAGING_PAYMENT_EXPECTED_HOST PAYMENT_WEBHOOK_SECRET; do
             test -n "${!name:-}" || { echo "Missing staging payment value $name" >&2; exit 1; }
           done
