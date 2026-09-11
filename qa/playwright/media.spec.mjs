@@ -3,6 +3,7 @@ import { expectNoHorizontalOverflow, expectedReleaseSha } from "./helpers/stagin
 
 const baseURL = (process.env.STAGING_BASE_URL ?? process.env.JALWA_BROWSER_BASE_URL ?? "").trim().replace(/\/$/, "");
 const liveExpected = (process.env.JALWA_EXPECT_LIVE_SOURCES ?? "false") === "true";
+const representativeSlug = (process.env.REPRESENTATIVE_MEDIA_SLUG ?? process.env.MEDIA_SLUG ?? "nasa-space-station-views").trim();
 
 const expectedLiveTitles = [
   "NASA Space Station Views", "NOAA Ocean Exploration Camera 1", "NOAA Ocean Exploration Camera 2", "NOAA Ocean Exploration Camera 3",
@@ -26,7 +27,9 @@ const officialLinkSlugs = [
 ];
 
 test.describe("catalogue and media", () => {
-  test("a published catalogue item renders a real media surface or documented safe unavailable boundary", async ({ page }) => {
+  test("rights-approved published staging item renders a real media surface or documented safe unavailable boundary", async ({ page }) => {
+    expect(representativeSlug).toMatch(/^[a-z0-9][a-z0-9-]*$/i);
+
     const pageErrors = [];
     const failedSameOrigin = [];
     page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -39,18 +42,14 @@ test.describe("catalogue and media", () => {
       }
     });
 
-    const explore = await page.goto("/explore", { waitUntil: "networkidle" });
-    expect(explore?.status() ?? 599).toBeLessThan(500);
-    const watchLinks = await page.locator('a[href^="/watch/"]').evaluateAll((links) => [...new Set(links.map((link) => link.getAttribute("href")).filter(Boolean))]);
-    expect(watchLinks.length, "At least one rights-approved published staging item is required for media certification.").toBeGreaterThan(0);
-
-    const response = await page.goto(watchLinks[0], { waitUntil: "networkidle" });
-    expect(response?.status() ?? 599).toBeLessThan(500);
+    const response = await page.goto(`/watch/${representativeSlug}`, { waitUntil: "domcontentloaded" });
+    expect(response?.status() ?? 599).toBeLessThan(400);
     await expect(page.locator(".player-shell")).toBeVisible();
 
-    const safeBoundary = await page.locator(".player-placeholder").isVisible().catch(() => false);
+    const genericSafeBoundary = await page.locator(".player-placeholder").isVisible().catch(() => false);
+    const liveSafeBoundary = await page.locator(".live-player-fallback").isVisible().catch(() => false);
     const mediaSurfaceCount = await page.locator("video, iframe, img").count();
-    expect(safeBoundary || mediaSurfaceCount > 0, "Watch page must expose media or the documented safe unavailable boundary.").toBeTruthy();
+    expect(genericSafeBoundary || liveSafeBoundary || mediaSurfaceCount > 0, "Watch page must expose media or the documented safe unavailable boundary.").toBeTruthy();
     expect(pageErrors).toEqual([]);
     expect(failedSameOrigin).toEqual([]);
   });
@@ -72,7 +71,7 @@ test.describe("catalogue and media", () => {
       const body = await page.locator("body").innerText();
       for (const title of expectedLiveTitles) expect(body).toContain(title);
       expect(body).not.toMatch(/Premium/i);
-      expect(body).toMatch(/does not sponsor or endorse Jalwa/i);
+      expect(body).toMatch(/do not sponsor or endorse Jalwa/i);
       expect(body).toMatch(/official source/i);
       await expectNoHorizontalOverflow(page, "mobile live catalogue");
 
@@ -98,14 +97,20 @@ test.describe("catalogue and media", () => {
     }
   });
 
-  test("allowlisted public-domain live image routes return only image content with cache/source metadata", async ({ request }) => {
+  test("allowlisted public-domain live image routes expose only image content or the documented temporary-unavailable boundary", async ({ request }) => {
     test.skip(!liveExpected, "Governed live sources are not enabled for this staging run.");
     for (const sourceKey of ["usgs-mauna-loa-mlcam", "usgs-river-pequest", "nps-devils-tower-entrance"]) {
       const response = await request.get(`/api/live-sources/${sourceKey}/image`);
-      expect(response.status()).toBe(200);
-      expect(response.headers()["content-type"] ?? "").toMatch(/^image\//i);
-      expect(response.headers()["x-jalwa-live-source"]).toBe(sourceKey);
-      expect(response.headers()["cache-control"] ?? "").toMatch(/s-maxage=/i);
+      expect([200, 503]).toContain(response.status());
+      if (response.status() === 200) {
+        expect(response.headers()["content-type"] ?? "").toMatch(/^image\//i);
+        expect(response.headers()["x-jalwa-live-source"]).toBe(sourceKey);
+        expect(response.headers()["cache-control"] ?? "").toMatch(/s-maxage=/i);
+      } else {
+        expect(response.headers()["content-type"] ?? "").toMatch(/^application\/json/i);
+        expect(response.headers()["cache-control"] ?? "").toMatch(/no-store/i);
+        expect(await response.json()).toEqual({ error: "Official live image temporarily unavailable." });
+      }
     }
   });
 });

@@ -6,7 +6,15 @@ import { createDatabaseClient } from "@jalwa/postgres";
 export async function createClient() {
   const requestHeaders = await headers();
   let session: Awaited<ReturnType<typeof auth.api.getSession>> | null = null;
-  try { session = await auth.api.getSession({ headers: requestHeaders }); } catch { session = null; }
+  try {
+    session = await auth.api.getSession({ headers: requestHeaders });
+  } catch {
+    // Better Auth can transiently fail a database-backed lookup during a
+    // certification/navigation burst. Retry once with the same signed cookie
+    // and still fail closed if the second lookup fails.
+    console.error("auth_session_lookup_retry");
+    try { session = await auth.api.getSession({ headers: requestHeaders }); } catch { session = null; }
+  }
   const user = session?.user ?? null;
   return createDatabaseClient(databasePool, {
     userId: user?.id ?? null,

@@ -3,13 +3,18 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "npm@10.9.2",
-  "engines": { "node": ">=22.0.0" },
-  "workspaces": ["apps/*", "packages/*"],
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "overrides": {
     "postcss": "8.5.24",
     "nanoid": "3.3.18",
     "next": {
-      "sharp": "0.35.3"
+      "sharp": "0.35.4"
     }
   },
   "scripts": {

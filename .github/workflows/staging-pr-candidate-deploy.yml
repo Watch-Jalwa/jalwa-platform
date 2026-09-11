@@ -1,0 +1,358 @@
+name: Deploy PR staging candidate
+
+on:
+  push:
+    branches: ["fix/staging-certification-blockers"]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: jalwa-staging
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  WEB_IMAGE: ghcr.io/watch-jalwa/jalwa-platform-web
+  WORKER_IMAGE: ghcr.io/watch-jalwa/jalwa-platform-worker
+  STAGING_DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: staging
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Validate branch-scoped staging boundary
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/fix/staging-certification-blockers
+          [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
+
+      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push immutable candidate web image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        with:
+          context: .
+          target: web
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ env.WEB_IMAGE }}:${{ github.sha }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_RUN_ID=${{ github.run_id }}
+            NEXT_PUBLIC_APP_URL=https://${{ env.STAGING_DOMAIN }}
+            NEXT_PUBLIC_ENABLE_PHONE_AUTH=false
+            NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=false
+            NEXT_PUBLIC_ENABLE_APPLE_AUTH=false
+            NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH=false
+            NEXT_PUBLIC_ENABLE_LIVE_STREAMING=false
+            NEXT_PUBLIC_ENABLE_WEB_DRM=false
+          cache-from: type=gha,scope=staging-web
+          cache-to: type=gha,mode=max,scope=staging-web
+
+      - name: Build and push immutable candidate worker image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a
+        with:
+          context: .
+          target: worker
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          build-args: |
+            GIT_SHA=${{ github.sha }}
+            BUILD_RUN_ID=${{ github.run_id }}
+          cache-from: type=gha,scope=staging-worker
+          cache-to: type=gha,mode=max,scope=staging-worker
+
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment:
+      name: staging
+      url: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+    needs: build
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          test -n "$HOST" && test -n "$DOMAIN" && test -n "$KNOWN_HOSTS" && test -n "$SSH_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Install candidate release scripts
+        run: |
+          set -euo pipefail
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/deploy-release.sh "$USER@$HOST:$APP_DIR/scripts/deploy-release.sh"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/smoke-test.sh "$USER@$HOST:$APP_DIR/scripts/smoke-test.sh"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/host-acceptance.sh "$USER@$HOST:$APP_DIR/scripts/host-acceptance.sh"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/capture-release-identity.sh "$USER@$HOST:$APP_DIR/scripts/capture-release-identity.sh"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/apply-migrations.sh "$USER@$HOST:$APP_DIR/scripts/apply-migrations.sh"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa infrastructure/production/scripts/reconcile-staging-migration-090004.sh "$USER@$HOST:$APP_DIR/scripts/reconcile-staging-migration-090004.sh"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "chmod 755 '$APP_DIR/scripts/deploy-release.sh' '$APP_DIR/scripts/smoke-test.sh' '$APP_DIR/scripts/host-acceptance.sh' '$APP_DIR/scripts/capture-release-identity.sh' '$APP_DIR/scripts/apply-migrations.sh' '$APP_DIR/scripts/reconcile-staging-migration-090004.sh'"
+
+      - name: Authenticate host to immutable image registry
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin"
+
+      - name: Reclaim stale staging release images safely
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          declare -A keep=()
+
+          echo 'Docker disk usage before safe reclaim:'
+          docker system df
+
+          while read -r ref; do
+            [[ -n "$ref" ]] && keep["$ref"]=1
+          done < <(docker ps --format '{{.Image}}' | sort -u)
+
+          for marker in "$APP_DIR/.last-good-image" "$APP_DIR/.previous-good-image"; do
+            if [[ -s "$marker" ]]; then
+              tag="$(tr -d '[:space:]' < "$marker")"
+              if [[ "$tag" =~ ^[0-9a-f]{40}$ ]]; then
+                keep["ghcr.io/watch-jalwa/jalwa-platform-web:$tag"]=1
+                keep["ghcr.io/watch-jalwa/jalwa-platform-worker:$tag"]=1
+              fi
+            fi
+          done
+
+          removed=0
+          while read -r image; do
+            [[ -n "$image" ]] || continue
+            if [[ -z "${keep[$image]:-}" ]]; then
+              if docker image rm "$image" >/dev/null 2>&1; then
+                removed=$((removed + 1))
+              fi
+            fi
+          done < <(docker image ls --format '{{.Repository}}:{{.Tag}}' \
+            | grep -E '^ghcr\.io/watch-jalwa/jalwa-platform-(web|worker):[0-9a-f]{40}$' \
+            | sort -u)
+
+          removed_containers=0
+          for service in web worker; do
+            for status in created exited dead; do
+              while read -r container; do
+                [[ -n "$container" ]] || continue
+                if docker rm "$container" >/dev/null 2>&1; then
+                  removed_containers=$((removed_containers + 1))
+                fi
+              done < <(docker ps -aq \
+                --filter 'label=com.docker.compose.project=jalwa-platform' \
+                --filter "label=com.docker.compose.service=$service" \
+                --filter "status=$status")
+            done
+          done
+
+          removed_volumes=0
+          while read -r volume; do
+            [[ -n "$volume" ]] || continue
+            case "$volume" in
+              *postgres*|*database*|*_db*|*_data*)
+                echo "Preserving data-like dangling Jalwa volume: $volume"
+                continue
+                ;;
+            esac
+            if docker volume rm "$volume" >/dev/null 2>&1; then
+              removed_volumes=$((removed_volumes + 1))
+            fi
+          done < <({
+            docker volume ls -q --filter dangling=true --filter 'label=com.docker.compose.project=jalwa-platform'
+            docker volume ls -q --filter dangling=true | grep -E '^jalwa-platform_' || true
+          } | sort -u)
+
+          docker image prune -f >/dev/null
+          docker builder prune -af >/dev/null
+          echo 'Docker disk usage after safe reclaim:'
+          docker system df
+          usage="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+          echo "Removed $removed stale Jalwa release image tags, $removed_containers stopped Jalwa app containers and $removed_volumes dangling non-data Jalwa volumes; root filesystem usage is ${usage}%."
+          [[ "$usage" =~ ^[0-9]+$ ]]
+          if (( usage >= 85 )); then
+            echo 'Staging disk remains above the acceptance threshold after Jalwa-scoped cleanup; detailed Docker usage follows.'
+            docker system df -v || true
+          fi
+          test "$usage" -lt 85
+          REMOTE
+
+      - name: Reconcile staging migration history and apply forward migrations before cutover
+        run: |
+          set -euo pipefail
+          remote_db="$APP_DIR/candidate-db/$GITHUB_SHA"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "install -d -m 700 '$remote_db/migrations' '$remote_db/history'"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            database/bootstrap.sql "$USER@$HOST:$remote_db/bootstrap.sql"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            database/migrations/202609090001_public_catalogue_launch.sql \
+            database/migrations/202609090002_nasa_public_availability.sql \
+            database/migrations/202609090003_public_live_source_lookup.sql \
+            database/migrations/202609090004_public_live_catalogue_availability.sql \
+            database/migrations/202609090005_public_live_catalogue_availability_v2.sql \
+            database/migrations/202609090006_public_live_publish_readiness.sql \
+            database/migrations/202609090007_deterministic_public_catalogue_order.sql \
+            "$USER@$HOST:$remote_db/migrations/"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            database/migration-history/202609090004_public_live_catalogue_availability.staging-applied.sql \
+            "$USER@$HOST:$remote_db/history/"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "chmod 600 '$remote_db/bootstrap.sql' '$remote_db/migrations/'*.sql '$remote_db/history/'*.sql && ALLOW_STAGING_MIGRATION_090004_RECONCILIATION=true DEPLOYMENT_ENVIRONMENT=staging DB_CONTAINER='jalwa-postgres-staging' CURRENT_MIGRATION='$remote_db/migrations/202609090004_public_live_catalogue_availability.sql' HISTORICAL_MIGRATION='$remote_db/history/202609090004_public_live_catalogue_availability.staging-applied.sql' SUCCESSOR_MIGRATION='$remote_db/migrations/202609090005_public_live_catalogue_availability_v2.sql' '$APP_DIR/scripts/reconcile-staging-migration-090004.sh' && MIGRATIONS_DIR='$remote_db/migrations' BOOTSTRAP_SQL='$remote_db/bootstrap.sql' DB_CONTAINER='jalwa-postgres-staging' MIGRATION_LOCK_FILE='$APP_DIR/.candidate-migration.lock' '$APP_DIR/scripts/apply-migrations.sh'"
+
+      - name: Verify current staging runtime is ready after migrations
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec jalwa-web-staging node -e 'const token=process.env.OPERATIONS_DIAGNOSTICS_SECRET||\"\"; fetch(\"http://127.0.0.1:3000/api/readiness\",{headers:{\"x-jalwa-operations-token\":token}}).then(async r=>{const body=await r.text(); console.log(body); if(r.status!==200) process.exit(1)}).catch(e=>{console.error(e);process.exit(1)})'"
+
+      - name: Deploy exact PR SHA without restarting PostgreSQL
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' DOMAIN='$DOMAIN' RELEASE_SHA='$GITHUB_SHA' BUILD_RUN_ID='$GITHUB_RUN_ID' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          env_file="$APP_DIR/.env.staging"
+          compose_file="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml"
+          test -s "$env_file"
+          docker inspect jalwa-postgres-staging >/dev/null
+
+          upsert_env() {
+            local name="$1" value="$2" tmp
+            tmp="$(mktemp "${env_file}.XXXXXX")"
+            awk -v name="$name" -v value="$value" 'BEGIN{done=0} $0 ~ "^" name "=" {if(!done) print name "=" value; done=1; next} {print} END{if(!done) print name "=" value}' "$env_file" > "$tmp"
+            chmod 600 "$tmp"
+            mv -f "$tmp" "$env_file"
+          }
+
+          upsert_env JALWA_ENV_FILE "$env_file"
+          upsert_env JALWA_COMPOSE_FILE "$compose_file"
+          upsert_env JALWA_ROOT "$APP_DIR"
+          upsert_env GIT_SHA "$RELEASE_SHA"
+          upsert_env PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED true
+          upsert_env PAYMENT_PROVIDER mock
+          upsert_env ALLOW_MOCK_PAYMENTS true
+
+          export COMPOSE_PROJECT_NAME=jalwa-platform
+          export COMPOSE_FILE="$compose_file"
+          export JALWA_ROOT="$APP_DIR"
+          export JALWA_ENV_FILE="$env_file"
+          export JALWA_COMPOSE_FILE="$compose_file"
+          export JALWA_COMPOSE_SERVICES='web worker'
+          export JALWA_HEALTH_SERVICES='web worker'
+          export JALWA_DEPLOY_NO_DEPS=true
+          export JALWA_SMOKE_BASE_URL='http://127.0.0.1:3001'
+
+          "$APP_DIR/scripts/deploy-release.sh" "$RELEASE_SHA" "$DOMAIN"
+          "$APP_DIR/scripts/capture-release-identity.sh" "$RELEASE_SHA" "$BUILD_RUN_ID" "$BUILD_RUN_ID"
+          docker exec jalwa-web-staging sh -lc 'test "$PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED" = true && test "$ALLOW_MOCK_PAYMENTS" = true'
+          docker logout ghcr.io >/dev/null 2>&1 || true
+          REMOTE
+
+      - name: Activate governed live catalogue in staging
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i jalwa-postgres-staging sh -lc 'psql -X -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v deployment_environment=staging -v desired_state=true'" \
+            < scripts/set-public-domain-live-catalogue-state.sql
+
+      - name: Verify staging disk remains below acceptance threshold
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          declare -A keep=()
+
+          while read -r ref; do
+            [[ -n "$ref" ]] && keep["$ref"]=1
+          done < <(docker ps --format '{{.Image}}' | sort -u)
+
+          for marker in "$APP_DIR/.last-good-image" "$APP_DIR/.previous-good-image"; do
+            if [[ -s "$marker" ]]; then
+              tag="$(tr -d '[:space:]' < "$marker")"
+              if [[ "$tag" =~ ^[0-9a-f]{40}$ ]]; then
+                keep["ghcr.io/watch-jalwa/jalwa-platform-web:$tag"]=1
+                keep["ghcr.io/watch-jalwa/jalwa-platform-worker:$tag"]=1
+              fi
+            fi
+          done
+
+          removed=0
+          while read -r image; do
+            [[ -n "$image" ]] || continue
+            if [[ -z "${keep[$image]:-}" ]]; then
+              if docker image rm "$image" >/dev/null 2>&1; then
+                removed=$((removed + 1))
+              fi
+            fi
+          done < <(docker image ls --format '{{.Repository}}:{{.Tag}}' \
+            | grep -E '^ghcr\.io/watch-jalwa/jalwa-platform-(web|worker):[0-9a-f]{40}$' \
+            | sort -u)
+
+          docker image prune -f >/dev/null
+          usage="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+          echo "Removed $removed obsolete Jalwa release image tags after cutover; post-deploy root filesystem usage is ${usage}%."
+          [[ "$usage" =~ ^[0-9]+$ ]]
+          if (( usage >= 85 )); then
+            echo 'Staging disk remains above the acceptance threshold after post-cutover Jalwa image cleanup.'
+            docker system df -v || true
+          fi
+          test "$usage" -lt 85
+          REMOTE
+
+      - name: Verify exact candidate is publicly ready
+        run: |
+          set -euo pipefail
+          ready=false
+          for attempt in {1..30}; do
+            health="$(curl -fsS --connect-timeout 5 --max-time 15 "https://$DOMAIN/api/health" 2>/dev/null || true)"
+            if jq -e --arg sha "$GITHUB_SHA" '.status=="ready" and .version==$sha' <<<"$health" >/dev/null 2>&1; then
+              ready=true
+              break
+            fi
+            sleep 3
+          done
+          test "$ready" = true
+          printf '%s\n' "$health" | jq .
+
+      - name: Record candidate deployment
+        run: |
+          {
+            echo '### PR staging candidate deployed'
+            echo "- Exact SHA: $GITHUB_SHA"
+            echo "- Deployment run: $GITHUB_RUN_ID"
+            echo '- Boundary: staging only; production unchanged'
+            echo '- PostgreSQL: existing container/data preserved; historical staging migration checksum reconciled only against preserved exact evidence; forward migration applied before application cutover; approved live catalogue activated only in staging; no direct payment/order/subscription mutation'
+          } >> "$GITHUB_STEP_SUMMARY"

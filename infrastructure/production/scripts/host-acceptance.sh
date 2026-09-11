@@ -27,7 +27,6 @@ API_URL="${2:-}" # positional compatibility only; no separate data/auth gateway 
 MAX_DISK_PERCENT="${MAX_DISK_PERCENT:-85}"
 MAX_BACKUP_AGE_SECONDS="${MAX_BACKUP_AGE_SECONDS:-108000}"
 MAX_RESTORE_DRILL_AGE_SECONDS="${MAX_RESTORE_DRILL_AGE_SECONDS:-691200}"
-SKIP_EDGE_CHECKS="${JALWA_SKIP_EDGE_CHECKS:-false}"
 if [[ -n "${JALWA_EXPECT_SERVICES:-}" ]]; then
   read -r -a expected_services <<< "$JALWA_EXPECT_SERVICES"
 elif [[ "$ENV_FILE" == *.env.staging ]]; then
@@ -47,13 +46,27 @@ marker_age() {
   printf '%s\n' "$(( $(date -u +%s) - epoch ))"
 }
 
-[[ "$SKIP_EDGE_CHECKS" == "true" || "$SKIP_EDGE_CHECKS" == "false" ]] || fail "JALWA_SKIP_EDGE_CHECKS must be true or false"
 [[ -s "$ENV_FILE" ]] || fail "Missing ${ENV_FILE}"
 set -a
 # shellcheck disable=SC1090
 source "$ENV_FILE"
 set +a
 cd "$APP_DIR"
+
+# Host-level acceptance validates the application and dependencies through the
+# local listener on staging. Public TLS/security/readiness checks are performed
+# independently by the external certification runner, avoiding a hairpin path
+# from the staging host back through its own public edge.
+INTERNAL_BASE_URL="${JALWA_HOST_ACCEPTANCE_BASE_URL:-$BASE_URL}"
+if [[ "$ENV_FILE" == *.env.staging && -z "${JALWA_HOST_ACCEPTANCE_BASE_URL:-}" ]]; then
+  INTERNAL_BASE_URL="http://127.0.0.1:3001"
+fi
+if [[ "$ENV_FILE" == *.env.staging ]]; then
+  SKIP_EDGE_CHECKS="${JALWA_SKIP_EDGE_CHECKS:-true}"
+else
+  SKIP_EDGE_CHECKS="${JALWA_SKIP_EDGE_CHECKS:-false}"
+fi
+[[ "$SKIP_EDGE_CHECKS" == "true" || "$SKIP_EDGE_CHECKS" == "false" ]] || fail "JALWA_SKIP_EDGE_CHECKS must be true or false"
 
 # Preserve the database identity chosen when an existing on-prem PostgreSQL
 # container was initialized. Staging predates the canonical Compose defaults,
@@ -73,7 +86,7 @@ DB_NAME="${DB_NAME:-postgres}"
 
 [[ "${JALWA_IMAGE_TAG:-}" =~ ^[0-9a-f]{40}$ ]] || fail "JALWA_IMAGE_TAG is not a deployable Git commit SHA"
 [[ "${GIT_SHA:-}" == "$JALWA_IMAGE_TAG" ]] || fail "GIT_SHA and JALWA_IMAGE_TAG differ before acceptance"
-./scripts/smoke-test.sh "$BASE_URL" "$API_URL" "$JALWA_IMAGE_TAG"
+./scripts/smoke-test.sh "$INTERNAL_BASE_URL" "$API_URL" "$JALWA_IMAGE_TAG"
 docker compose --env-file "$ENV_FILE" config --quiet
 pass "Compose and application smoke checks"
 
@@ -144,7 +157,7 @@ else
   pass "Edge-only checks delegated to external certification runner"
 fi
 
-version="$(curl --fail --silent --show-error --max-time 20 "$BASE_URL/api/readiness" | jq -r '.version // empty')"
+version="$(curl --fail --silent --show-error --max-time 20 "$INTERNAL_BASE_URL/api/readiness" | jq -r '.version // empty')"
 [[ "$version" == "$JALWA_IMAGE_TAG" ]] || fail "Readiness version ${version:-missing} does not match image tag $JALWA_IMAGE_TAG"
 
 printf '{"status":"passed","environment":"%s","host":"%s","imageTag":"%s","version":"%s","backupAgeSeconds":%s,"restoreAgeSeconds":%s,"diskPercent":%s,"checkedAt":"%s"}\n' \

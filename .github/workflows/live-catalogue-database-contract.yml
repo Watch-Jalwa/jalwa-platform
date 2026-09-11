@@ -1,0 +1,100 @@
+name: Live catalogue database contract
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/live-catalogue-database-contract.yml"
+      - "scripts/set-public-domain-live-catalogue-state.sql"
+      - "database/migrations/202609090004_public_live_catalogue_availability.sql"
+      - "database/migrations/202609090005_public_live_catalogue_availability_v2.sql"
+      - "database/migrations/202609090006_public_live_publish_readiness.sql"
+  push:
+    branches:
+      - main
+      - "agent/**"
+    paths:
+      - ".github/workflows/live-catalogue-database-contract.yml"
+      - "scripts/set-public-domain-live-catalogue-state.sql"
+      - "database/migrations/202609090004_public_live_catalogue_availability.sql"
+      - "database/migrations/202609090005_public_live_catalogue_availability_v2.sql"
+      - "database/migrations/202609090006_public_live_publish_readiness.sql"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-catalogue-db-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: pgvector/pgvector:0.8.1-pg16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: postgres
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Install PostgreSQL client
+        run: |
+          if ! command -v psql >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+
+      - name: Apply complete migration set
+        run: |
+          set -euo pipefail
+          db_container="$(docker ps --format '{{.ID}} {{.Image}}' | awk '$2 ~ /pgvector\/pgvector/ {print $1; exit}')"
+          test -n "$db_container" || { echo 'Could not locate the CI PostgreSQL service container.' >&2; docker ps; exit 1; }
+          POSTGRES_USER=postgres \
+          POSTGRES_DB=postgres \
+          DB_CONTAINER="$db_container" \
+          MIGRATIONS_DIR="$GITHUB_WORKSPACE/database/migrations" \
+          BOOTSTRAP_SQL="$GITHUB_WORKSPACE/database/bootstrap.sql" \
+          MIGRATION_LOCK_FILE="$RUNNER_TEMP/jalwa-live-contract-migrations.lock" \
+            bash infrastructure/production/scripts/apply-migrations.sh
+
+      - name: Enable governed live catalogue through real publish trigger
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 \
+            -v deployment_environment=staging \
+            -v desired_state=true \
+            --file scripts/set-public-domain-live-catalogue-state.sql \
+            | tee "$RUNNER_TEMP/live-enable.log"
+
+          test "$(psql -X -At -c "select count(*) from public.live_source_configs l join public.approved_live_catalogue_manifest m on m.source_key=l.source_key where l.enabled;")" = 52
+          test "$(psql -X -At -c "select count(*) from public.content_items c join public.approved_live_catalogue_manifest m on m.slug=c.slug where c.status='published' and c.is_available;")" = 52
+          test "$(psql -X -At -c "select count(*) from public.playback_sources p join public.content_items c on c.id=p.content_id join public.approved_live_catalogue_manifest m on m.slug=c.slug where p.is_primary and p.is_available;")" = 52
+          test "$(psql -X -At -c "select count(*) from public.content_items c join public.approved_live_catalogue_manifest m on m.slug=c.slug where public.is_content_effectively_available(c.id);")" = 52
+
+      - name: Disable governed live catalogue cleanly
+        run: |
+          set -euo pipefail
+          psql -X -v ON_ERROR_STOP=1 \
+            -v deployment_environment=staging \
+            -v desired_state=false \
+            --file scripts/set-public-domain-live-catalogue-state.sql \
+            | tee "$RUNNER_TEMP/live-disable.log"
+
+          test "$(psql -X -At -c "select count(*) from public.live_source_configs l join public.approved_live_catalogue_manifest m on m.source_key=l.source_key where l.enabled;")" = 0
+          test "$(psql -X -At -c "select count(*) from public.content_items c join public.approved_live_catalogue_manifest m on m.slug=c.slug where c.status='unavailable' and not c.is_available;")" = 52
+          test "$(psql -X -At -c "select count(*) from public.content_items c join public.approved_live_catalogue_manifest m on m.slug=c.slug where public.is_content_effectively_available(c.id);")" = 0

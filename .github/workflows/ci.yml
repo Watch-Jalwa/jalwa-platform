@@ -130,6 +130,10 @@ jobs:
           grep -q '^APPLY ' "$RUNNER_TEMP/migrations-first.log"
           grep -q '^SKIP ' "$RUNNER_TEMP/migrations-second.log"
           ! grep -q '^APPLY ' "$RUNNER_TEMP/migrations-second.log"
+
+      - name: Exercise guarded staging 090004 checksum reconciliation
+        run: bash scripts/test-staging-migration-reconciliation.sh
+
       - name: Exercise guarded legacy migration ledger reconciliation
         run: |
           set -euo pipefail

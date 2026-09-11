@@ -116,7 +116,7 @@ test("Studio certification enforces admin and least-privilege route and API boun
   assert.match(studio, /viewerApi\.status\(\) !== 403/);
 });
 
-test("media and visual gates cannot silently pass missing fixtures or baselines", async () => {
+test("media and visual gates cannot silently pass missing fixtures or unapproved baselines", async () => {
   const [media, visual, manifestRaw] = await Promise.all([read(paths.media), read(paths.visual), read(paths.manifest)]);
   assert.match(media, /BLOCKED: no published staging catalogue item/);
   assert.match(media, /player\.locator\("video, iframe, img"\)/);
@@ -125,7 +125,15 @@ test("media and visual gates cannot silently pass missing fixtures or baselines"
   assert.match(visual, /CI did not update the human-approved baseline manifest/);
   const manifest = JSON.parse(manifestRaw);
   assert.equal(manifest.schema_version, 1);
-  assert.deepEqual(manifest.baselines, {});
+  assert.equal(manifest.policy, "Human-approved hashes only. Never update automatically from CI.");
+  assert.deepEqual(Object.keys(manifest.baselines).sort(), ["explore", "home", "login", "pricing"]);
+  assert.deepEqual(Object.fromEntries(Object.entries(manifest.baselines).map(([name, value]) => [name, value.route])), {
+    home: "/",
+    explore: "/explore",
+    pricing: "/pricing",
+    login: "/login",
+  });
+  for (const baseline of Object.values(manifest.baselines)) assert.match(baseline.sha256, /^[0-9a-f]{64}$/);
 });
 
 test("visual certification validates every configured route before accepting review", async () => {

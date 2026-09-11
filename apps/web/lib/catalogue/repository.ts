@@ -5,6 +5,11 @@ import { categories as demoCategories, featuredContent } from "./demo-data";
 import type { CatalogueCategory, CatalogueItem, LiveCatalogueCollection, PlaybackSource } from "./types";
 
 function asString(value: unknown) { return typeof value === "string" ? value : null; }
+function asTimestamp(value: unknown) {
+  if (typeof value === "string") return value;
+  if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString();
+  return null;
+}
 function asNumber(value: unknown) { return typeof value === "number" ? value : null; }
 function mapSearchRow(row: Record<string, unknown>): CatalogueItem {
   return {
@@ -101,19 +106,18 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
     let liveHealth: Record<string, unknown> | null = null;
     if (data.content_type === "live" && playback?.id) {
       const [configResult, healthResult] = await Promise.all([
-        database.from("live_source_configs")
-          .select("source_key,delivery_adapter,official_source_url,terms_url,required_attribution,refresh_interval_seconds,enabled,next_review_at")
-          .eq("playback_source_id", playback.id).maybeSingle(),
+        database.rpc("get_public_live_source_config", { p_playback_source_id: playback.id }),
         database.from("playback_source_health")
           .select("status,availability,checked_at,last_success_at,source_timestamp,message,availability_reason")
           .eq("playback_source_id", playback.id).maybeSingle(),
       ]);
       if (configResult.error) throw configResult.error;
       if (healthResult.error) throw healthResult.error;
-      liveConfig = configResult.data as Record<string, unknown> | null;
+      const configRows = (configResult.data ?? []) as Record<string, unknown>[];
+      liveConfig = configRows[0] ?? null;
       liveHealth = healthResult.data as Record<string, unknown> | null;
       if (!liveConfig || liveConfig.enabled !== true) return null;
-      const review = asString(liveConfig.next_review_at);
+      const review = asTimestamp(liveConfig.next_review_at);
       if (!review || new Date(review).getTime() <= Date.now()) return null;
     }
 
@@ -130,9 +134,9 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       deliveryAdapter: asString(liveConfig?.delivery_adapter) as PlaybackSource["deliveryAdapter"],
       availability: (asString(liveHealth?.availability) ?? asString(liveHealth?.status) ?? "degraded") as PlaybackSource["availability"],
       availabilityMessage: asString(liveHealth?.availability_reason) ?? asString(liveHealth?.message),
-      checkedAt: asString(liveHealth?.checked_at),
-      lastSuccessAt: asString(liveHealth?.last_success_at),
-      sourceTimestamp: asString(liveHealth?.source_timestamp),
+      checkedAt: asTimestamp(liveHealth?.checked_at),
+      lastSuccessAt: asTimestamp(liveHealth?.last_success_at),
+      sourceTimestamp: asTimestamp(liveHealth?.source_timestamp),
       refreshIntervalSeconds: asNumber(liveConfig?.refresh_interval_seconds),
       officialSourceUrl: asString(liveConfig?.official_source_url),
       termsUrl: asString(liveConfig?.terms_url),
