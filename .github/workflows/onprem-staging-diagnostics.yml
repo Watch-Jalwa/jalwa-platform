@@ -48,9 +48,9 @@ jobs:
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
 
-      - name: Collect read-only shared-host Docker inventory
+      - name: Reclaim only validated stale Ranchers images
         shell: bash
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "bash -s" < scripts/shared-host-docker-inventory.sh
+            "bash -s" < scripts/shared-host-reclaim-stale-ranchers-images.sh
