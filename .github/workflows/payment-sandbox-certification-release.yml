@@ -56,7 +56,8 @@ jobs:
       EASYPAISA_STORE_ID: ${{ secrets.EASYPAISA_STORE_ID }}
       EASYPAISA_SECRET: ${{ secrets.EASYPAISA_SECRET }}
       STAGING_BASE_URL: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
-      QA_RUN_ID: provider-sandbox-${{ github.run_id }}
+      QA_RUN_ID: provider-sandbox-${{ github.run_id }}-${{ github.run_attempt }}
+      SANDBOX_RUN_KEY: ${{ github.run_id }}-${{ github.run_attempt }}
       PAYMENT_SANDBOX_EVIDENCE_FILE: ${{ github.workspace }}/payment-sandbox-report.json
       COMPOSE_PROJECT_NAME: jalwa-platform
     steps:
@@ -106,6 +107,7 @@ jobs:
           [[ "$STAGING_PAYMENT_EXPECTED_HOST" != "$DOMAIN" ]] || { echo 'Sandbox redirect host must not be the Jalwa staging host.' >&2; exit 1; }
 
       - name: Configure pinned staging SSH identity
+        id: ssh
         run: |
           set -euo pipefail
           install -m 700 -d ~/.ssh
@@ -167,9 +169,9 @@ jobs:
         run: |
           set -euo pipefail
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa /tmp/jalwa-payment-sandbox.env \
-            "$USER@$HOST:$APP_DIR/payment-sandbox-${GITHUB_RUN_ID}.env"
+            "$USER@$HOST:$APP_DIR/payment-sandbox-${SANDBOX_RUN_KEY}.env"
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' COMPOSE_PROJECT_NAME='$COMPOSE_PROJECT_NAME' DOMAIN='$DOMAIN' bash -s" <<'REMOTE'
+            "APP_DIR='$APP_DIR' RUN_ID='$SANDBOX_RUN_KEY' COMPOSE_PROJECT_NAME='$COMPOSE_PROJECT_NAME' DOMAIN='$DOMAIN' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$APP_DIR"
           test -s .env.staging
@@ -222,12 +224,12 @@ jobs:
 
       - name: Always restore certified mock-payment staging runtime
         id: restore
-        if: always()
+        if: always() && steps.ssh.outcome == 'success' && steps.configure.outcome != 'skipped'
         continue-on-error: true
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' COMPOSE_PROJECT_NAME='$COMPOSE_PROJECT_NAME' RELEASE_SHA='$RELEASE_SHA' DOMAIN='$DOMAIN' bash -s" <<'REMOTE'
+            "APP_DIR='$APP_DIR' RUN_ID='$SANDBOX_RUN_KEY' COMPOSE_PROJECT_NAME='$COMPOSE_PROJECT_NAME' RELEASE_SHA='$RELEASE_SHA' DOMAIN='$DOMAIN' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$APP_DIR"
           backup=".env.staging.before-payment-sandbox-${RUN_ID}"
@@ -266,7 +268,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: payment-sandbox-${{ steps.request.outputs.release_sha }}-${{ github.run_id }}
+          name: payment-sandbox-${{ steps.request.outputs.release_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             ${{ env.PAYMENT_SANDBOX_EVIDENCE_FILE }}
             ${{ github.workspace }}/payment-sandbox-playwright-junit.xml
