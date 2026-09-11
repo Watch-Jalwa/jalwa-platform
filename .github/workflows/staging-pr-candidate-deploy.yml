@@ -32,7 +32,7 @@ jobs:
           test "$GITHUB_REF" = refs/heads/fix/staging-certification-blockers
           [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
 
-      - uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
         with:
           registry: ${{ env.REGISTRY }}
