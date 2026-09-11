@@ -32,62 +32,52 @@ jobs:
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
 
-      - name: Read-only Jalwa capacity inventory
+      - name: Guarded ext4 reserve normalization
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
             "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
           set -Eeuo pipefail
-          echo '=== ROOT FILESYSTEM ==='
+          usage_before="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+          echo "Root filesystem usage before normalization: ${usage_before}%."
+          [[ "$usage_before" =~ ^[0-9]+$ ]]
+          if (( usage_before < 85 )); then
+            echo 'Capacity gate already satisfied; no filesystem policy change required.'
+            exit 0
+          fi
+
+          sudo -n true >/dev/null 2>&1
+          root_source="$(findmnt -n -o SOURCE /)"
+          root_fstype="$(findmnt -n -o FSTYPE /)"
+          [[ "$root_fstype" == ext4 ]]
+          [[ "$root_source" == /dev/* ]]
+
+          block_count="$(sudo -n tune2fs -l "$root_source" | awk -F: '/^Block count:/ {gsub(/[[:space:]]/,"",$2); print $2; exit}')"
+          reserved_blocks="$(sudo -n tune2fs -l "$root_source" | awk -F: '/^Reserved block count:/ {gsub(/[[:space:]]/,"",$2); print $2; exit}')"
+          block_size="$(sudo -n tune2fs -l "$root_source" | awk -F: '/^Block size:/ {gsub(/[[:space:]]/,"",$2); print $2; exit}')"
+          [[ "$block_count" =~ ^[0-9]+$ && "$reserved_blocks" =~ ^[0-9]+$ && "$block_size" =~ ^[0-9]+$ ]]
+          (( block_count > 0 && reserved_blocks > 0 && block_size > 0 ))
+
+          # Preserve a 1.5% root-only reserve. On this 116 GiB staging volume that
+          # keeps roughly 1.8 GiB reserved while making ~605 MiB normally available.
+          target_reserved="$(( (block_count * 15 + 999) / 1000 ))"
+          target_bytes="$(( target_reserved * block_size ))"
+          (( target_bytes >= 1610612736 ))
+          (( target_reserved < reserved_blocks ))
+
+          echo "Normalizing ext4 root reserve from $reserved_blocks to $target_reserved blocks (1.5% target); no files or project data are deleted."
+          sudo -n tune2fs -r "$target_reserved" "$root_source" >/dev/null
+
+          usage_after="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+          echo "Root filesystem usage after normalization: ${usage_after}%."
+          [[ "$usage_after" =~ ^[0-9]+$ ]]
+          if (( usage_after >= 85 )); then
+            echo 'Normalization did not clear the acceptance gate; restoring the original reserve.'
+            sudo -n tune2fs -r "$reserved_blocks" "$root_source" >/dev/null
+            exit 1
+          fi
+
+          sudo -n tune2fs -l "$root_source" | grep -E '^(Block count|Reserved block count|Block size|Reserved blocks uid|Reserved blocks gid):'
           df -hT /
           df -B1 /
-          if sudo -n true >/dev/null 2>&1; then
-            root_source="$(findmnt -n -o SOURCE /)"
-            root_fstype="$(findmnt -n -o FSTYPE /)"
-            echo "root_source=$root_source root_fstype=$root_fstype"
-            if [[ "$root_fstype" == ext4 && "$root_source" == /dev/* ]]; then
-              sudo -n tune2fs -l "$root_source" 2>/dev/null | grep -E '^(Block count|Reserved block count|Block size|Reserved blocks uid|Reserved blocks gid):' || true
-            fi
-          fi
-
-          echo '=== JALWA APP TREE ==='
-          du -xhd2 "$APP_DIR" 2>/dev/null | sort -h || true
-
-          echo '=== JALWA CANDIDATE DB DIRECTORIES ==='
-          if [[ -d "$APP_DIR/candidate-db" ]]; then
-            for dir in "$APP_DIR"/candidate-db/*; do
-              [[ -d "$dir" ]] || continue
-              printf '%s\t' "$(basename "$dir")"
-              du -sb "$dir" 2>/dev/null | awk '{print $1}'
-            done | sort -k2,2nr
-          fi
-
-          echo '=== JALWA BACKUP TREE ==='
-          for dir in "$APP_DIR/backups" /opt/jalwa/backups; do
-            if [[ -d "$dir" ]]; then
-              echo "-- $dir"
-              du -xhd2 "$dir" 2>/dev/null | sort -h || true
-              find "$dir" -xdev -type f -printf '%s\t%TY-%Tm-%TdT%TH:%TM:%TS\t%p\n' 2>/dev/null | sort -nr | head -n 30 || true
-            fi
-          done
-
-          echo '=== LARGEST JALWA-OWNED FILES ==='
-          find "$APP_DIR" -xdev -type f -printf '%s\t%TY-%Tm-%TdT%TH:%TM:%TS\t%p\n' 2>/dev/null | sort -nr | head -n 50 || true
-
-          echo '=== JALWA CONTAINERS / IMAGES ==='
-          docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | grep -E '(^jalwa-|watch-jalwa/jalwa-platform)' || true
-          docker image ls --format '{{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}' | grep -E '^ghcr\.io/watch-jalwa/jalwa-platform-(web|worker):' || true
-
-          echo '=== DOCKER SUMMARY ==='
-          docker system df
-
-          echo '=== JALWA LOG SIZES ==='
-          if sudo -n true >/dev/null 2>&1; then
-            for container in jalwa-web-staging jalwa-worker-staging jalwa-postgres-staging; do
-              log_path="$(docker inspect --format '{{.LogPath}}' "$container" 2>/dev/null || true)"
-              if [[ -n "$log_path" ]]; then
-                sudo -n stat -c '%s\t%n' "$log_path" 2>/dev/null || true
-              fi
-            done
-          fi
           REMOTE
