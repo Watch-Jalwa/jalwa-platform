@@ -1,0 +1,113 @@
+name: Staging host capacity maintenance
+
+on:
+  push:
+    branches: ["fix/staging-certification-blockers"]
+
+permissions:
+  contents: read
+
+jobs:
+  maintain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          test -n "$HOST" && test -n "$KNOWN_HOSTS" && test -n "$SSH_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Reclaim safe staging host capacity
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+
+          echo 'Filesystem before maintenance:'
+          df -hT /
+          docker system df
+
+          last_good=''
+          previous_good=''
+          [[ -s "$APP_DIR/.last-good-image" ]] && last_good="$(tr -d '[:space:]' < "$APP_DIR/.last-good-image")"
+          [[ -s "$APP_DIR/.previous-good-image" ]] && previous_good="$(tr -d '[:space:]' < "$APP_DIR/.previous-good-image")"
+
+          if [[ "$last_good" =~ ^[0-9a-f]{40}$ && "$previous_good" =~ ^[0-9a-f]{40}$ && "$previous_good" != "$last_good" ]]; then
+            in_use=false
+            for image in \
+              "ghcr.io/watch-jalwa/jalwa-platform-web:$previous_good" \
+              "ghcr.io/watch-jalwa/jalwa-platform-worker:$previous_good"; do
+              if docker ps -a --format '{{.Image}}' | grep -Fxq "$image"; then
+                in_use=true
+              fi
+            done
+            if [[ "$in_use" == false ]]; then
+              docker image rm \
+                "ghcr.io/watch-jalwa/jalwa-platform-web:$previous_good" \
+                "ghcr.io/watch-jalwa/jalwa-platform-worker:$previous_good" >/dev/null 2>&1 || true
+              rm -f "$APP_DIR/.previous-good-image"
+              echo "Removed obsolete second Jalwa rollback release $previous_good; current rollback $last_good remains intact."
+            else
+              echo "Preserving previous Jalwa rollback $previous_good because a container still references it."
+            fi
+          fi
+
+          if [[ -d "$APP_DIR/candidate-db" ]]; then
+            find "$APP_DIR/candidate-db" -mindepth 1 -maxdepth 1 -type d -mtime +1 -print -exec rm -rf -- {} + || true
+          fi
+
+          if sudo -n true >/dev/null 2>&1; then
+            sudo -n apt-get clean >/dev/null 2>&1 || true
+            sudo -n journalctl --vacuum-size=256M >/dev/null 2>&1 || true
+            for container in jalwa-web-staging jalwa-worker-staging; do
+              log_path="$(docker inspect --format '{{.LogPath}}' "$container" 2>/dev/null || true)"
+              if [[ -n "$log_path" ]]; then
+                log_bytes="$(sudo -n stat -c '%s' "$log_path" 2>/dev/null || echo 0)"
+                if [[ "$log_bytes" =~ ^[0-9]+$ ]] && (( log_bytes > 67108864 )); then
+                  sudo -n truncate -s 0 "$log_path"
+                  echo "Rotated oversized log for $container."
+                fi
+              fi
+            done
+          else
+            echo 'Passwordless sudo unavailable; skipped OS cache/journal cleanup.'
+          fi
+
+          docker image prune -f >/dev/null
+          docker builder prune -af >/dev/null
+          docker logout ghcr.io >/dev/null 2>&1 || true
+
+          echo 'Filesystem after maintenance:'
+          df -hT /
+          docker system df
+          usage="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+          echo "Root filesystem usage after safe maintenance: ${usage}%."
+
+          if (( usage >= 85 )); then
+            echo 'Read-only host capacity diagnostics:'
+            lsblk -f || true
+            findmnt / || true
+            if sudo -n true >/dev/null 2>&1; then
+              echo 'Largest top-level /var entries:'
+              sudo -n du -xhd1 /var 2>/dev/null | sort -h | tail -n 20 || true
+              echo 'Largest top-level /opt entries:'
+              sudo -n du -xhd1 /opt 2>/dev/null | sort -h | tail -n 20 || true
+            fi
+          fi
+          REMOTE
