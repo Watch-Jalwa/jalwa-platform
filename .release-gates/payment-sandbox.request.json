@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "release_sha": "6358ff162f010d2f80e878033254af900a35f182",
+  "staging_deployment_run_id": "34579751102",
+  "requested_at": "2026-09-11",
+  "purpose": "Run the exact staging-certified release against the configured real-provider sandbox and restore mock staging before completion."
+}
