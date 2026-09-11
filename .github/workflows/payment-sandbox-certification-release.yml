@@ -148,7 +148,7 @@ jobs:
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa /tmp/jalwa-payment-sandbox.env \
             "$USER@$HOST:$APP_DIR/payment-sandbox-${GITHUB_RUN_ID}.env"
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' COMPOSE_PROJECT_NAME='$COMPOSE_PROJECT_NAME' bash -s" <<'REMOTE'
+            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' COMPOSE_PROJECT_NAME='$COMPOSE_PROJECT_NAME' DOMAIN='$DOMAIN' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$APP_DIR"
           test -s .env.staging
@@ -172,7 +172,7 @@ jobs:
           APP_DIR="$APP_DIR" DB_CONTAINER=jalwa-postgres-staging JALWA_ENV_FILE="$APP_DIR/.env.staging" \
             JALWA_COMPOSE_FILE="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml" \
             COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" \
-            "$APP_DIR/scripts/host-acceptance.sh" "https://jalwa-platform.codistan.org" >/tmp/payment-sandbox-host-acceptance.json
+            "$APP_DIR/scripts/host-acceptance.sh" "https://$DOMAIN" >/tmp/payment-sandbox-host-acceptance.json
           REMOTE
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
@@ -206,7 +206,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' COMPOSE_PROJECT_NAME='$COMPOSE_PROJECT_NAME' RELEASE_SHA='$RELEASE_SHA' bash -s" <<'REMOTE'
+            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' COMPOSE_PROJECT_NAME='$COMPOSE_PROJECT_NAME' RELEASE_SHA='$RELEASE_SHA' DOMAIN='$DOMAIN' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$APP_DIR"
           backup=".env.staging.before-payment-sandbox-${RUN_ID}"
@@ -219,11 +219,11 @@ jobs:
               -f docker-compose.yml -f docker-compose.codistan-staging.yml \
               up -d --no-deps --force-recreate web worker --wait
           fi
-          docker exec jalwa-web-staging sh -lc 'test "$PAYMENT_PROVIDER" = mock && test "$ALLOW_MOCK_PAYMENTS" = true && test "$GIT_SHA" = '"'"'$RELEASE_SHA'"'"''
+          docker exec jalwa-web-staging sh -lc "test \"\$PAYMENT_PROVIDER\" = mock && test \"\$ALLOW_MOCK_PAYMENTS\" = true && test \"\$GIT_SHA\" = \"$RELEASE_SHA\""
           APP_DIR="$APP_DIR" DB_CONTAINER=jalwa-postgres-staging JALWA_ENV_FILE="$APP_DIR/.env.staging" \
             JALWA_COMPOSE_FILE="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml" \
             COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" \
-            "$APP_DIR/scripts/host-acceptance.sh" "https://jalwa-platform.codistan.org" >/tmp/payment-sandbox-restored-host-acceptance.json
+            "$APP_DIR/scripts/host-acceptance.sh" "https://$DOMAIN" >/tmp/payment-sandbox-restored-host-acceptance.json
           rm -f "payment-sandbox-${RUN_ID}.env"
           REMOTE
 
