@@ -10,7 +10,9 @@ import {
 } from "./helpers/staging.mjs";
 
 const customerEmail = (process.env.STAGING_QA_CUSTOMER_EMAIL ?? "").trim();
-const runId = (process.env.QA_RUN_ID ?? `customer-${Date.now()}`).slice(0, 120);
+const baseRunId = process.env.QA_RUN_ID ?? `customer-${Date.now()}`;
+const runAttempt = process.env.GITHUB_RUN_ATTEMPT?.trim();
+const runId = `${baseRunId}${runAttempt ? `-attempt-${runAttempt}` : ""}`.slice(0, 120);
 const config = qaConfig();
 
 let customer;
