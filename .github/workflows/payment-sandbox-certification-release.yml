@@ -1,0 +1,269 @@
+name: Payment provider sandbox certification
+
+# Release-control adapter for the current Codistan on-prem staging layout.
+# It temporarily switches only staging web/worker to the configured real-provider
+# sandbox, records signed lifecycle evidence, then always restores mock staging.
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact deployed 40-character release SHA reachable from main
+        required: true
+        type: string
+      staging_deployment_run_id:
+        description: Exact staging deployment run that built the running images
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-staging-payment-sandbox-release
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: staging
+      url: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+    env:
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      STAGING_DEPLOYMENT_RUN_ID: ${{ inputs.staging_deployment_run_id }}
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      STAGING_QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}
+      STAGING_QA_CUSTOMER_EMAIL: ${{ vars.STAGING_QA_CUSTOMER_EMAIL || 'acceptance+customer@watch-jalwa.com' }}
+      STAGING_PAYMENT_PROVIDER: ${{ vars.STAGING_PAYMENT_PROVIDER }}
+      STAGING_PAYMENT_EXPECTED_HOST: ${{ vars.STAGING_PAYMENT_EXPECTED_HOST }}
+      PAYMENT_WEBHOOK_SECRET: ${{ secrets.PAYMENT_WEBHOOK_SECRET }}
+      PAYFAST_CHECKOUT_URL: ${{ vars.PAYFAST_CHECKOUT_URL }}
+      PAYFAST_MERCHANT_ID: ${{ secrets.PAYFAST_MERCHANT_ID }}
+      PAYFAST_SECRET: ${{ secrets.PAYFAST_SECRET }}
+      JAZZCASH_CHECKOUT_URL: ${{ vars.JAZZCASH_CHECKOUT_URL }}
+      JAZZCASH_MERCHANT_ID: ${{ secrets.JAZZCASH_MERCHANT_ID }}
+      JAZZCASH_SECRET: ${{ secrets.JAZZCASH_SECRET }}
+      EASYPAISA_CHECKOUT_URL: ${{ vars.EASYPAISA_CHECKOUT_URL }}
+      EASYPAISA_STORE_ID: ${{ secrets.EASYPAISA_STORE_ID }}
+      EASYPAISA_SECRET: ${{ secrets.EASYPAISA_SECRET }}
+      STAGING_BASE_URL: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      QA_RUN_ID: provider-sandbox-${{ github.run_id }}
+      PAYMENT_SANDBOX_EVIDENCE_FILE: ${{ github.workspace }}/payment-sandbox-report.json
+      COMPOSE_PROJECT_NAME: jalwa-platform
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Validate exact release and provider sandbox boundary
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main || { echo 'Payment sandbox certification must be dispatched from main.' >&2; exit 1; }
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_sha must be a lowercase 40-character SHA.' >&2; exit 1; }
+          [[ "$STAGING_DEPLOYMENT_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'staging_deployment_run_id must be numeric.' >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          for name in HOST DOMAIN SSH_KEY KNOWN_HOSTS STAGING_QA_CUSTOMER_EMAIL STAGING_PAYMENT_PROVIDER STAGING_PAYMENT_EXPECTED_HOST PAYMENT_WEBHOOK_SECRET; do
+            test -n "${!name:-}" || { echo "Missing staging payment value $name" >&2; exit 1; }
+          done
+          case "$STAGING_PAYMENT_PROVIDER" in
+            payfast) test -n "$PAYFAST_CHECKOUT_URL" && test -n "$PAYFAST_MERCHANT_ID" && test -n "$PAYFAST_SECRET" ;;
+            jazzcash) test -n "$JAZZCASH_CHECKOUT_URL" && test -n "$JAZZCASH_MERCHANT_ID" && test -n "$JAZZCASH_SECRET" ;;
+            easypaisa) test -n "$EASYPAISA_CHECKOUT_URL" && test -n "$EASYPAISA_STORE_ID" && test -n "$EASYPAISA_SECRET" ;;
+            mock|'') echo 'A real sandbox provider (payfast, jazzcash or easypaisa) is required before production.' >&2; exit 1 ;;
+            *) echo 'Unsupported staging payment provider.' >&2; exit 1 ;;
+          esac
+          [[ "$STAGING_PAYMENT_EXPECTED_HOST" != "$DOMAIN" ]] || { echo 'Sandbox redirect host must not be the Jalwa staging host.' >&2; exit 1; }
+
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Hydrate protected QA secret when GitHub staging value is empty
+        run: |
+          set -euo pipefail
+          value="$STAGING_QA_SECRET"
+          if [[ -z "$value" ]]; then
+            value="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+              "awk 'index(\$0,\"STAGING_QA_SECRET=\")==1 {print substr(\$0,19); exit}' '$APP_DIR/.env.staging'")"
+            if [[ "$value" == \"*\" && "$value" == *\" ]]; then value="${value:1:${#value}-2}"; fi
+            if [[ "$value" == \'*\' && "$value" == *\' ]]; then value="${value:1:${#value}-2}"; fi
+          fi
+          test -n "$value" || { echo 'Protected staging QA secret is unavailable.' >&2; exit 1; }
+          echo "::add-mask::$value"
+          printf 'STAGING_QA_SECRET=%s\n' "$value" >> "$GITHUB_ENV"
+
+      - name: Prove selected release is the exact running staging release
+        run: |
+          set -euo pipefail
+          identity=/tmp/staging-release-identity.json
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            "$USER@$HOST:$APP_DIR/deployments/$RELEASE_SHA.identity.json" "$identity"
+          node scripts/verify-release-identity.mjs "$identity" "$RELEASE_SHA" "$STAGING_DEPLOYMENT_RUN_ID" "$STAGING_DEPLOYMENT_RUN_ID"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec jalwa-web-staging sh -lc 'test \"\$GIT_SHA\" = \"$RELEASE_SHA\" && test \"\$PAYMENT_PROVIDER\" = mock && test \"\$ALLOW_MOCK_PAYMENTS\" = true'"
+
+      - name: Prepare isolated provider sandbox overrides
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          provider = os.environ['STAGING_PAYMENT_PROVIDER']
+          keys = ['PAYMENT_WEBHOOK_SECRET']
+          if provider == 'payfast': keys += ['PAYFAST_CHECKOUT_URL','PAYFAST_MERCHANT_ID','PAYFAST_SECRET']
+          elif provider == 'jazzcash': keys += ['JAZZCASH_CHECKOUT_URL','JAZZCASH_MERCHANT_ID','JAZZCASH_SECRET']
+          elif provider == 'easypaisa': keys += ['EASYPAISA_CHECKOUT_URL','EASYPAISA_STORE_ID','EASYPAISA_SECRET']
+          values = {'PAYMENT_PROVIDER': provider, 'ALLOW_MOCK_PAYMENTS': 'false'}
+          for key in keys:
+              values[key] = os.environ[key]
+          for key, value in values.items():
+              if '\n' in value or '\r' in value:
+                  raise SystemExit(f'{key} must be a single-line value')
+          with open('/tmp/jalwa-payment-sandbox.env', 'w', encoding='utf-8') as f:
+              for key, value in values.items():
+                  f.write(f'{key}={value}\n')
+          os.chmod('/tmp/jalwa-payment-sandbox.env', 0o600)
+          PY
+
+      - name: Switch only staging web and worker to provider sandbox
+        id: configure
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa /tmp/jalwa-payment-sandbox.env \
+            "$USER@$HOST:$APP_DIR/payment-sandbox-${GITHUB_RUN_ID}.env"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' COMPOSE_PROJECT_NAME='$COMPOSE_PROJECT_NAME' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$APP_DIR"
+          test -s .env.staging
+          cp .env.staging ".env.staging.before-payment-sandbox-${RUN_ID}"
+          chmod 600 ".env.staging.before-payment-sandbox-${RUN_ID}"
+          while IFS='=' read -r key value; do
+            case "$key" in
+              PAYMENT_PROVIDER|ALLOW_MOCK_PAYMENTS|PAYMENT_WEBHOOK_SECRET|PAYFAST_CHECKOUT_URL|PAYFAST_MERCHANT_ID|PAYFAST_SECRET|JAZZCASH_CHECKOUT_URL|JAZZCASH_MERCHANT_ID|JAZZCASH_SECRET|EASYPAISA_CHECKOUT_URL|EASYPAISA_STORE_ID|EASYPAISA_SECRET) ;;
+              *) echo 'Unexpected sandbox override key' >&2; exit 1 ;;
+            esac
+            sed -i "/^${key}=/d" .env.staging
+            printf '%s=%s\n' "$key" "$value" >> .env.staging
+          done < "payment-sandbox-${RUN_ID}.env"
+          chmod 600 .env.staging
+          rm -f "payment-sandbox-${RUN_ID}.env"
+          docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file .env.staging \
+            -f docker-compose.yml -f docker-compose.codistan-staging.yml config --quiet
+          docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file .env.staging \
+            -f docker-compose.yml -f docker-compose.codistan-staging.yml \
+            up -d --no-deps --force-recreate web worker --wait
+          APP_DIR="$APP_DIR" DB_CONTAINER=jalwa-postgres-staging JALWA_ENV_FILE="$APP_DIR/.env.staging" \
+            JALWA_COMPOSE_FILE="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml" \
+            COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" \
+            "$APP_DIR/scripts/host-acceptance.sh" "https://jalwa-platform.codistan.org" >/tmp/payment-sandbox-host-acceptance.json
+          REMOTE
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        if: steps.configure.outcome == 'success'
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Install pinned browser harness
+        if: steps.configure.outcome == 'success'
+        run: |
+          set -euo pipefail
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          npx playwright install --with-deps chromium
+
+      - name: Prove provider redirect and signed payment lifecycle
+        id: sandbox
+        if: steps.configure.outcome == 'success'
+        continue-on-error: true
+        env:
+          PLAYWRIGHT_OUTPUT_DIR: ${{ github.workspace }}/payment-sandbox-playwright-results
+          PLAYWRIGHT_HTML_REPORT: ${{ github.workspace }}/payment-sandbox-playwright-html
+          PLAYWRIGHT_JUNIT_REPORT: ${{ github.workspace }}/payment-sandbox-playwright-junit.xml
+        run: |
+          npx playwright test qa/playwright/provider-sandbox.spec.mjs --config=playwright.staging.config.mjs
+
+      - name: Always restore certified mock-payment staging runtime
+        id: restore
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' COMPOSE_PROJECT_NAME='$COMPOSE_PROJECT_NAME' RELEASE_SHA='$RELEASE_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$APP_DIR"
+          backup=".env.staging.before-payment-sandbox-${RUN_ID}"
+          if [[ -s "$backup" ]]; then
+            mv "$backup" .env.staging
+            chmod 600 .env.staging
+            docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file .env.staging \
+              -f docker-compose.yml -f docker-compose.codistan-staging.yml config --quiet
+            docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file .env.staging \
+              -f docker-compose.yml -f docker-compose.codistan-staging.yml \
+              up -d --no-deps --force-recreate web worker --wait
+          fi
+          docker exec jalwa-web-staging sh -lc 'test "$PAYMENT_PROVIDER" = mock && test "$ALLOW_MOCK_PAYMENTS" = true && test "$GIT_SHA" = '"'"'$RELEASE_SHA'"'"''
+          APP_DIR="$APP_DIR" DB_CONTAINER=jalwa-postgres-staging JALWA_ENV_FILE="$APP_DIR/.env.staging" \
+            JALWA_COMPOSE_FILE="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml" \
+            COMPOSE_PROJECT_NAME="$COMPOSE_PROJECT_NAME" \
+            "$APP_DIR/scripts/host-acceptance.sh" "https://jalwa-platform.codistan.org" >/tmp/payment-sandbox-restored-host-acceptance.json
+          rm -f "payment-sandbox-${RUN_ID}.env"
+          REMOTE
+
+      - name: Validate sanitized provider evidence
+        id: evidence
+        if: always() && steps.sandbox.outcome == 'success' && steps.restore.outcome == 'success'
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          jq -e \
+            --arg sha "$RELEASE_SHA" \
+            --arg run "$STAGING_DEPLOYMENT_RUN_ID" \
+            --arg provider "$STAGING_PAYMENT_PROVIDER" \
+            --arg host "$STAGING_PAYMENT_EXPECTED_HOST" \
+            '.status == "PASS" and .release_sha == $sha and .staging_deployment_run_id == $run and .provider == $provider and .expected_redirect_host == $host and .observed_redirect_host == $host and .signed_webhook_lifecycle == "succeeded"' \
+            "$PAYMENT_SANDBOX_EVIDENCE_FILE"
+
+      - name: Upload sanitized provider sandbox evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: payment-sandbox-${{ env.RELEASE_SHA }}-${{ github.run_id }}
+          path: |
+            ${{ env.PAYMENT_SANDBOX_EVIDENCE_FILE }}
+            ${{ github.workspace }}/payment-sandbox-playwright-junit.xml
+          if-no-files-found: warn
+          retention-days: 30
+          include-hidden-files: false
+
+      - name: Enforce production payment gate and restored staging state
+        if: always()
+        env:
+          CONFIGURE_OUTCOME: ${{ steps.configure.outcome }}
+          SANDBOX_OUTCOME: ${{ steps.sandbox.outcome }}
+          RESTORE_OUTCOME: ${{ steps.restore.outcome }}
+          EVIDENCE_OUTCOME: ${{ steps.evidence.outcome }}
+        run: |
+          set -euo pipefail
+          test "$CONFIGURE_OUTCOME" = success || { echo 'Provider sandbox configuration failed — production blocked.' >&2; exit 1; }
+          test "$SANDBOX_OUTCOME" = success || { echo 'Real payment sandbox failed — production blocked.' >&2; exit 1; }
+          test "$RESTORE_OUTCOME" = success || { echo 'Mock staging restore failed — production blocked.' >&2; exit 1; }
+          test "$EVIDENCE_OUTCOME" = success || { echo 'Provider sandbox evidence validation failed — production blocked.' >&2; exit 1; }
+          echo "REAL PAYMENT SANDBOX PASSED — $STAGING_PAYMENT_PROVIDER; mock staging restored"
