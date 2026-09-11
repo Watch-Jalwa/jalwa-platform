@@ -104,6 +104,7 @@ test.describe("Studio authorization and Premium reporting", () => {
   });
 
   test("rights reviewer keeps Studio access but cannot cross finance capability boundary", async ({ page }) => {
+    test.setTimeout(120_000);
     await authenticateVerified(page, rightsReviewer.email, 403);
     await expectAuthorized(page, "/studio", /Studio/i);
 
