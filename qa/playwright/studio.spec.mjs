@@ -107,7 +107,7 @@ test.describe("Studio authorization and Premium reporting", () => {
     await authenticateVerified(page, rightsReviewer.email, 403);
     await expectAuthorized(page, "/studio", /Studio/i);
 
-    await page.goto("/studio/finance/reports", { waitUntil: "networkidle" });
+    await page.goto("/studio/finance/reports", { waitUntil: "domcontentloaded" });
     await expect(page.locator("body")).toContainText(/Permission denied/i);
     expect((await page.context().request.get("/api/studio/premium-reports/payments")).status()).toBe(403);
     expect((await page.context().request.get("/api/studio/premium-reports/export/payments")).status()).toBe(403);
