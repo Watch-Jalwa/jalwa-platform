@@ -1,0 +1,82 @@
+name: Staging payment diagnostics
+
+on:
+  push:
+    branches: ["ops/jalwa-staging-capacity-diagnostics"]
+    paths: [".github/workflows/staging-payment-diagnostics.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-staging-payment-diagnostics
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      RELEASE_SHA: d27caed8d6bc189867506ccdac203acf1b0824b5
+      QA_RUN_ID: completion-34570302201
+    steps:
+      - name: Validate pinned staging target
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          test -n "$HOST" && test -n "$KNOWN_HOSTS" && test -n "$SSH_KEY"
+
+      - name: Configure pinned SSH identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Collect read-only payment diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' RELEASE_SHA='$RELEASE_SHA' QA_RUN_ID='$QA_RUN_ID' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$APP_DIR"
+
+          echo '=== release identity ==='
+          docker inspect -f '{{.Config.Image}}|{{range .Config.Env}}{{println .}}{{end}}' jalwa-web-staging 2>/dev/null | grep -E '(^|\|)GIT_SHA=|^ghcr.io/' || true
+          docker exec jalwa-web-staging sh -lc 'printf "GIT_SHA=%s\nALLOW_MOCK_PAYMENTS=%s\nNEXT_PUBLIC_APP_URL=%s\nBETTER_AUTH_URL=%s\n" "$GIT_SHA" "$ALLOW_MOCK_PAYMENTS" "$NEXT_PUBLIC_APP_URL" "$BETTER_AUTH_URL"'
+
+          echo '=== database identity ==='
+          pair="$(docker exec jalwa-postgres-staging sh -lc 'printf "%s|%s" "${POSTGRES_USER:-}" "${POSTGRES_DB:-}"')"
+          IFS='|' read -r db_user db_name <<<"$pair"
+          test -n "$db_user" && test -n "$db_name"
+          echo "DB_USER=$db_user DB_NAME=$db_name"
+
+          echo '=== certification checkout orders ==='
+          docker exec jalwa-postgres-staging psql -X -At -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -c \
+            "select row_to_json(t) from (select * from public.checkout_orders where idempotency_key like 'AUTO-QA-${QA_RUN_ID}-%' limit 20) t;"
+
+          echo '=== recent mock webhook events ==='
+          docker exec jalwa-postgres-staging psql -X -At -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -c \
+            "select row_to_json(t) from (select * from public.webhook_events where provider='mock' limit 50) t;"
+
+          echo '=== relevant web logs ==='
+          docker logs --since '2026-09-11T07:24:00Z' --until '2026-09-11T07:32:30Z' jalwa-web-staging 2>&1 \
+            | grep -E -i 'payment_webhook|payment|checkout|mock|error|warn|exception|redirect' \
+            | tail -n 400 || true
+
+          echo '=== current health ==='
+          curl -fsS --max-time 15 "https://${HOST:-jalwa-platform.codistan.org}/api/health" || true
+          REMOTE
