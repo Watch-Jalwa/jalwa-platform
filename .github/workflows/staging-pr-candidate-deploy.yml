@@ -162,13 +162,49 @@ jobs:
             | grep -E '^ghcr\.io/watch-jalwa/jalwa-platform-(web|worker):[0-9a-f]{40}$' \
             | sort -u)
 
+          removed_containers=0
+          for service in web worker; do
+            for status in created exited dead; do
+              while read -r container; do
+                [[ -n "$container" ]] || continue
+                if docker rm "$container" >/dev/null 2>&1; then
+                  removed_containers=$((removed_containers + 1))
+                fi
+              done < <(docker ps -aq \
+                --filter 'label=com.docker.compose.project=jalwa-platform' \
+                --filter "label=com.docker.compose.service=$service" \
+                --filter "status=$status")
+            done
+          done
+
+          removed_volumes=0
+          while read -r volume; do
+            [[ -n "$volume" ]] || continue
+            case "$volume" in
+              *postgres*|*database*|*_db*|*_data*)
+                echo "Preserving data-like dangling Jalwa volume: $volume"
+                continue
+                ;;
+            esac
+            if docker volume rm "$volume" >/dev/null 2>&1; then
+              removed_volumes=$((removed_volumes + 1))
+            fi
+          done < <({
+            docker volume ls -q --filter dangling=true --filter 'label=com.docker.compose.project=jalwa-platform'
+            docker volume ls -q --filter dangling=true | grep -E '^jalwa-platform_' || true
+          } | sort -u)
+
           docker image prune -f >/dev/null
           docker builder prune -af >/dev/null
           echo 'Docker disk usage after safe reclaim:'
           docker system df
           usage="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
-          echo "Removed $removed stale Jalwa release image tags; root filesystem usage is ${usage}%."
+          echo "Removed $removed stale Jalwa release image tags, $removed_containers stopped Jalwa app containers and $removed_volumes dangling non-data Jalwa volumes; root filesystem usage is ${usage}%."
           [[ "$usage" =~ ^[0-9]+$ ]]
+          if (( usage >= 85 )); then
+            echo 'Staging disk remains above the acceptance threshold after Jalwa-scoped cleanup; detailed Docker usage follows.'
+            docker system df -v || true
+          fi
           test "$usage" -lt 85
           REMOTE
 
