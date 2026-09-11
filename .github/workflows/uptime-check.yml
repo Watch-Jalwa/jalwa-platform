@@ -7,13 +7,44 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   check:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Check health and readiness
+      - name: Determine whether production monitoring is active
+        id: activation
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            echo "active=true" >> "$GITHUB_OUTPUT"
+            echo "Manual availability check requested."
+            exit 0
+          fi
+
+          successful_deploys="$(curl --fail --silent --show-error \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/deploy-production.yml/runs?status=success&per_page=1")"
+          count="$(jq -r '.total_count' <<<"$successful_deploys")"
+          [[ "$count" =~ ^[0-9]+$ ]]
+
+          if (( count == 0 )); then
+            echo "active=false" >> "$GITHUB_OUTPUT"
+            echo "Production has not been successfully deployed yet; scheduled uptime monitoring is not active."
+          else
+            echo "active=true" >> "$GITHUB_OUTPUT"
+            echo "A successful production deployment exists; scheduled uptime monitoring is active."
+          fi
+
+      - name: Check health and readiness
+        if: steps.activation.outputs.active == 'true'
+        run: |
+          set -euo pipefail
           curl --fail --silent --show-error --retry 3 --retry-delay 5 --max-time 20 https://watch-jalwa.com/api/health
           curl --fail --silent --show-error --retry 3 --retry-delay 5 --max-time 20 https://watch-jalwa.com/api/readiness
