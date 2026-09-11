@@ -74,7 +74,16 @@ jobs:
 
           if sudo -n true >/dev/null 2>&1; then
             sudo -n apt-get clean >/dev/null 2>&1 || true
-            sudo -n journalctl --vacuum-size=256M >/dev/null 2>&1 || true
+            sudo -n journalctl --vacuum-size=128M >/dev/null 2>&1 || true
+            sudo -n logrotate -f /etc/logrotate.conf >/dev/null 2>&1 || true
+
+            if command -v snap >/dev/null 2>&1; then
+              while read -r snap_name snap_revision; do
+                [[ -n "$snap_name" && "$snap_revision" =~ ^[0-9]+$ ]] || continue
+                sudo -n snap remove "$snap_name" --revision="$snap_revision" >/dev/null 2>&1 || true
+              done < <(snap list --all 2>/dev/null | awk 'NR>1 && $6 ~ /disabled/ {print $1, $3}')
+            fi
+
             for container in jalwa-web-staging jalwa-worker-staging; do
               log_path="$(docker inspect --format '{{.LogPath}}' "$container" 2>/dev/null || true)"
               if [[ -n "$log_path" ]]; then
@@ -88,6 +97,15 @@ jobs:
           else
             echo 'Passwordless sudo unavailable; skipped OS cache/journal cleanup.'
           fi
+
+          removed_anonymous_volumes=0
+          while read -r volume; do
+            [[ -n "$volume" ]] || continue
+            if docker volume rm "$volume" >/dev/null 2>&1; then
+              removed_anonymous_volumes=$((removed_anonymous_volumes + 1))
+            fi
+          done < <(docker volume ls -q --filter dangling=true | grep -E '^[0-9a-f]{64}$' || true)
+          echo "Removed $removed_anonymous_volumes unreferenced anonymous Docker volumes; named project volumes were preserved."
 
           docker image prune -f >/dev/null
           docker builder prune -af >/dev/null
