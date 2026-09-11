@@ -1,0 +1,117 @@
+name: Record UAT approval
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact staging-certified 40-character main commit SHA approved in UAT
+        required: true
+        type: string
+      certification_run_id:
+        description: Successful Staging certification run ID with READY FOR UAT evidence
+        required: true
+        type: string
+      approval_reference:
+        description: Human UAT sign-off reference (ticket, meeting record, or approval note)
+        required: true
+        type: string
+      confirm_uat:
+        description: Confirm human UAT was completed and approved for this exact release
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: jalwa-uat-approval-${{ inputs.release_sha }}
+  cancel-in-progress: false
+
+jobs:
+  attest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      CERTIFICATION_RUN_ID: ${{ inputs.certification_run_id }}
+      APPROVAL_REFERENCE: ${{ inputs.approval_reference }}
+      APPROVAL_FILE: ${{ github.workspace }}/uat-approval.json
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          fetch-depth: 0
+
+      - name: Validate explicit exact-release UAT approval
+        run: |
+          set -euo pipefail
+          test '${{ inputs.confirm_uat }}' = 'true' || { echo 'Explicit UAT confirmation is required.' >&2; exit 1; }
+          test "$GITHUB_REF" = refs/heads/main || { echo 'UAT approval must be recorded from main.' >&2; exit 1; }
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_sha must be a 40-character lowercase SHA.' >&2; exit 1; }
+          [[ "$CERTIFICATION_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'certification_run_id must be numeric.' >&2; exit 1; }
+          test ${#APPROVAL_REFERENCE} -ge 4 || { echo 'A meaningful human UAT approval reference is required.' >&2; exit 1; }
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main || { echo 'Approved release is not reachable from main.' >&2; exit 1; }
+
+      - name: Verify READY FOR UAT evidence for exact release
+        id: evidence
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/jalwa-certification
+          cert_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CERTIFICATION_RUN_ID")"
+          jq -e '.name == "Staging certification" and .conclusion == "success"' <<<"$cert_run" >/dev/null \
+            || { echo 'The supplied certification run is not a successful Staging certification run.' >&2; exit 1; }
+          cert_artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CERTIFICATION_RUN_ID/artifacts?per_page=100")"
+          cert_artifact_id="$(jq -r --arg sha "$RELEASE_SHA" '.artifacts[] | select(.expired == false and (.name | startswith("staging-certification-" + $sha + "-"))) | .id' <<<"$cert_artifacts" | head -n1)"
+          [[ "$cert_artifact_id" =~ ^[0-9]+$ ]] || { echo 'No retained certification artifact exists for the selected release.' >&2; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$cert_artifact_id/zip" > /tmp/jalwa-certification.zip
+          unzip -q /tmp/jalwa-certification.zip -d /tmp/jalwa-certification
+          cert_report="$(find /tmp/jalwa-certification -name certification-report.json -type f -print -quit)"
+          test -s "$cert_report"
+          jq -e --arg sha "$RELEASE_SHA" '.decision == "READY FOR UAT" and .release_sha == $sha and ((.totals.fail // 0) == 0) and ((.totals.blocked // 0) == 0)' "$cert_report" >/dev/null \
+            || { echo 'Selected certification evidence is not clean READY FOR UAT evidence for this exact release.' >&2; exit 1; }
+          staging_build_run_id="$(jq -r '.deployment_pipeline_id // empty' "$cert_report")"
+          [[ "$staging_build_run_id" =~ ^[0-9]+$ ]] || { echo 'Staging deployment provenance is missing from certification.' >&2; exit 1; }
+          echo "staging_build_run_id=$staging_build_run_id" >> "$GITHUB_OUTPUT"
+
+      - name: Write sanitized UAT approval attestation
+        env:
+          STAGING_BUILD_RUN_ID: ${{ steps.evidence.outputs.staging_build_run_id }}
+        run: |
+          set -euo pipefail
+          approved_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          jq -n \
+            --arg status PASS \
+            --arg release_sha "$RELEASE_SHA" \
+            --arg certification_run_id "$CERTIFICATION_RUN_ID" \
+            --arg staging_deployment_run_id "$STAGING_BUILD_RUN_ID" \
+            --arg approval_reference "$APPROVAL_REFERENCE" \
+            --arg approved_by "$GITHUB_ACTOR" \
+            --arg approved_at "$approved_at" \
+            --arg approval_run_id "$GITHUB_RUN_ID" \
+            --arg approval_run_attempt "$GITHUB_RUN_ATTEMPT" \
+            '{schema_version:1,status:$status,release_sha:$release_sha,certification_run_id:$certification_run_id,staging_deployment_run_id:$staging_deployment_run_id,approval_reference:$approval_reference,approved_by:$approved_by,approved_at:$approved_at,approval_run_id:$approval_run_id,approval_run_attempt:$approval_run_attempt}' \
+            > "$APPROVAL_FILE"
+          jq -e '.status == "PASS" and (.approved_by | length > 0) and (.approval_reference | length >= 4)' "$APPROVAL_FILE" >/dev/null
+
+      - name: Upload UAT approval evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: uat-approval-${{ inputs.release_sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.APPROVAL_FILE }}
+          if-no-files-found: error
+          retention-days: 90
+          include-hidden-files: false
+
+      - name: Approval summary
+        run: |
+          {
+            echo '### UAT approval recorded'
+            echo "- Release: \`$RELEASE_SHA\`"
+            echo "- Staging certification: \`$CERTIFICATION_RUN_ID\`"
+            echo "- Staging deployment: \`${{ steps.evidence.outputs.staging_build_run_id }}\`"
+            echo "- Approved by: \`$GITHUB_ACTOR\`"
+            echo "- Approval run: \`$GITHUB_RUN_ID\`"
+            echo '- Production deployment: not performed by this workflow'
+          } >> "$GITHUB_STEP_SUMMARY"
