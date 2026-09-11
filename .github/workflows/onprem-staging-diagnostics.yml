@@ -2,6 +2,8 @@ name: Diagnose on-prem staging
 
 on:
   workflow_dispatch:
+  push:
+    branches: ["diagnostics/shared-host-docker-inventory-20260911"]
 
 permissions:
   contents: read
@@ -46,10 +48,9 @@ jobs:
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
 
-      - name: Collect read-only staging diagnostics
+      - name: Collect read-only shared-host Docker inventory
         shell: bash
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "cd '$APP_DIR' && COMPOSE_PROJECT_NAME=jalwa-platform COMPOSE_FILE='$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml' JALWA_ENV_FILE='$APP_DIR/.env.staging' DB_CONTAINER=jalwa-postgres-staging bash -s" \
-            < infrastructure/production/scripts/collect-staging-diagnostics.sh
+            "bash -s" < scripts/shared-host-docker-inventory.sh
