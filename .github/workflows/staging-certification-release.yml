@@ -13,6 +13,10 @@ on:
         description: Successful Staging certification completion run for the exact release
         required: true
         type: string
+  push:
+    branches: [main]
+    paths:
+      - ".release-gates/staging-certification.request.json"
 
 permissions:
   contents: read
@@ -29,23 +33,36 @@ jobs:
     environment: staging
     env:
       GH_TOKEN: ${{ github.token }}
-      RELEASE_SHA: ${{ inputs.release_sha }}
-      SOURCE_RUN_ID: ${{ inputs.completion_run_id }}
+      REQUEST_FILE: .release-gates/staging-certification.request.json
       OUT_DIR: ${{ github.workspace }}/staging-certification-evidence
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ${{ inputs.release_sha }}
           fetch-depth: 0
 
-      - name: Validate exact release boundary
+      - name: Resolve audited release request
+        id: request
+        env:
+          INPUT_RELEASE_SHA: ${{ inputs.release_sha }}
+          INPUT_COMPLETION_RUN_ID: ${{ inputs.completion_run_id }}
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = refs/heads/main || { echo 'Release certification must be dispatched from main.' >&2; exit 1; }
-          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_sha must be a lowercase 40-character SHA.' >&2; exit 1; }
-          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'completion_run_id must be numeric.' >&2; exit 1; }
-          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+          test "$GITHUB_REF" = refs/heads/main || { echo 'Release certification must run from main.' >&2; exit 1; }
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            release_sha="$INPUT_RELEASE_SHA"
+            source_run_id="$INPUT_COMPLETION_RUN_ID"
+          else
+            test -s "$REQUEST_FILE"
+            release_sha="$(jq -r '.release_sha // empty' "$REQUEST_FILE")"
+            source_run_id="$(jq -r '.completion_run_id // empty' "$REQUEST_FILE")"
+          fi
+          [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_sha must be a lowercase 40-character SHA.' >&2; exit 1; }
+          [[ "$source_run_id" =~ ^[0-9]+$ ]] || { echo 'completion_run_id must be numeric.' >&2; exit 1; }
+          git merge-base --is-ancestor "$release_sha" origin/main || { echo 'Certified release is not reachable from main.' >&2; exit 1; }
+          printf 'RELEASE_SHA=%s\nSOURCE_RUN_ID=%s\n' "$release_sha" "$source_run_id" >> "$GITHUB_ENV"
+          printf 'release_sha=%s\nsource_run_id=%s\n' "$release_sha" "$source_run_id" >> "$GITHUB_OUTPUT"
+          git checkout --detach "$release_sha"
+          test "$(git rev-parse HEAD)" = "$release_sha"
 
       - name: Fetch exact completed staging evidence
         run: |
@@ -96,7 +113,7 @@ jobs:
       - name: Upload canonical staging certification evidence
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: staging-certification-${{ env.RELEASE_SHA }}-${{ github.run_id }}
+          name: staging-certification-${{ steps.request.outputs.release_sha }}-${{ github.run_id }}
           path: ${{ env.OUT_DIR }}
           if-no-files-found: error
           retention-days: 30
