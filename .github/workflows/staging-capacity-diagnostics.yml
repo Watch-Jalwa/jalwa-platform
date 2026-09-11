@@ -1,0 +1,85 @@
+name: Staging capacity diagnostics
+
+on:
+  push:
+    branches: ["ops/jalwa-staging-capacity-diagnostics"]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          test -n "$HOST" && test -n "$KNOWN_HOSTS" && test -n "$SSH_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Read-only Jalwa capacity inventory
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          echo '=== ROOT FILESYSTEM ==='
+          df -hT /
+          df -B1 /
+
+          echo '=== JALWA APP TREE ==='
+          du -xhd2 "$APP_DIR" 2>/dev/null | sort -h || true
+
+          echo '=== JALWA CANDIDATE DB DIRECTORIES ==='
+          if [[ -d "$APP_DIR/candidate-db" ]]; then
+            for dir in "$APP_DIR"/candidate-db/*; do
+              [[ -d "$dir" ]] || continue
+              printf '%s\t' "$(basename "$dir")"
+              du -sb "$dir" 2>/dev/null | awk '{print $1}'
+            done | sort -k2,2nr
+          fi
+
+          echo '=== JALWA BACKUP TREE ==='
+          for dir in "$APP_DIR/backups" /opt/jalwa/backups; do
+            if [[ -d "$dir" ]]; then
+              echo "-- $dir"
+              du -xhd2 "$dir" 2>/dev/null | sort -h || true
+              find "$dir" -xdev -type f -printf '%s\t%TY-%Tm-%TdT%TH:%TM:%TS\t%p\n' 2>/dev/null | sort -nr | head -n 30 || true
+            fi
+          done
+
+          echo '=== LARGEST JALWA-OWNED FILES ==='
+          find "$APP_DIR" -xdev -type f -printf '%s\t%TY-%Tm-%TdT%TH:%TM:%TS\t%p\n' 2>/dev/null | sort -nr | head -n 50 || true
+
+          echo '=== JALWA CONTAINERS / IMAGES ==='
+          docker ps -a --format '{{.Names}}\t{{.Image}}\t{{.Status}}' | grep -E '(^jalwa-|watch-jalwa/jalwa-platform)' || true
+          docker image ls --format '{{.Repository}}:{{.Tag}}\t{{.ID}}\t{{.Size}}' | grep -E '^ghcr\.io/watch-jalwa/jalwa-platform-(web|worker):' || true
+
+          echo '=== DOCKER SUMMARY ==='
+          docker system df
+
+          echo '=== JALWA LOG SIZES ==='
+          if sudo -n true >/dev/null 2>&1; then
+            for container in jalwa-web-staging jalwa-worker-staging jalwa-postgres-staging; do
+              log_path="$(docker inspect --format '{{.LogPath}}' "$container" 2>/dev/null || true)"
+              if [[ -n "$log_path" ]]; then
+                sudo -n stat -c '%s\t%n' "$log_path" 2>/dev/null || true
+              fi
+            done
+          fi
+          REMOTE
