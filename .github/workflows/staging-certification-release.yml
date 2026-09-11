@@ -1,0 +1,107 @@
+name: Staging certification
+
+# Release-control adapter: promotes an already successful exact-SHA completion
+# artifact into the canonical certification contract consumed by production.
+on:
+  workflow_dispatch:
+    inputs:
+      release_sha:
+        description: Exact staging-certified 40-character commit SHA now reachable from main
+        required: true
+        type: string
+      completion_run_id:
+        description: Successful Staging certification completion run for the exact release
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: jalwa-staging-release-certification
+  cancel-in-progress: false
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_SHA: ${{ inputs.release_sha }}
+      SOURCE_RUN_ID: ${{ inputs.completion_run_id }}
+      OUT_DIR: ${{ github.workspace }}/staging-certification-evidence
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ inputs.release_sha }}
+          fetch-depth: 0
+
+      - name: Validate exact release boundary
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main || { echo 'Release certification must be dispatched from main.' >&2; exit 1; }
+          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_sha must be a lowercase 40-character SHA.' >&2; exit 1; }
+          [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'completion_run_id must be numeric.' >&2; exit 1; }
+          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
+          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
+
+      - name: Fetch exact completed staging evidence
+        run: |
+          set -euo pipefail
+          source_run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID")"
+          jq -e --arg sha "$RELEASE_SHA" \
+            '.name == "Staging certification completion" and .conclusion == "success" and .head_sha == $sha' \
+            <<<"$source_run" >/dev/null \
+            || { echo 'Source run is not a successful exact-SHA staging completion run.' >&2; exit 1; }
+
+          artifacts="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID/artifacts?per_page=100")"
+          artifact_id="$(jq -r --arg sha "$RELEASE_SHA" \
+            '.artifacts[] | select(.expired == false and (.name | startswith("staging-certification-completion-" + $sha + "-"))) | .id' \
+            <<<"$artifacts" | head -n1)"
+          [[ "$artifact_id" =~ ^[0-9]+$ ]] || { echo 'Exact completion artifact is missing or expired.' >&2; exit 1; }
+
+          rm -rf /tmp/jalwa-completion "$OUT_DIR"
+          mkdir -p /tmp/jalwa-completion "$OUT_DIR"
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$artifact_id/zip" > /tmp/jalwa-completion.zip
+          unzip -q /tmp/jalwa-completion.zip -d /tmp/jalwa-completion
+          cp -a /tmp/jalwa-completion/. "$OUT_DIR/"
+
+      - name: Validate READY FOR UAT evidence and immutable deployment provenance
+        run: |
+          set -euo pipefail
+          report="$(find "$OUT_DIR" -name certification-report.json -type f -print -quit)"
+          identity="$(find "$OUT_DIR" -name release-identity.json -type f -print -quit)"
+          test -s "$report" && test -s "$identity"
+
+          jq -e --arg sha "$RELEASE_SHA" '
+            .decision == "READY FOR UAT"
+            and .release_sha == $sha
+            and .area_totals.fail == 0
+            and .area_totals.blocked == 0
+            and .area_totals.not_applicable == 0
+            and .area_totals.pass == 9
+            and .test_totals.fail == 0
+            and .test_totals.blocked == 0
+            and .test_totals.not_applicable == 0
+            and .test_totals.pass == .test_totals.total
+            and .test_totals.total >= 51
+          ' "$report" >/dev/null || { echo 'Completion evidence is not fully READY FOR UAT.' >&2; exit 1; }
+
+          deployment_run_id="$(jq -r '.deployment_pipeline_id // empty' "$report")"
+          [[ "$deployment_run_id" =~ ^[0-9]+$ ]] || { echo 'Deployment provenance is missing.' >&2; exit 1; }
+          node scripts/verify-release-identity.mjs "$identity" "$RELEASE_SHA" "$deployment_run_id" "$deployment_run_id" >/tmp/verified-release-identity.json
+
+      - name: Upload canonical staging certification evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: staging-certification-${{ env.RELEASE_SHA }}-${{ github.run_id }}
+          path: ${{ env.OUT_DIR }}
+          if-no-files-found: error
+          retention-days: 30
+          include-hidden-files: false
+
+      - name: Enforce canonical production certification gate
+        run: |
+          echo "READY FOR UAT — exact release $RELEASE_SHA promoted from completion run $SOURCE_RUN_ID"
