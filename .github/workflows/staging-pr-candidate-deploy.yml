@@ -290,7 +290,46 @@ jobs:
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker image prune -f >/dev/null; usage=\$(df -P / | awk 'NR==2 {gsub(/%/,\"\",\$5); print \$5}'); echo \"Post-deploy root filesystem usage is \${usage}%.\"; [[ \"\$usage\" =~ ^[0-9]+$ ]] && test \"\$usage\" -lt 85"
+            "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          declare -A keep=()
+
+          while read -r ref; do
+            [[ -n "$ref" ]] && keep["$ref"]=1
+          done < <(docker ps --format '{{.Image}}' | sort -u)
+
+          for marker in "$APP_DIR/.last-good-image" "$APP_DIR/.previous-good-image"; do
+            if [[ -s "$marker" ]]; then
+              tag="$(tr -d '[:space:]' < "$marker")"
+              if [[ "$tag" =~ ^[0-9a-f]{40}$ ]]; then
+                keep["ghcr.io/watch-jalwa/jalwa-platform-web:$tag"]=1
+                keep["ghcr.io/watch-jalwa/jalwa-platform-worker:$tag"]=1
+              fi
+            fi
+          done
+
+          removed=0
+          while read -r image; do
+            [[ -n "$image" ]] || continue
+            if [[ -z "${keep[$image]:-}" ]]; then
+              if docker image rm "$image" >/dev/null 2>&1; then
+                removed=$((removed + 1))
+              fi
+            fi
+          done < <(docker image ls --format '{{.Repository}}:{{.Tag}}' \
+            | grep -E '^ghcr\.io/watch-jalwa/jalwa-platform-(web|worker):[0-9a-f]{40}$' \
+            | sort -u)
+
+          docker image prune -f >/dev/null
+          usage="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+          echo "Removed $removed obsolete Jalwa release image tags after cutover; post-deploy root filesystem usage is ${usage}%."
+          [[ "$usage" =~ ^[0-9]+$ ]]
+          if (( usage >= 85 )); then
+            echo 'Staging disk remains above the acceptance threshold after post-cutover Jalwa image cleanup.'
+            docker system df -v || true
+          fi
+          test "$usage" -lt 85
+          REMOTE
 
       - name: Verify exact candidate is publicly ready
         run: |
