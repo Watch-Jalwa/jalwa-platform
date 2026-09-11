@@ -41,6 +41,14 @@ jobs:
           echo '=== ROOT FILESYSTEM ==='
           df -hT /
           df -B1 /
+          if sudo -n true >/dev/null 2>&1; then
+            root_source="$(findmnt -n -o SOURCE /)"
+            root_fstype="$(findmnt -n -o FSTYPE /)"
+            echo "root_source=$root_source root_fstype=$root_fstype"
+            if [[ "$root_fstype" == ext4 && "$root_source" == /dev/* ]]; then
+              sudo -n tune2fs -l "$root_source" 2>/dev/null | grep -E '^(Block count|Reserved block count|Block size|Reserved blocks uid|Reserved blocks gid):' || true
+            fi
+          fi
 
           echo '=== JALWA APP TREE ==='
           du -xhd2 "$APP_DIR" 2>/dev/null | sort -h || true
