@@ -90,25 +90,64 @@ jobs:
           test "$(git rev-parse HEAD)" = "$release_sha"
 
       - name: Validate exact release and provider sandbox boundary
+        id: boundary
         run: |
           set -euo pipefail
-          test "$USER" = codistan
-          test "$APP_DIR" = /opt/codistan/jalwa-platform
-          test -s .github/workflows/record-uat-approval.yml || { echo 'Release predates the auditable UAT approval contract; production promotion is blocked.' >&2; exit 1; }
-          grep -Fq 'name: Record UAT approval' .github/workflows/record-uat-approval.yml || { echo 'Release UAT approval workflow contract is invalid.' >&2; exit 1; }
-          grep -Fq 'verify_uat_approval_runtime' infrastructure/production/scripts/validate-production.sh || { echo 'Release does not enforce UAT approval evidence during production validation.' >&2; exit 1; }
-          grep -Fq 'uat-approval-' infrastructure/production/scripts/validate-production.sh || { echo 'Release does not require retained UAT approval artifacts.' >&2; exit 1; }
+          block() {
+            local reason="$1"
+            printf '%s\n' "$reason" >&2
+            jq -n \
+              --arg reason "$reason" \
+              --arg sha "$RELEASE_SHA" \
+              --arg deployment_run_id "$STAGING_DEPLOYMENT_RUN_ID" \
+              --arg workflow_run_id "$GITHUB_RUN_ID" \
+              --arg workflow_run_attempt "$GITHUB_RUN_ATTEMPT" \
+              --arg provider "${STAGING_PAYMENT_PROVIDER:-}" \
+              '{
+                schema_version: 1,
+                status: "BLOCKED",
+                reason: $reason,
+                release_sha: $sha,
+                staging_deployment_run_id: $deployment_run_id,
+                workflow_run_id: $workflow_run_id,
+                workflow_run_attempt: $workflow_run_attempt,
+                provider: (if $provider == "" then null else $provider end),
+                production_charge_authorized: false,
+                staging_runtime_modified: false,
+                signed_webhook_lifecycle: "not_started"
+              }' > "$PAYMENT_SANDBOX_EVIDENCE_FILE"
+            exit 1
+          }
+
+          [[ "$USER" == codistan ]] || block 'Unexpected staging SSH user; production promotion is blocked.'
+          [[ "$APP_DIR" == /opt/codistan/jalwa-platform ]] || block 'Unexpected staging application directory; production promotion is blocked.'
+          test -s .github/workflows/record-uat-approval.yml || block 'Release predates the auditable UAT approval contract; production promotion is blocked.'
+          grep -Fq 'name: Record UAT approval' .github/workflows/record-uat-approval.yml || block 'Release UAT approval workflow contract is invalid.'
+          grep -Fq 'verify_uat_approval_runtime' infrastructure/production/scripts/validate-production.sh || block 'Release does not enforce UAT approval evidence during production validation.'
+          grep -Fq 'uat-approval-' infrastructure/production/scripts/validate-production.sh || block 'Release does not require retained UAT approval artifacts.'
           for name in HOST DOMAIN SSH_KEY KNOWN_HOSTS STAGING_QA_CUSTOMER_EMAIL STAGING_PAYMENT_PROVIDER STAGING_PAYMENT_EXPECTED_HOST PAYMENT_WEBHOOK_SECRET; do
-            test -n "${!name:-}" || { echo "Missing staging payment value $name" >&2; exit 1; }
+            test -n "${!name:-}" || block "Missing staging payment value $name"
           done
           case "$STAGING_PAYMENT_PROVIDER" in
-            payfast) test -n "$PAYFAST_CHECKOUT_URL" && test -n "$PAYFAST_MERCHANT_ID" && test -n "$PAYFAST_SECRET" ;;
-            jazzcash) test -n "$JAZZCASH_CHECKOUT_URL" && test -n "$JAZZCASH_MERCHANT_ID" && test -n "$JAZZCASH_SECRET" ;;
-            easypaisa) test -n "$EASYPAISA_CHECKOUT_URL" && test -n "$EASYPAISA_STORE_ID" && test -n "$EASYPAISA_SECRET" ;;
-            mock|'') echo 'A real sandbox provider (payfast, jazzcash or easypaisa) is required before production.' >&2; exit 1 ;;
-            *) echo 'Unsupported staging payment provider.' >&2; exit 1 ;;
+            payfast)
+              test -n "$PAYFAST_CHECKOUT_URL" || block 'Missing staging payment value PAYFAST_CHECKOUT_URL'
+              test -n "$PAYFAST_MERCHANT_ID" || block 'Missing staging payment value PAYFAST_MERCHANT_ID'
+              test -n "$PAYFAST_SECRET" || block 'Missing staging payment value PAYFAST_SECRET'
+              ;;
+            jazzcash)
+              test -n "$JAZZCASH_CHECKOUT_URL" || block 'Missing staging payment value JAZZCASH_CHECKOUT_URL'
+              test -n "$JAZZCASH_MERCHANT_ID" || block 'Missing staging payment value JAZZCASH_MERCHANT_ID'
+              test -n "$JAZZCASH_SECRET" || block 'Missing staging payment value JAZZCASH_SECRET'
+              ;;
+            easypaisa)
+              test -n "$EASYPAISA_CHECKOUT_URL" || block 'Missing staging payment value EASYPAISA_CHECKOUT_URL'
+              test -n "$EASYPAISA_STORE_ID" || block 'Missing staging payment value EASYPAISA_STORE_ID'
+              test -n "$EASYPAISA_SECRET" || block 'Missing staging payment value EASYPAISA_SECRET'
+              ;;
+            mock|'') block 'A real sandbox provider (payfast, jazzcash or easypaisa) is required before production.' ;;
+            *) block 'Unsupported staging payment provider.' ;;
           esac
-          [[ "$STAGING_PAYMENT_EXPECTED_HOST" != "$DOMAIN" ]] || { echo 'Sandbox redirect host must not be the Jalwa staging host.' >&2; exit 1; }
+          [[ "$STAGING_PAYMENT_EXPECTED_HOST" != "$DOMAIN" ]] || block 'Sandbox redirect host must not be the Jalwa staging host.'
 
       - name: Configure pinned staging SSH identity
         id: ssh
@@ -283,12 +322,14 @@ jobs:
       - name: Enforce production payment gate and restored staging state
         if: always()
         env:
+          BOUNDARY_OUTCOME: ${{ steps.boundary.outcome }}
           CONFIGURE_OUTCOME: ${{ steps.configure.outcome }}
           SANDBOX_OUTCOME: ${{ steps.sandbox.outcome }}
           RESTORE_OUTCOME: ${{ steps.restore.outcome }}
           EVIDENCE_OUTCOME: ${{ steps.evidence.outcome }}
         run: |
           set -euo pipefail
+          test "$BOUNDARY_OUTCOME" = success || { echo 'Provider sandbox boundary validation failed — production blocked.' >&2; exit 1; }
           test "$CONFIGURE_OUTCOME" = success || { echo 'Provider sandbox configuration failed — production blocked.' >&2; exit 1; }
           test "$SANDBOX_OUTCOME" = success || { echo 'Real payment sandbox failed — production blocked.' >&2; exit 1; }
           test "$RESTORE_OUTCOME" = success || { echo 'Mock staging restore failed — production blocked.' >&2; exit 1; }
