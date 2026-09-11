@@ -14,6 +14,10 @@ on:
         description: Exact staging deployment run that built the running images
         required: true
         type: string
+  push:
+    branches: [main]
+    paths:
+      - ".release-gates/payment-sandbox.request.json"
 
 permissions:
   contents: read
@@ -30,8 +34,7 @@ jobs:
       name: staging
       url: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
     env:
-      RELEASE_SHA: ${{ inputs.release_sha }}
-      STAGING_DEPLOYMENT_RUN_ID: ${{ inputs.staging_deployment_run_id }}
+      REQUEST_FILE: .release-gates/payment-sandbox.request.json
       HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
       USER: ${{ vars.STAGING_USER || 'codistan' }}
       APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
@@ -59,17 +62,35 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          ref: ${{ inputs.release_sha }}
           fetch-depth: 0
+
+      - name: Resolve audited payment sandbox request
+        id: request
+        env:
+          INPUT_RELEASE_SHA: ${{ inputs.release_sha }}
+          INPUT_STAGING_DEPLOYMENT_RUN_ID: ${{ inputs.staging_deployment_run_id }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main || { echo 'Payment sandbox certification must run from main.' >&2; exit 1; }
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            release_sha="$INPUT_RELEASE_SHA"
+            staging_run_id="$INPUT_STAGING_DEPLOYMENT_RUN_ID"
+          else
+            test -s "$REQUEST_FILE"
+            release_sha="$(jq -r '.release_sha // empty' "$REQUEST_FILE")"
+            staging_run_id="$(jq -r '.staging_deployment_run_id // empty' "$REQUEST_FILE")"
+          fi
+          [[ "$release_sha" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_sha must be a lowercase 40-character SHA.' >&2; exit 1; }
+          [[ "$staging_run_id" =~ ^[0-9]+$ ]] || { echo 'staging_deployment_run_id must be numeric.' >&2; exit 1; }
+          git merge-base --is-ancestor "$release_sha" origin/main || { echo 'Certified release is not reachable from main.' >&2; exit 1; }
+          printf 'RELEASE_SHA=%s\nSTAGING_DEPLOYMENT_RUN_ID=%s\n' "$release_sha" "$staging_run_id" >> "$GITHUB_ENV"
+          printf 'release_sha=%s\nstaging_deployment_run_id=%s\n' "$release_sha" "$staging_run_id" >> "$GITHUB_OUTPUT"
+          git checkout --detach "$release_sha"
+          test "$(git rev-parse HEAD)" = "$release_sha"
 
       - name: Validate exact release and provider sandbox boundary
         run: |
           set -euo pipefail
-          test "$GITHUB_REF" = refs/heads/main || { echo 'Payment sandbox certification must be dispatched from main.' >&2; exit 1; }
-          [[ "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'release_sha must be a lowercase 40-character SHA.' >&2; exit 1; }
-          [[ "$STAGING_DEPLOYMENT_RUN_ID" =~ ^[0-9]+$ ]] || { echo 'staging_deployment_run_id must be numeric.' >&2; exit 1; }
-          test "$(git rev-parse HEAD)" = "$RELEASE_SHA"
-          git merge-base --is-ancestor "$RELEASE_SHA" origin/main
           test "$USER" = codistan
           test "$APP_DIR" = /opt/codistan/jalwa-platform
           for name in HOST DOMAIN SSH_KEY KNOWN_HOSTS STAGING_QA_CUSTOMER_EMAIL STAGING_PAYMENT_PROVIDER STAGING_PAYMENT_EXPECTED_HOST PAYMENT_WEBHOOK_SECRET; do
@@ -245,7 +266,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: payment-sandbox-${{ env.RELEASE_SHA }}-${{ github.run_id }}
+          name: payment-sandbox-${{ steps.request.outputs.release_sha }}-${{ github.run_id }}
           path: |
             ${{ env.PAYMENT_SANDBOX_EVIDENCE_FILE }}
             ${{ github.workspace }}/payment-sandbox-playwright-junit.xml
