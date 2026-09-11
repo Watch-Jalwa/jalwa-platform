@@ -75,11 +75,11 @@ jobs:
           if sudo -n true >/dev/null 2>&1; then
             sudo -n apt-get clean >/dev/null 2>&1 || true
             sudo -n rm -rf /var/lib/apt/lists/* >/dev/null 2>&1 || true
-            sudo -n journalctl --vacuum-size=64M >/dev/null 2>&1 || true
+            sudo -n journalctl --vacuum-size=32M >/dev/null 2>&1 || true
             sudo -n logrotate -f /etc/logrotate.conf >/dev/null 2>&1 || true
             sudo -n find /var/log -xdev -type f \
               \( -name '*.gz' -o -name '*.old' -o -regex '.*/[^/]*\.[0-9]+' \) \
-              -mtime +2 -delete 2>/dev/null || true
+              -delete 2>/dev/null || true
 
             if command -v snap >/dev/null 2>&1; then
               while read -r snap_name snap_revision; do
