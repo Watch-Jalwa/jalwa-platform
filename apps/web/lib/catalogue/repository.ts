@@ -1,8 +1,9 @@
 import { liveSourcesEnabled } from "@/lib/live-sources/registry";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import { createClient } from "@/lib/database/server";
+import { hasActivePremiumBenefit } from "@/lib/premium/access";
 import { categories as demoCategories, featuredContent } from "./demo-data";
-import type { CatalogueCategory, CatalogueItem, LiveCatalogueCollection, PlaybackSource } from "./types";
+import type { CatalogueCategory, CatalogueCollection, CatalogueItem, LiveCatalogueCollection, PlaybackSource } from "./types";
 
 function asString(value: unknown) { return typeof value === "string" ? value : null; }
 function asTimestamp(value: unknown) {
@@ -25,6 +26,8 @@ function mapSearchRow(row: Record<string, unknown>): CatalogueItem {
     contentType: (asString(row.content_type) ?? "video") as CatalogueItem["contentType"],
     hostingMode: (asString(row.hosting_mode) ?? "external_link") as CatalogueItem["hostingMode"],
     thumbnailUrl: asString(row.thumbnail_url),
+    publishedAt: asTimestamp(row.published_at),
+    isEarlyAccess: Boolean(asTimestamp(row.published_at) && new Date(asTimestamp(row.published_at)!).getTime() > Date.now()),
   };
 }
 
@@ -80,7 +83,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
   try {
     const database = await createClient();
     const { data, error } = await database.from("content_items")
-      .select("id,slug,title_en,title_ur,description_en,content_type,hosting_mode,access_level,duration_seconds,thumbnail_url,primary_category_id")
+      .select("id,slug,title_en,title_ur,description_en,content_type,hosting_mode,access_level,duration_seconds,thumbnail_url,primary_category_id,publish_at")
       .eq("slug", slug).maybeSingle();
     if (error) throw error;
     if (!data) return null;
@@ -158,6 +161,8 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       playback: source,
       sourceUrl: rights?.source_url ?? source?.officialSourceUrl ?? source?.externalUrl,
       attribution: rights?.attribution_text ?? source?.requiredAttribution,
+      publishedAt: data.publish_at,
+      isEarlyAccess: Boolean(data.publish_at && new Date(data.publish_at).getTime() > Date.now()),
     };
   } catch (error) {
     if (canUseDemoData()) return featuredContent.find((item) => item.slug === slug) ?? null;
@@ -204,5 +209,88 @@ export async function getLiveCatalogue(): Promise<{ items: CatalogueItem[]; coll
     return { items: topLevel, collections };
   } catch (error) {
     return catalogueFailure("live", error);
+  }
+}
+
+
+export async function getCollections(): Promise<CatalogueCollection[]> {
+  if (canUseDemoData()) return [];
+  requireDatabase();
+  try {
+    const database = await createClient();
+    const premiumCollections = await hasActivePremiumBenefit("premium_collections");
+    const { data, error } = await database.from("collections")
+      .select("id,slug,title_en,description_en,access_level,publish_at")
+      .eq("status", "published")
+      .order("publish_at", { ascending: false });
+    if (error) throw error;
+    return (data ?? []).map((row) => ({
+      id: row.id,
+      slug: row.slug,
+      title: row.title_en,
+      description: row.description_en,
+      accessLevel: row.access_level,
+      publishedAt: row.publish_at,
+      locked: row.access_level === "premium" && !premiumCollections,
+      items: [],
+    }));
+  } catch (error) {
+    return catalogueFailure("collections", error);
+  }
+}
+
+export async function getCollectionBySlug(slug: string): Promise<CatalogueCollection | null> {
+  if (canUseDemoData()) return null;
+  requireDatabase();
+  try {
+    const database = await createClient();
+    const premiumCollections = await hasActivePremiumBenefit("premium_collections");
+    const { data: collection, error } = await database.from("collections")
+      .select("id,slug,title_en,description_en,access_level,publish_at")
+      .eq("slug", slug)
+      .eq("status", "published")
+      .maybeSingle();
+    if (error) throw error;
+    if (!collection) return null;
+    const locked = collection.access_level === "premium" && !premiumCollections;
+    if (locked) {
+      return {
+        id: collection.id,
+        slug: collection.slug,
+        title: collection.title_en,
+        description: collection.description_en,
+        accessLevel: collection.access_level,
+        publishedAt: collection.publish_at,
+        locked: true,
+        items: [],
+      };
+    }
+    const { data: memberships, error: membershipError } = await database.from("collection_items")
+      .select("content_id,sort_order")
+      .eq("collection_id", collection.id)
+      .order("sort_order");
+    if (membershipError) throw membershipError;
+    const ids = (memberships ?? []).map((item) => item.content_id);
+    const { data: rows, error: contentError } = ids.length
+      ? await database.from("content_items").select("id,slug").in("id", ids)
+      : { data: [], error: null };
+    if (contentError) throw contentError;
+    const slugById = new Map((rows ?? []).map((item) => [item.id, item.slug]));
+    const items = (await Promise.all((memberships ?? []).map((item) => {
+      const itemSlug = slugById.get(item.content_id);
+      return itemSlug ? getContentBySlug(itemSlug) : Promise.resolve(null);
+    }))).filter((item): item is CatalogueItem => Boolean(item));
+    return {
+      id: collection.id,
+      slug: collection.slug,
+      title: collection.title_en,
+      description: collection.description_en,
+      accessLevel: collection.access_level,
+      publishedAt: collection.publish_at,
+      locked: false,
+      items,
+    };
+  } catch (error) {
+    return catalogueFailure("collection", error);
   }
 }

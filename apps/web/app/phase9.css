@@ -37,3 +37,46 @@
 @media (prefers-reduced-motion: reduce) {
   .live-card, .live-card-art { transition: none !important; animation: none !important; }
 }
+
+
+/* Premium benefit delivery */
+.jalwa-ad-slot {
+  width: min(1180px, calc(100% - 2rem));
+  margin: 1rem auto 2rem;
+  padding: 1rem 1.15rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: linear-gradient(135deg, rgba(255,107,44,.12), transparent 55%), var(--surface);
+}
+.jalwa-ad-slot div { display: grid; gap: .3rem; }
+.jalwa-ad-slot strong { line-height: 1.35; }
+.jalwa-ad-slot small { color: var(--muted); line-height: 1.45; }
+
+.collections-page, .collection-detail { display: grid; gap: 1.5rem; }
+.collections-hero {
+  padding: 1.35rem;
+  border: 1px solid var(--border);
+  border-radius: calc(var(--radius) + .2rem);
+  background: radial-gradient(circle at 88% 12%, rgba(255,107,44,.16), transparent 34%), var(--surface);
+}
+.collections-hero h1 { margin: .4rem 0 .7rem; font-size: clamp(2rem, 7vw, 3.6rem); line-height: 1; }
+.collections-hero p { max-width: 46rem; color: var(--muted); line-height: 1.65; }
+.collections-grid { display: grid; grid-template-columns: 1fr; gap: 1rem; }
+.collection-card { padding: 1.1rem; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+.collection-card h2 { margin: .45rem 0 .55rem; }
+.collection-card p { color: var(--muted); line-height: 1.55; }
+.premium-collection-lock { display: grid; gap: .75rem; justify-items: start; }
+.early-access-notice { width: fit-content; padding: .4rem .65rem; border-radius: 999px; background: rgba(255,107,44,.14); color: var(--brand); font-size: .82rem; font-weight: 800; }
+.playback-benefit-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; }
+.playback-benefit-row [data-testid="playback-quality"] { color: var(--muted); font-size: .8rem; font-weight: 700; }
+
+@media (min-width: 720px) {
+  .collections-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .jalwa-ad-slot { align-items: flex-start; flex-direction: column; }
+}

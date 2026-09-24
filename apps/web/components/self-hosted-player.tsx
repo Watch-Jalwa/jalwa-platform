@@ -9,6 +9,7 @@ export function SelfHostedPlayer({ contentId, title, poster }: { contentId: stri
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSavedRef = useRef(0);
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
+  const [qualityLabel, setQualityLabel] = useState("Standard quality");
 
   useEffect(() => {
     let hls: Hls | null = null;
@@ -20,6 +21,7 @@ export function SelfHostedPlayer({ contentId, title, poster }: { contentId: stri
         if (!cancelled) setError({ message: data.code === "payment_required" ? "Upgrade to Premium to watch this title." : data.error, code: data.code });
         return;
       }
+      if (!cancelled) setQualityLabel(data.qualityTier === "premium" ? `Premium · up to ${data.maxQualityHeight ?? 720}p` : `Standard · up to ${data.maxQualityHeight ?? 480}p`);
       const video = videoRef.current;
       if (!video) return;
       const credentialed = data.delivery === "cloudfront";
@@ -52,5 +54,5 @@ export function SelfHostedPlayer({ contentId, title, poster }: { contentId: stri
   }
 
   if (error) return <div className="player-placeholder"><p>{error.message}</p>{error.code === "payment_required" ? <Link className="button button-primary" href="/pricing">View Premium</Link> : <button className="button button-secondary" type="button" onClick={() => window.location.reload()}>Retry</button>}</div>;
-  return <div className="self-hosted-stack"><video ref={videoRef} controls playsInline poster={poster ?? undefined} preload="metadata" title={title} onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; if (current - lastSavedRef.current >= 15) void saveProgress(); }} onPause={() => void saveProgress()} onEnded={() => void saveProgress(true)} /><OfflineButton contentId={contentId} title={title} /></div>;
+  return <div className="self-hosted-stack"><video ref={videoRef} controls playsInline poster={poster ?? undefined} preload="metadata" title={title} onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; if (current - lastSavedRef.current >= 15) void saveProgress(); }} onPause={() => void saveProgress()} onEnded={() => void saveProgress(true)} /><div className="playback-benefit-row"><span data-testid="playback-quality">{qualityLabel}</span><OfflineButton contentId={contentId} title={title} /></div></div>;
 }

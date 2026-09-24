@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 import { createCloudFrontSignedCookies } from "@/lib/media/cloudfront-signing.mjs";
 import { signPlaybackToken } from "@/lib/media/token.mjs";
+import { resolvePlaybackQuality } from "@/lib/premium/benefits";
 
 export const runtime = "nodejs";
 type Params = Promise<{ contentId: string }>;
@@ -80,6 +81,11 @@ export async function POST(request: Request, { params }: { params: Params }) {
     if (!entitled) return NextResponse.json({ error: "Premium entitlement is required.", code: "payment_required" }, { status: 402 });
   }
 
+  const { data: enhancedQuality } = user
+    ? await database.rpc("has_active_benefit", { p_benefit: "enhanced_quality" })
+    : { data: false };
+  const quality = resolvePlaybackQuality(enhancedQuality === true);
+
   const { data: playback } = await database.from("playback_sources")
     .select("media_asset_id,media_url,format,is_available")
     .eq("content_id", contentId)
@@ -94,6 +100,11 @@ export async function POST(request: Request, { params }: { params: Params }) {
   if (!mediaPath.startsWith(pathPrefix) || mediaPath.includes("..")) {
     return NextResponse.json({ error: "Playback media path is invalid." }, { status: 409 });
   }
+  const selectedMediaPath = playback.format === "hls"
+    && mediaPath === `${pathPrefix}master.m3u8`
+    && quality.maxHeight < 720
+      ? `${pathPrefix}480p/index.m3u8`
+      : mediaPath;
   const ttl = Math.min(Math.max(Number(process.env.MEDIA_PLAYBACK_TTL_SECONDS ?? 300), 60), 900);
   const expires = new Date(Date.now() + ttl * 1000);
 
@@ -112,8 +123,10 @@ export async function POST(request: Request, { params }: { params: Params }) {
       expiresAt: expires,
     });
     const response = NextResponse.json({
-      url: `${baseUrl}/${mediaPath}`,
+      url: `${baseUrl}/${selectedMediaPath}`,
       format: playback.format,
+      qualityTier: quality.tier,
+      maxQualityHeight: quality.maxHeight,
       expiresIn: ttl,
       offlineAllowed: false,
       offlineExpiresIn: 0,
@@ -141,8 +154,10 @@ export async function POST(request: Request, { params }: { params: Params }) {
   }, secret, ttl);
   const offlineAllowed = content.access_level === "public" && playback.format === "mp4";
   return NextResponse.json({
-    url: `${cleanBaseUrl(gateway)}/${mediaPath}?token=${encodeURIComponent(token)}`,
+    url: `${cleanBaseUrl(gateway)}/${selectedMediaPath}?token=${encodeURIComponent(token)}`,
     format: playback.format,
+    qualityTier: quality.tier,
+    maxQualityHeight: quality.maxHeight,
     expiresIn: ttl,
     offlineAllowed,
     offlineExpiresIn: offlineAllowed ? Number(process.env.OFFLINE_PUBLIC_TTL_SECONDS ?? 604800) : 0,

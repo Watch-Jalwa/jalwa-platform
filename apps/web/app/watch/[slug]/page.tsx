@@ -65,7 +65,7 @@ export default async function WatchPage({ params }: { params: Params }) {
     <div className="player-shell">{player}</div>
     <article className="watch-copy">
       <span className="eyebrow">{item.category} · {item.contentType === "live" ? "Live source" : formatDuration(item.durationSeconds)}</span>
-      <h1>{item.title}</h1>
+      <h1>{item.title}</h1>\n      {item.isEarlyAccess ? <p className="early-access-notice" data-testid="early-access-notice">Premium early access · public release is scheduled for later.</p> : null}
       {item.titleUrdu ? <p className="urdu watch-urdu">{item.titleUrdu}</p> : null}
       {item.description ? <p>{item.description}</p> : null}
       {item.attribution ? <p className="attribution">{item.attribution}</p> : null}

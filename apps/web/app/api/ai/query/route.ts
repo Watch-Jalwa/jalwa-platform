@@ -3,6 +3,7 @@ import { createClient } from "@/lib/database/server";
 import { buildRetrievalQuery } from "@/lib/ai/grounding.mjs";
 import { createGroundedAnswer, moderateQuestion, type GroundedSource } from "@/lib/ai/openai";
 import { AiRequestBodyError, isAiEnabled, readAiRequestBody } from "@/lib/ai/request.mjs";
+import { resolveAiDailyLimit } from "@/lib/premium/benefits";
 
 export const runtime = "nodejs";
 
@@ -54,9 +55,10 @@ export async function POST(request: Request) {
 
     const selectedLanguage = language(body.language);
     const { data: hasAiPlus } = await database.rpc("has_active_benefit", { p_benefit: "ai_plus" });
-    const dailyLimit = hasAiPlus
-      ? Number(process.env.AI_PREMIUM_DAILY_LIMIT ?? 50)
-      : Number(process.env.AI_FREE_DAILY_LIMIT ?? 5);
+    const dailyLimit = resolveAiDailyLimit(hasAiPlus === true, {
+      premium: Number(process.env.AI_PREMIUM_DAILY_LIMIT ?? 50),
+      free: Number(process.env.AI_FREE_DAILY_LIMIT ?? 5),
+    });
     const { data: quotaAccepted, error: quotaError } = await database.rpc("consume_ai_quota", {
       p_feature: "ask_jalwa",
       p_limit: dailyLimit,
