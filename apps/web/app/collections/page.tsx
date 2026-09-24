@@ -14,7 +14,8 @@ export default async function CollectionsPage() {
         <h1>Collections</h1>
         <p>Editorial sets built around useful stories, skills and entertainment. Premium collections unlock with an active Jalwa Premium subscription.</p>
       </section>
-      <JalwaAdSlot placement="collections" />\n      {collections.length ? <div className="collections-grid">
+      <JalwaAdSlot placement="collections" />
+      {collections.length ? <div className="collections-grid">
         {collections.map((collection) => (
           <article className="collection-card" data-testid={collection.locked ? "premium-collection-locked" : "collection-card"} key={collection.slug}>
             <span className="eyebrow">{collection.accessLevel === "premium" ? "Premium collection" : "Collection"}</span>
