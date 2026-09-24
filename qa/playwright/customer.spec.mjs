@@ -42,7 +42,7 @@ test.describe.serial("authenticated Premium customer", () => {
   test("free tier is denied or capped across all Premium benefit boundaries", async ({ page }) => {
     await authenticatePage(page, config, customer.email, "/");
 
-    await page.goto("/", { waitUntil: "networkidle" });
+    await page.goto("/collections", { waitUntil: "networkidle" });
     await expect(page.getByTestId("jalwa-ad-slot")).toBeVisible();
 
     const lockedCollection = await page.goto(`/collections/${fixture.premiumCollectionSlug}`, { waitUntil: "networkidle" });
@@ -151,7 +151,7 @@ test.describe.serial("authenticated Premium customer", () => {
   test("all six Premium benefits are delivered after entitlement activation", async ({ page }) => {
     await authenticatePage(page, config, customer.email, "/");
 
-    await page.goto("/", { waitUntil: "networkidle" });
+    await page.goto("/collections", { waitUntil: "networkidle" });
     await expect(page.getByTestId("jalwa-ad-slot")).toHaveCount(0);
 
     await page.goto("/pricing", { waitUntil: "networkidle" });
