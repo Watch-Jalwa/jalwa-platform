@@ -7,6 +7,7 @@ import {
   getActivePrice,
   qaConfig,
   qaFetch,
+  qaMutate,
 } from "./helpers/staging.mjs";
 
 const customerEmail = (process.env.STAGING_QA_CUSTOMER_EMAIL ?? "").trim();
@@ -17,12 +18,61 @@ const config = qaConfig();
 
 let customer;
 let price;
+let fixture;
 
-test.describe("authenticated Premium customer", () => {
+test.describe.serial("authenticated Premium customer", () => {
   test.beforeAll(async () => {
     if (!customerEmail) throw new Error("STAGING_QA_CUSTOMER_EMAIL is required for customer certification.");
     customer = await (await import("./helpers/staging.mjs")).ensureQaUser(config, customerEmail, "subscriber");
     price = await getActivePrice(config);
+    const prepared = await qaMutate(config, "POST", "premium-benefit-fixture", { userId: customer.id });
+    expect(prepared.ok, `Premium benefit fixture setup failed with HTTP ${prepared.status}.`).toBeTruthy();
+    fixture = (await prepared.json()).data;
+    expect(fixture?.premiumContentId).toBeTruthy();
+    expect(fixture?.qualityContentId).toBeTruthy();
+    expect(fixture?.earlyAccessSlug).toBeTruthy();
+    expect(fixture?.premiumCollectionSlug).toBeTruthy();
+  });
+
+  test.afterAll(async () => {
+    const cleaned = await qaMutate(config, "DELETE", "premium-benefit-fixture");
+    expect(cleaned.ok, `Premium benefit fixture cleanup failed with HTTP ${cleaned.status}.`).toBeTruthy();
+  });
+
+  test("free tier is denied or capped across all Premium benefit boundaries", async ({ page }) => {
+    await authenticatePage(page, config, customer.email, "/");
+
+    await page.goto("/", { waitUntil: "networkidle" });
+    await expect(page.getByTestId("jalwa-ad-slot")).toBeVisible();
+
+    const lockedCollection = await page.goto(`/collections/${fixture.premiumCollectionSlug}`, { waitUntil: "networkidle" });
+    expect(lockedCollection?.status()).toBe(200);
+    await expect(page.getByTestId("premium-collection-lock")).toBeVisible();
+
+    const earlyAccess = await page.goto(`/watch/${fixture.earlyAccessSlug}`, { waitUntil: "domcontentloaded" });
+    expect(earlyAccess?.status()).toBe(404);
+
+    const standardQuality = await page.evaluate(async (contentId) => {
+      const response = await fetch(`/api/playback/${contentId}/token`, { method: "POST" });
+      return { status: response.status, body: await response.json() };
+    }, fixture.qualityContentId);
+    expect(standardQuality.status).toBe(200);
+    expect(standardQuality.body.qualityTier).toBe("standard");
+    expect(standardQuality.body.maxQualityHeight).toBe(480);
+    expect(standardQuality.body.url).toMatch(/\/480p\/index\.m3u8\?/);
+
+    const premiumTitle = await page.evaluate(async (contentId) => {
+      const response = await fetch(`/api/playback/${contentId}/token`, {
+        method: "POST",
+        headers: { "x-jalwa-device-key": "qa-premium-benefit-device" },
+      });
+      return { status: response.status, body: await response.json() };
+    }, fixture.premiumContentId);
+    expect(premiumTitle.status).toBe(402);
+    expect(premiumTitle.body.code).toBe("payment_required");
+
+    await page.goto("/ask", { waitUntil: "networkidle" });
+    await expect(page.getByTestId("ask-jalwa-allowance")).toContainText("Free allowance: 5 questions per day.");
   });
 
   test("anonymous checkout is denied", async ({ request }) => {
@@ -96,6 +146,66 @@ test.describe("authenticated Premium customer", () => {
     const { data: order } = await orderResponse.json();
     expect(order?.status).toBe("succeeded");
     await expectSubscriptionAndEntitlements(config, customer.id, price);
+  });
+
+  test("all six Premium benefits are delivered after entitlement activation", async ({ page }) => {
+    await authenticatePage(page, config, customer.email, "/");
+
+    await page.goto("/", { waitUntil: "networkidle" });
+    await expect(page.getByTestId("jalwa-ad-slot")).toHaveCount(0);
+
+    await page.goto("/pricing", { waitUntil: "networkidle" });
+    for (const label of [
+      "Full authorised Jalwa catalogue",
+      "Jalwa Originals and early access",
+      "Ad-free Jalwa interface",
+      "Enhanced playback quality",
+      "Larger Ask Jalwa allowance",
+      "Premium collections",
+    ]) {
+      await expect(page.getByText(label, { exact: true })).toBeVisible();
+    }
+
+    const collection = await page.goto(`/collections/${fixture.premiumCollectionSlug}`, { waitUntil: "networkidle" });
+    expect(collection?.status()).toBe(200);
+    await expect(page.getByTestId("premium-collection-lock")).toHaveCount(0);
+    await expect(page.getByTestId("premium-collection-content")).toContainText("QA Enhanced Quality Title");
+
+    const earlyAccess = await page.goto(`/watch/${fixture.earlyAccessSlug}`, { waitUntil: "networkidle" });
+    expect(earlyAccess?.status()).toBe(200);
+    await expect(page.getByTestId("early-access-notice")).toBeVisible();
+
+    const enhancedQuality = await page.evaluate(async (contentId) => {
+      const response = await fetch(`/api/playback/${contentId}/token`, { method: "POST" });
+      return { status: response.status, body: await response.json() };
+    }, fixture.qualityContentId);
+    expect(enhancedQuality.status).toBe(200);
+    expect(enhancedQuality.body.qualityTier).toBe("premium");
+    expect(enhancedQuality.body.maxQualityHeight).toBe(720);
+    expect(enhancedQuality.body.url).toMatch(/\/master\.m3u8\?/);
+
+    const premiumTitle = await page.evaluate(async (contentId) => {
+      const response = await fetch(`/api/playback/${contentId}/token`, {
+        method: "POST",
+        headers: { "x-jalwa-device-key": "qa-premium-benefit-device" },
+      });
+      return { status: response.status, body: await response.json() };
+    }, fixture.premiumContentId);
+    expect(premiumTitle.status).toBe(200);
+    expect(premiumTitle.body.qualityTier).toBe("premium");
+
+    await page.route("**/api/media/**", async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/vnd.apple.mpegurl",
+        body: "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:6\n#EXT-X-MEDIA-SEQUENCE:0\n#EXT-X-ENDLIST\n",
+      });
+    });
+    await page.goto(`/watch/${fixture.qualitySlug}`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByTestId("playback-quality")).toContainText("Premium · up to 720p");
+
+    await page.goto("/ask", { waitUntil: "networkidle" });
+    await expect(page.getByTestId("ask-jalwa-allowance")).toContainText("Premium allowance: 50 questions per day.");
   });
 
   test("complete Premium purchase passes on Mobile Chromium", async ({ browser }) => {
