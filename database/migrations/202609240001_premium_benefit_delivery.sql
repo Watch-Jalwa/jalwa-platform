@@ -51,25 +51,46 @@ stable
 security invoker
 set search_path = ''
 as $$
-  select c.id, c.slug, c.title_en, c.title_ur, c.description_en, cat.slug, cat.name_en,
-    c.content_type, c.hosting_mode, c.access_level, c.duration_seconds, c.thumbnail_url, c.publish_at
+  select
+    c.id,
+    c.slug,
+    c.title_en,
+    c.title_ur,
+    c.description_en,
+    cat.slug,
+    cat.name_en,
+    c.content_type,
+    c.hosting_mode,
+    c.access_level,
+    c.duration_seconds,
+    c.thumbnail_url,
+    c.publish_at
   from public.content_items c
   left join public.categories cat on cat.id = c.primary_category_id
-  where c.status = 'published'
-    and c.is_available
-    and c.disabled_at is null
-    and public.has_publishable_rights(c.id, c.hosting_mode, c.access_level)
-    and public.can_access_release_window(c.publish_at, c.unpublish_at)
+  where public.is_content_effectively_available(c.id)
     and (p_category is null or p_category = '' or cat.slug = p_category)
     and (
-      p_query is null or p_query = ''
-      or to_tsvector('simple', coalesce(c.title_en, '') || ' ' || coalesce(c.title_ur, '') || ' ' || coalesce(c.title_roman_ur, '') || ' ' || coalesce(c.description_en, ''))
-        @@ websearch_to_tsquery('simple', p_query)
+      p_query is null
+      or p_query = ''
+      or to_tsvector(
+        'simple',
+        coalesce(c.title_en, '') || ' ' ||
+        coalesce(c.title_ur, '') || ' ' ||
+        coalesce(c.title_roman_ur, '') || ' ' ||
+        coalesce(c.description_en, '')
+      ) @@ websearch_to_tsquery('simple', p_query)
       or extensions.similarity(c.title_en, p_query) > .2
     )
-  order by c.is_featured desc, c.publish_at desc nulls last, c.created_at desc
+  order by
+    c.is_featured desc,
+    c.publish_at desc nulls last,
+    c.created_at desc,
+    c.slug asc
   limit least(greatest(p_limit, 1), 100)
 $$;
+
+comment on function public.search_catalogue(text, text, integer) is
+  'Returns the governed catalogue with Premium Early Access applied by the shared availability predicate and deterministic slug tie-breaking.';
 
 drop policy if exists "catalogue public" on public.content_items;
 create policy "catalogue public" on public.content_items
