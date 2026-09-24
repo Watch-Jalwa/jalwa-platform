@@ -1,4 +1,5 @@
-import { RecommendationRail } from "@/components/recommendation-rail";\nimport { JalwaAdSlot } from "@/components/jalwa-ad-slot";
+import { RecommendationRail } from "@/components/recommendation-rail";
+import { JalwaAdSlot } from "@/components/jalwa-ad-slot";
 import { getRecommendations } from "@/lib/recommendations/repository";
 
 export const metadata = { title: "For You" };
