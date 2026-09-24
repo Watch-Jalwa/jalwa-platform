@@ -1,4 +1,5 @@
-import Link from "next/link";\nimport { JalwaAdSlot } from "@/components/jalwa-ad-slot";
+import Link from "next/link";
+import { JalwaAdSlot } from "@/components/jalwa-ad-slot";
 import { getCollections } from "@/lib/catalogue/repository";
 
 export const metadata = { title: "Collections" };
