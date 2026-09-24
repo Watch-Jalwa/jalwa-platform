@@ -11,7 +11,7 @@ export function ContentCard({ item }: { item: CatalogueItem }) {
           className="content-art"
           style={item.thumbnailUrl ? { backgroundImage: `linear-gradient(180deg,transparent,rgba(0,0,0,.82)),url(${item.thumbnailUrl})` } : undefined}
         >
-          <span>{premium ? "Premium" : "Free"}</span>
+          <span>{item.isEarlyAccess ? "Early access" : premium ? "Premium" : "Free"}</span>
         </div>
         <h3>{item.title}</h3>
         <p>{item.category} · {formatDuration(item.durationSeconds)}</p>
