@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { PoolClient } from "pg";
 import { databasePool } from "@/lib/database/pool";
 import { stagingQaAuthorized } from "../_guard";
 
@@ -19,7 +20,7 @@ const premiumFixture = {
   premiumCollectionSlug: "qa-premium-collection",
 } as const;
 
-async function clearPremiumFixture(client: Awaited<ReturnType<typeof databasePool.connect>>) {
+async function clearPremiumFixture(client: PoolClient) {
   await client.query(`delete from public.collections where id=$1`, [premiumFixture.premiumCollectionId]);
   await client.query(`delete from public.content_items where id=any($1::uuid[])`, [[
     premiumFixture.premiumContentId,
