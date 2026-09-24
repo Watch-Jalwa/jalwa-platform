@@ -4,7 +4,6 @@ import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { BottomNav } from "@/components/bottom-nav";
 import { DeviceHeartbeat } from "@/components/device-heartbeat";
 import { ErrorMonitor } from "@/components/error-monitor";
-import { JalwaAdSlot } from "@/components/jalwa-ad-slot";
 import { PreviewBanner } from "@/components/preview-banner";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
 import { SiteFooter } from "@/components/site-footer";
