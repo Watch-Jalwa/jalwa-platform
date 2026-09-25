@@ -1,0 +1,50 @@
+name: Read-only Premium staging deploy diagnostic
+
+on:
+  push:
+    branches:
+      - diagnostics/premium-deploy-9d07
+    paths:
+      - .github/workflows/read-only-premium-deploy-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Configure pinned SSH identity
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+      - name: Read-only deploy state
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          echo '=== disk ==='
+          df -h /
+          echo '=== relevant processes ==='
+          ps -eo pid,etime,comm,args | grep -E 'backup-postgres|apply-migrations|deploy-release|restore-drill|host-acceptance|pg_dump|pg_restore|docker compose|age|aws s3' | grep -v grep || true
+          echo '=== containers ==='
+          docker ps --format '{{.Names}}|{{.Status}}|{{.Image}}' | grep '^jalwa-' || true
+          echo '=== lock/state files ==='
+          for f in "$APP_DIR/.migration.lock" "$APP_DIR/.migration-baseline.lock"; do
+            if test -e "$f"; then stat -c '%n|size=%s|mtime=%y' "$f"; else echo "$f|absent"; fi
+          done
+          echo '=== recent deployment identities ==='
+          find "$APP_DIR/deployments" -maxdepth 1 -type f -name '*.identity.json' -printf '%f|%TY-%Tm-%TdT%TH:%TM:%TS\n' 2>/dev/null | sort | tail -5 || true
+          REMOTE
