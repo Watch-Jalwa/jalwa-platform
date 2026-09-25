@@ -1,0 +1,49 @@
+name: Diagnose Premium staging cutover
+
+on:
+  push:
+    branches:
+      - "ops/premium-recert-20260925"
+    paths:
+      - ".github/workflows/ops-diagnose-premium-cutover.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      EXPECTED_SHA: "9d07aae93b7cf1d2c50936e93f62c7894f02698c"
+    steps:
+      - name: Configure pinned SSH
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+      - name: Read-only runtime status
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "EXPECTED_SHA='$EXPECTED_SHA' APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          echo "containers:"
+          docker ps --format '{{.Names}} {{.Status}} {{.Image}}' | grep -E '^jalwa-(web|worker|postgres)-staging ' || true
+          echo "web_sha:"
+          docker exec jalwa-web-staging sh -lc 'printf "%s\n" "${GIT_SHA:-missing}"' 2>/dev/null || true
+          echo "worker_sha:"
+          docker exec jalwa-worker-staging sh -lc 'printf "%s\n" "${GIT_SHA:-missing}"' 2>/dev/null || true
+          echo "local_health:"
+          curl -fsS --max-time 10 http://127.0.0.1:3001/api/health 2>/dev/null | jq -c '{status,service,version}' || true
+          echo "disk:"
+          df -P / | awk 'NR==2 {print $5}'
+          REMOTE
