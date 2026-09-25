@@ -1,4 +1,4 @@
-# probe 7
+# probe 8
 name: Diagnose Premium staging cutover
 
 on:
@@ -49,6 +49,8 @@ jobs:
           ps -eo pid,etime,cmd | grep -E '[d]eploy-release|[d]ocker compose|[d]ocker pull|[c]ontainerd-shim' | head -n 40 || true
           echo "deploy_lock:"
           ls -l "$APP_DIR/.deploy.lock" 2>/dev/null || true
+          echo "worker_archive:"
+          ls -lh /tmp/jalwa-worker-9d07aae93b7cf1d2c50936e93f62c7894f02698c.tar.gz* 2>/dev/null || true
           echo "expected_images:"
           docker image inspect "ghcr.io/watch-jalwa/jalwa-platform-web:$EXPECTED_SHA" --format 'web {{.Id}} {{.Size}}' 2>/dev/null || echo 'web missing'
           docker image inspect "ghcr.io/watch-jalwa/jalwa-platform-worker:$EXPECTED_SHA" --format 'worker {{.Id}} {{.Size}}' 2>/dev/null || echo 'worker missing'
