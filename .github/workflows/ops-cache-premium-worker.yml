@@ -1,0 +1,47 @@
+name: Cache Premium worker archive
+
+on:
+  push:
+    branches: ["ops/premium-recert-20260925"]
+    paths: [".github/workflows/ops-cache-premium-worker.yml"]
+
+permissions:
+  contents: read
+  packages: read
+
+jobs:
+  cache:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      IMAGE: ghcr.io/watch-jalwa/jalwa-platform-worker:9d07aae93b7cf1d2c50936e93f62c7894f02698c
+      REMOTE_ARCHIVE: /tmp/jalwa-worker-9d07aae93b7cf1d2c50936e93f62c7894f02698c.tar.gz
+    steps:
+      - name: Configure pinned SSH
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Pull exact immutable worker on runner
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE"
+      - name: Stream compressed archive to staging filesystem only
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "rm -f '$REMOTE_ARCHIVE.part' '$REMOTE_ARCHIVE'; df -P / | tail -1"
+          docker save "$IMAGE" | gzip -1 | ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "cat > '$REMOTE_ARCHIVE.part'"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "test -s '$REMOTE_ARCHIVE.part'; mv '$REMOTE_ARCHIVE.part' '$REMOTE_ARCHIVE'; ls -lh '$REMOTE_ARCHIVE'; gzip -t '$REMOTE_ARCHIVE'; df -P / | tail -1"
