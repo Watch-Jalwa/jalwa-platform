@@ -20,6 +20,14 @@ export async function qaFetch(config, kind, params = {}) {
   return fetch(`${config.baseUrl}/api/internal/qa/state?${query}`, { headers: { "x-jalwa-qa-token": config.qaSecret } });
 }
 
+export async function qaPremiumFixtures(config, method = "POST", body = {}) {
+  return fetch(`${config.baseUrl}/api/internal/qa/premium-features`, {
+    method,
+    headers: { "content-type": "application/json", "x-jalwa-qa-token": config.qaSecret },
+    body: method === "DELETE" ? undefined : JSON.stringify(body),
+  });
+}
+
 export async function getActivePrice(config) {
   const response = await qaFetch(config, "active-price");
   expect(response.ok, `Active staging price lookup failed with HTTP ${response.status}.`).toBeTruthy();
