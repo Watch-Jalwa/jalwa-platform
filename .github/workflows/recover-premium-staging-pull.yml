@@ -1,0 +1,67 @@
+name: Recover stuck Premium staging image pull
+
+on:
+  push:
+    branches:
+      - diagnostics/premium-deploy-9d07
+    paths:
+      - .github/workflows/recover-premium-staging-pull.yml
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      RELEASE_SHA: 9d07aae93b7cf1d2c50936e93f62c7894f02698c
+    steps:
+      - name: Configure pinned SSH identity
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+      - name: Stop only the exact stuck pull and fetch immutable worker image
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" "APP_DIR='$APP_DIR' RELEASE_SHA='$RELEASE_SHA' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          pull_pid="$(pgrep -f "^docker compose --env-file $APP_DIR/.env.staging pull web worker$" || true)"
+          deploy_pid="$(pgrep -f "^bash $APP_DIR/scripts/deploy-release.sh $RELEASE_SHA jalwa-platform.codistan.org$" || true)"
+          if [[ -n "$pull_pid" ]]; then
+            echo "Stopping stuck immutable image pull PID $pull_pid"
+            kill -TERM "$pull_pid"
+            for _ in $(seq 1 15); do
+              kill -0 "$pull_pid" 2>/dev/null || break
+              sleep 1
+            done
+            kill -0 "$pull_pid" 2>/dev/null && kill -KILL "$pull_pid" || true
+          fi
+          if [[ -n "$deploy_pid" ]]; then
+            for _ in $(seq 1 15); do
+              kill -0 "$deploy_pid" 2>/dev/null || break
+              sleep 1
+            done
+            if kill -0 "$deploy_pid" 2>/dev/null; then
+              echo "Stopping failed deploy wrapper PID $deploy_pid"
+              kill -TERM "$deploy_pid" || true
+            fi
+          fi
+          worker="ghcr.io/watch-jalwa/jalwa-platform-worker:$RELEASE_SHA"
+          if ! docker image inspect "$worker" >/dev/null 2>&1; then
+            echo "Pulling missing immutable worker image"
+            timeout --signal=TERM --kill-after=20s 600 docker pull "$worker"
+          fi
+          docker image inspect --format '{{.RepoTags}}|{{.Id}}|{{.Size}}' "$worker"
+          echo "Worker image ready; application containers and PostgreSQL were not changed."
+          REMOTE
