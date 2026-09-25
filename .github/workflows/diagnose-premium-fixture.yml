@@ -1,0 +1,30 @@
+name: Diagnose Premium staging fixture
+
+on:
+  push:
+    branches:
+      - diagnostics/premium-fixture-20260925
+    paths:
+      - .github/workflows/diagnose-premium-fixture.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 10
+    env:
+      BASE_URL: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}
+    steps:
+      - name: Probe Premium fixture safely
+        run: |
+          set -euo pipefail
+          test -n "$QA_SECRET"
+          response="$(mktemp)"
+          status="$(curl -sS -o "$response" -w '%{http_code}' -X POST "$BASE_URL/api/internal/qa/premium-features" -H "x-jalwa-qa-token: $QA_SECRET" -H 'content-type: application/json' --data '{}')"
+          printf 'status=%s\n' "$status"
+          jq -c '{ok:(.ok // false),error:(.error // null)}' "$response"
+          curl -sS -X DELETE "$BASE_URL/api/internal/qa/premium-features" -H "x-jalwa-qa-token: $QA_SECRET" >/dev/null || true
