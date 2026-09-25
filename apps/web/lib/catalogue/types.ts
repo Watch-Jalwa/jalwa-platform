@@ -26,5 +26,5 @@ export type PlaybackSource = {
   termsUrl?: string | null;
   requiredAttribution?: string | null;
 };
-export type CatalogueItem = { id?: string; slug: string; title: string; titleUrdu?: string | null; description?: string | null; category: string; categorySlug: string; durationSeconds?: number | null; accessLevel: AccessLevel; contentType: ContentType; hostingMode: HostingMode; thumbnailUrl?: string | null; playback?: PlaybackSource | null; sourceUrl?: string | null; attribution?: string | null };
+export type CatalogueItem = { id?: string; slug: string; title: string; titleUrdu?: string | null; description?: string | null; category: string; categorySlug: string; durationSeconds?: number | null; accessLevel: AccessLevel; contentType: ContentType; hostingMode: HostingMode; thumbnailUrl?: string | null; playback?: PlaybackSource | null; sourceUrl?: string | null; attribution?: string | null; isEarlyAccess?: boolean };\nexport type PremiumCatalogueCollection = { slug: string; title: string; description?: string | null; items: CatalogueItem[] };
 export type LiveCatalogueCollection = { slug: string; title: string; description?: string | null; items: CatalogueItem[] };
