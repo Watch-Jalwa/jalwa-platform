@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";\nimport type { PoolClient } from "pg";
 import { databasePool } from "@/lib/database/pool";
 import { stagingQaAuthorized } from "../_guard";
 
@@ -12,7 +12,7 @@ const FIXTURES = {
   collection: { id: "00000000-0000-4000-8000-00000000c101", slug: "qa-premium-collection" },
 };
 
-async function cleanup(client: Awaited<ReturnType<typeof databasePool.connect>>) {
+async function cleanup(client: PoolClient) {
   await client.query("delete from public.collections where id=$1 or slug=$2", [FIXTURES.collection.id, FIXTURES.collection.slug]);
   await client.query("delete from public.content_items where id=any($1::uuid[]) or slug=any($2::text[])", [
     [FIXTURES.premium.id, FIXTURES.early.id, FIXTURES.quality.id],
@@ -21,7 +21,7 @@ async function cleanup(client: Awaited<ReturnType<typeof databasePool.connect>>)
 }
 
 async function insertFixture(
-  client: Awaited<ReturnType<typeof databasePool.connect>>,
+  client: PoolClient,
   input: { id: string; asset: string; slug: string; title: string; access: "public" | "premium"; categoryId: string; future?: boolean },
 ) {
   await client.query(
