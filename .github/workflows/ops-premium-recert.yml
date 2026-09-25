@@ -1,0 +1,28 @@
+name: Dispatch Premium recertification
+
+on:
+  push:
+    branches:
+      - "ops/premium-recert-20260925"
+    paths:
+      - ".github/workflows/ops-premium-recert.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify exact main and dispatch normal staging deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: "9d07aae93b7cf1d2c50936e93f62c7894f02698c"
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          current="$(gh api "repos/$REPO/commits/main" --jq '.sha')"
+          test "$current" = "$EXPECTED_SHA" || { echo "main moved: $current" >&2; exit 1; }
+          gh workflow run deploy-staging.yml --repo "$REPO" --ref main
+          echo "Dispatched Deploy staging for $EXPECTED_SHA"
