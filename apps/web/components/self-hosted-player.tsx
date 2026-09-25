@@ -8,7 +8,9 @@ import { OfflineButton } from "@/components/offline-button";
 export function SelfHostedPlayer({ contentId, title, poster }: { contentId: string; title: string; poster?: string | null }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSavedRef = useRef(0);
-  const [error, setError] = useState<{ message: string; code?: string } | null>(null);\n  const [qualityTier, setQualityTier] = useState<"standard" | "enhanced" | null>(null);\n  const [maxQualityHeight, setMaxQualityHeight] = useState<number | null>(null);
+  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
+  const [qualityTier, setQualityTier] = useState<"standard" | "enhanced" | null>(null);
+  const [maxQualityHeight, setMaxQualityHeight] = useState<number | null>(null);
 
   useEffect(() => {
     let hls: Hls | null = null;
@@ -20,7 +22,9 @@ export function SelfHostedPlayer({ contentId, title, poster }: { contentId: stri
         if (!cancelled) setError({ message: data.code === "payment_required" ? "Upgrade to Premium to watch this title." : data.error, code: data.code });
         return;
       }
-      setQualityTier(data.qualityTier === "enhanced" ? "enhanced" : "standard");\n      setMaxQualityHeight(typeof data.maxQualityHeight === "number" ? data.maxQualityHeight : null);\n      const video = videoRef.current;
+      setQualityTier(data.qualityTier === "enhanced" ? "enhanced" : "standard");
+      setMaxQualityHeight(typeof data.maxQualityHeight === "number" ? data.maxQualityHeight : null);
+      const video = videoRef.current;
       if (!video) return;
       const credentialed = data.delivery === "cloudfront";
       if (credentialed) video.crossOrigin = "use-credentials";
