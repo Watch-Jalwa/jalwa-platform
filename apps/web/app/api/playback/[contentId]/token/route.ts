@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 import { createCloudFrontSignedCookies } from "@/lib/media/cloudfront-signing.mjs";
 import { signPlaybackToken } from "@/lib/media/token.mjs";
-import { selectPlaybackPath } from "@/lib/premium/benefits.mjs";
+import { selectPlaybackAuthorizationPrefix, selectPlaybackPath } from "@/lib/premium/benefits.mjs";
 
 export const runtime = "nodejs";
 type Params = Promise<{ contentId: string }>;
@@ -99,7 +99,8 @@ export async function POST(request: Request, { params }: { params: Params }) {
   const selectedPlayback = selectPlaybackPath(playback.media_url, playback.format, enhancedQuality);
   const mediaPath = selectedPlayback.mediaPath;
   const pathPrefix = `processed/${contentId}/${playback.media_asset_id}/`;
-  if (!mediaPath.startsWith(pathPrefix) || mediaPath.includes("..")) {
+  const authorizedPathPrefix = selectPlaybackAuthorizationPrefix(pathPrefix, mediaPath, playback.format, enhancedQuality);
+  if (!mediaPath.startsWith(authorizedPathPrefix) || mediaPath.includes("..")) {
     return NextResponse.json({ error: "Playback media path is invalid." }, { status: 409 });
   }
   const ttl = Math.min(Math.max(Number(process.env.MEDIA_PLAYBACK_TTL_SECONDS ?? 300), 60), 900);
@@ -114,7 +115,7 @@ export async function POST(request: Request, { params }: { params: Params }) {
     }
     const baseUrl = cleanBaseUrl(cdn);
     const signed = createCloudFrontSignedCookies({
-      resource: `${baseUrl}/${pathPrefix}*`,
+      resource: `${baseUrl}/${authorizedPathPrefix}*`,
       keyPairId,
       privateKey,
       expiresAt: expires,
@@ -145,7 +146,7 @@ export async function POST(request: Request, { params }: { params: Params }) {
 
   const token = signPlaybackToken({
     assetId: playback.media_asset_id,
-    pathPrefix,
+    pathPrefix: authorizedPathPrefix,
     userId: user?.id ?? null,
     deviceId: deviceId ? createHash("sha256").update(deviceId).digest("hex").slice(0, 24) : null,
   }, secret, ttl);
