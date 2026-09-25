@@ -160,6 +160,9 @@ test.describe.serial("authenticated Premium customer", () => {
       await authenticatePage(premiumPage, config, customer.email, "/premium");
       const paidResponse = await premiumPage.goto("/watch/qa-premium-early-access-original", { waitUntil: "domcontentloaded" });
       expect(paidResponse?.status()).toBe(200);
+      const earlyPlayback = await playbackToken(premiumPage, "00000000-0000-4000-8000-00000000a102", "qa-paid-early-access-device");
+      expect(earlyPlayback.status).toBe(200);
+      expect(earlyPlayback.body?.qualityTier).toBe("enhanced");
       await expect(premiumPage.locator("body")).toContainText("Early access");
       await expect(premiumPage.locator("body")).toContainText("QA Early Access Jalwa Original");
       await premiumPage.goto("/premium", { waitUntil: "networkidle" });
@@ -200,6 +203,10 @@ test.describe.serial("authenticated Premium customer", () => {
       expect(standard.body?.qualityTier).toBe("standard");
       expect(standard.body?.maxQualityHeight).toBe(480);
       expect(standard.body?.url).toContain("/480p/index.m3u8");
+      const standardToken = new URL(standard.body.url).searchParams.get("token");
+      expect(standardToken).toBeTruthy();
+      const standardPayload = JSON.parse(Buffer.from(standardToken.split(".")[0], "base64url").toString("utf8"));
+      expect(standardPayload.pathPrefix).toMatch(/\/480p\/$/);
 
       const premiumPage = await premiumContext.newPage();
       await authenticatePage(premiumPage, config, customer.email, "/");
@@ -208,6 +215,11 @@ test.describe.serial("authenticated Premium customer", () => {
       expect(enhanced.body?.qualityTier).toBe("enhanced");
       expect(enhanced.body?.maxQualityHeight).toBe(720);
       expect(enhanced.body?.url).toContain("/master.m3u8");
+      const enhancedToken = new URL(enhanced.body.url).searchParams.get("token");
+      expect(enhancedToken).toBeTruthy();
+      const enhancedPayload = JSON.parse(Buffer.from(enhancedToken.split(".")[0], "base64url").toString("utf8"));
+      expect(enhancedPayload.pathPrefix).toMatch(/00000000-b103\/$/);
+      expect(enhancedPayload.pathPrefix).not.toMatch(/\/480p\/$/);
     } finally {
       await freeContext.close();
       await premiumContext.close();
