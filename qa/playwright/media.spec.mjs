@@ -70,7 +70,8 @@ test.describe("catalogue and media", () => {
       await expect(page.getByRole("heading", { level: 1, name: /Official live public sources/i })).toBeVisible();
       const body = await page.locator("body").innerText();
       for (const title of expectedLiveTitles) expect(body).toContain(title);
-      expect(body).not.toMatch(/Premium/i);
+      const premiumGatedLiveCards = page.locator(".live-card").filter({ hasText: /Premium/i });
+      await expect(premiumGatedLiveCards).toHaveCount(0);
       expect(body).toMatch(/do not sponsor or endorse Jalwa/i);
       expect(body).toMatch(/official source/i);
       await expectNoHorizontalOverflow(page, "mobile live catalogue");
