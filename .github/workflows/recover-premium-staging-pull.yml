@@ -1,4 +1,4 @@
-name: Recover stuck Premium staging image pull
+name: Recover Premium worker image via trusted runner
 
 on:
   push:
@@ -14,15 +14,15 @@ permissions:
 jobs:
   recover:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     environment: staging
     env:
       HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
       USER: ${{ vars.STAGING_USER || 'codistan' }}
-      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
       RELEASE_SHA: 9d07aae93b7cf1d2c50936e93f62c7894f02698c
+      WORKER_IMAGE: ghcr.io/watch-jalwa/jalwa-platform-worker:9d07aae93b7cf1d2c50936e93f62c7894f02698c
     steps:
       - name: Configure pinned SSH identity
         run: |
@@ -32,59 +32,31 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
-      - name: Authenticate staging host to GHCR
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Pull immutable worker image on trusted GitHub runner
         env:
           GHCR_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          printf '%s' "$GHCR_TOKEN" | ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin"
-      - name: Clear stale pull clients and fetch immutable worker image once
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker pull "$WORKER_IMAGE"
+          test "$(docker image inspect --format '{{index .RepoDigests 0}}' "$WORKER_IMAGE" | cut -d@ -f2)" != ""
+          docker image inspect --format 'runner-image={{.Id}} size={{.Size}} digests={{json .RepoDigests}}' "$WORKER_IMAGE"
+
+      - name: Stream exact worker image into staging Docker cache
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" "APP_DIR='$APP_DIR' RELEASE_SHA='$RELEASE_SHA' bash -s" <<'REMOTE'
-          set -Eeuo pipefail
-          compose_pattern="^docker compose --env-file $APP_DIR/.env.staging pull web worker$"
-          worker_pattern="^docker pull ghcr.io/watch-jalwa/jalwa-platform-worker:$RELEASE_SHA$"
-          deploy_pattern="^bash $APP_DIR/scripts/deploy-release.sh $RELEASE_SHA jalwa-platform.codistan.org$"
+          docker save "$WORKER_IMAGE" | gzip -1 | \
+            ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=4 -i ~/.ssh/jalwa "$USER@$HOST" \
+            "gzip -d | docker load"
+          local_id="$(docker image inspect --format '{{.Id}}' "$WORKER_IMAGE")"
+          remote_id="$(ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "docker image inspect --format '{{.Id}}' '$WORKER_IMAGE'")"
+          test "$remote_id" = "$local_id"
+          echo "Exact worker image loaded on staging: $remote_id"
 
-          stop_pattern() {
-            local pattern="$1"
-            mapfile -t pids < <(pgrep -f "$pattern" || true)
-            if ((${#pids[@]})); then
-              printf 'Stopping stale process(es): %s\n' "${pids[*]}"
-              kill -TERM "${pids[@]}" 2>/dev/null || true
-              for _ in $(seq 1 20); do
-                alive=()
-                for pid in "${pids[@]}"; do kill -0 "$pid" 2>/dev/null && alive+=("$pid"); done
-                ((${#alive[@]}==0)) && return 0
-                sleep 1
-              done
-              kill -KILL "${pids[@]}" 2>/dev/null || true
-            fi
-          }
-
-          stop_pattern "$compose_pattern"
-          stop_pattern "$worker_pattern"
-          stop_pattern "$deploy_pattern"
-
-          if pgrep -af "$compose_pattern|$worker_pattern|$deploy_pattern"; then
-            echo 'Stale Jalwa pull/deploy clients remain.' >&2
-            exit 1
-          fi
-
-          worker="ghcr.io/watch-jalwa/jalwa-platform-worker:$RELEASE_SHA"
-          if ! docker image inspect "$worker" >/dev/null 2>&1; then
-            echo 'Starting one bounded immutable worker pull'
-            timeout --signal=TERM --kill-after=20s 420 docker pull "$worker"
-          fi
-          docker image inspect --format '{{.RepoTags}}|{{.Id}}|{{.Size}}' "$worker"
-
-          echo '=== unchanged live containers ==='
-          docker ps --format '{{.Names}}|{{.Status}}|{{.Image}}' | grep '^jalwa-' || true
-          echo 'Worker image cache is ready; no container or database mutation was performed.'
-          REMOTE
-      - name: Logout host from GHCR
-        if: always()
+      - name: Verify staging runtime remained unchanged
         run: |
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "docker logout ghcr.io >/dev/null 2>&1 || true"
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker ps --format '{{.Names}}|{{.Status}}|{{.Image}}' | grep '^jalwa-'"
