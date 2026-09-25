@@ -8,7 +8,7 @@ import { OfflineButton } from "@/components/offline-button";
 export function SelfHostedPlayer({ contentId, title, poster }: { contentId: string; title: string; poster?: string | null }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const lastSavedRef = useRef(0);
-  const [error, setError] = useState<{ message: string; code?: string } | null>(null);
+  const [error, setError] = useState<{ message: string; code?: string } | null>(null);\n  const [qualityTier, setQualityTier] = useState<"standard" | "enhanced" | null>(null);\n  const [maxQualityHeight, setMaxQualityHeight] = useState<number | null>(null);
 
   useEffect(() => {
     let hls: Hls | null = null;
@@ -20,7 +20,7 @@ export function SelfHostedPlayer({ contentId, title, poster }: { contentId: stri
         if (!cancelled) setError({ message: data.code === "payment_required" ? "Upgrade to Premium to watch this title." : data.error, code: data.code });
         return;
       }
-      const video = videoRef.current;
+      setQualityTier(data.qualityTier === "enhanced" ? "enhanced" : "standard");\n      setMaxQualityHeight(typeof data.maxQualityHeight === "number" ? data.maxQualityHeight : null);\n      const video = videoRef.current;
       if (!video) return;
       const credentialed = data.delivery === "cloudfront";
       if (credentialed) video.crossOrigin = "use-credentials";
@@ -52,5 +52,5 @@ export function SelfHostedPlayer({ contentId, title, poster }: { contentId: stri
   }
 
   if (error) return <div className="player-placeholder"><p>{error.message}</p>{error.code === "payment_required" ? <Link className="button button-primary" href="/pricing">View Premium</Link> : <button className="button button-secondary" type="button" onClick={() => window.location.reload()}>Retry</button>}</div>;
-  return <div className="self-hosted-stack"><video ref={videoRef} controls playsInline poster={poster ?? undefined} preload="metadata" title={title} onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; if (current - lastSavedRef.current >= 15) void saveProgress(); }} onPause={() => void saveProgress()} onEnded={() => void saveProgress(true)} /><OfflineButton contentId={contentId} title={title} /></div>;
+  return <div className="self-hosted-stack"><video ref={videoRef} controls playsInline poster={poster ?? undefined} preload="metadata" title={title} onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; if (current - lastSavedRef.current >= 15) void saveProgress(); }} onPause={() => void saveProgress()} onEnded={() => void saveProgress(true)} />{qualityTier ? <span className="playback-quality-badge" data-testid="playback-quality-tier">{qualityTier === "enhanced" ? `Enhanced quality${maxQualityHeight ? ` · up to ${maxQualityHeight}p` : ""}` : `Standard quality${maxQualityHeight ? ` · up to ${maxQualityHeight}p` : ""}`}</span> : null}<OfflineButton contentId={contentId} title={title} /></div>;
 }
