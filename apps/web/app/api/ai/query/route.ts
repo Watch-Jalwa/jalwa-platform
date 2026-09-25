@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/database/server";
 import { buildRetrievalQuery } from "@/lib/ai/grounding.mjs";
 import { createGroundedAnswer, moderateQuestion, type GroundedSource } from "@/lib/ai/openai";
-import { AiRequestBodyError, isAiEnabled, readAiRequestBody } from "@/lib/ai/request.mjs";
+import { AiRequestBodyError, isAiEnabled, readAiRequestBody } from "@/lib/ai/request.mjs";\nimport { resolveAiDailyLimit } from "@/lib/premium/benefits.mjs";
 
 export const runtime = "nodejs";
 
