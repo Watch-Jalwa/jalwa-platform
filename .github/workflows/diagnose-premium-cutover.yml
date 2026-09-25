@@ -1,0 +1,47 @@
+name: Diagnose Premium staging cutover
+on:
+  push:
+    branches:
+      - ops/premium-final-deploy-20260925
+    paths:
+      - .github/workflows/diagnose-premium-cutover.yml
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Configure pinned SSH
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+      - name: Read-only cutover diagnostics
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          echo '=== health ==='
+          curl -fsS --max-time 5 http://127.0.0.1:3001/api/health 2>/dev/null || echo health_unavailable
+          echo
+          echo '=== docker ==='
+          docker ps --format '{{.Names}}|{{.Status}}|{{.Image}}' | grep -E '^jalwa-' || true
+          echo '=== disk ==='
+          df -P "$APP_DIR" | tail -1
+          echo '=== migration lock ==='
+          if test -e "$APP_DIR/.migration.lock"; then echo present; else echo absent; fi
+          echo '=== recent deployment identities ==='
+          find "$APP_DIR/deployments" -maxdepth 1 -type f -name '*.identity.json' -printf '%T@ %f\n' 2>/dev/null | sort -nr | head -5 | cut -d' ' -f2-
+          echo '=== relevant processes ==='
+          ps -eo pid,etime,stat,comm,args | grep -E 'backup|restore|docker compose|migrat|pg_dump|pg_restore|age|aws ' | grep -v grep | head -20 || true
+          REMOTE
