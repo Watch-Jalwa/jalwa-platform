@@ -1,0 +1,52 @@
+name: Release stuck Premium pull lock
+
+on:
+  push:
+    branches:
+      - "ops/premium-recert-20260925"
+    paths:
+      - ".github/workflows/ops-release-premium-pull-lock.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      RELEASE_SHA: "9d07aae93b7cf1d2c50936e93f62c7894f02698c"
+    steps:
+      - name: Configure pinned SSH
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+      - name: Terminate only exact stuck Jalwa deployment pull
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "RELEASE_SHA='$RELEASE_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          mapfile -t deploy_pids < <(pgrep -f "bash /opt/codistan/jalwa-platform/scripts/deploy-release.sh $RELEASE_SHA jalwa-platform.codistan.org" || true)
+          mapfile -t pull_pids < <(pgrep -f "docker compose --env-file /opt/codistan/jalwa-platform/.env.staging pull web worker" || true)
+          echo "matching deploy pids: ${deploy_pids[*]:-none}"
+          echo "matching Jalwa pull pids: ${pull_pids[*]:-none}"
+          for pid in "${pull_pids[@]}" "${deploy_pids[@]}"; do
+            [[ -n "$pid" ]] || continue
+            kill -TERM "$pid" 2>/dev/null || true
+          done
+          sleep 2
+          for pid in "${pull_pids[@]}" "${deploy_pids[@]}"; do
+            [[ -n "$pid" ]] || continue
+            if kill -0 "$pid" 2>/dev/null; then kill -KILL "$pid" 2>/dev/null || true; fi
+          done
+          docker exec jalwa-web-staging sh -lc 'echo "web remains ${GIT_SHA}"'
+          docker exec jalwa-worker-staging sh -lc 'echo "worker remains ${GIT_SHA}"'
+          REMOTE
