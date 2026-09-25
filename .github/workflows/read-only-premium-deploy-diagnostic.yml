@@ -21,6 +21,7 @@ jobs:
       APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      RELEASE_SHA: 9d07aae93b7cf1d2c50936e93f62c7894f02698c
     steps:
       - name: Configure pinned SSH identity
         run: |
@@ -33,18 +34,29 @@ jobs:
       - name: Read-only deploy state
         run: |
           set -euo pipefail
-          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" "APP_DIR='$APP_DIR' RELEASE_SHA='$RELEASE_SHA' bash -s" <<'REMOTE'
           set -euo pipefail
           echo '=== disk ==='
           df -h /
           echo '=== relevant processes ==='
           ps -eo pid,etime,comm,args | grep -E 'backup-postgres|apply-migrations|deploy-release|restore-drill|host-acceptance|pg_dump|pg_restore|docker compose|age|aws s3' | grep -v grep || true
+          echo '=== target images present locally ==='
+          for image in "ghcr.io/watch-jalwa/jalwa-platform-web:$RELEASE_SHA" "ghcr.io/watch-jalwa/jalwa-platform-worker:$RELEASE_SHA"; do
+            if docker image inspect "$image" >/dev/null 2>&1; then
+              docker image inspect --format '{{.RepoTags}}|{{.Id}}|{{.Size}}' "$image"
+            else
+              echo "$image|missing"
+            fi
+          done
+          echo '=== registry reachability ==='
+          code="$(curl -sS -o /dev/null -w '%{http_code}' --connect-timeout 5 --max-time 15 https://ghcr.io/v2/ || true)"
+          echo "ghcr-v2-http=$code"
           echo '=== containers ==='
           docker ps --format '{{.Names}}|{{.Status}}|{{.Image}}' | grep '^jalwa-' || true
+          echo '=== docker storage ==='
+          docker system df
           echo '=== lock/state files ==='
           for f in "$APP_DIR/.migration.lock" "$APP_DIR/.migration-baseline.lock"; do
             if test -e "$f"; then stat -c '%n|size=%s|mtime=%y' "$f"; else echo "$f|absent"; fi
           done
-          echo '=== recent deployment identities ==='
-          find "$APP_DIR/deployments" -maxdepth 1 -type f -name '*.identity.json' -printf '%f|%TY-%Tm-%TdT%TH:%TM:%TS\n' 2>/dev/null | sort | tail -5 || true
           REMOTE
