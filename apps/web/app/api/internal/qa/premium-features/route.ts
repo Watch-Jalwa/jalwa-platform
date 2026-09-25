@@ -6,6 +6,8 @@ import { stagingQaAuthorized } from "../_guard";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 const FIXTURES = {
   premium: { id: "00000000-0000-4000-8000-00000000a101", asset: "00000000-0000-4000-8000-00000000b101", slug: "qa-premium-catalogue-title" },
   early: { id: "00000000-0000-4000-8000-00000000a102", asset: "00000000-0000-4000-8000-00000000b102", slug: "qa-premium-early-access-original" },
@@ -51,10 +53,17 @@ async function insertFixture(
 
 export async function POST(request: Request) {
   if (!stagingQaAuthorized(request)) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  const body = await request.json().catch(() => ({})) as { premiumUserId?: string; freeUserId?: string };
+  if (!body.premiumUserId || !body.freeUserId || !uuidPattern.test(body.premiumUserId) || !uuidPattern.test(body.freeUserId) || body.premiumUserId === body.freeUserId) {
+    return NextResponse.json({ error: "Valid distinct Premium/free QA user IDs are required." }, { status: 400 });
+  }
   const client = await databasePool.connect();
   try {
     await client.query("begin");
     await cleanup(client);
+    // This route is staging-only and token-protected. Reset only the two deterministic QA
+    // identities so repeated certification cannot inherit stale browser registrations.
+    await client.query("delete from public.user_devices where user_id=any($1::uuid[])", [[body.premiumUserId, body.freeUserId]]);
     const category = await client.query("select id from public.categories where slug='originals' limit 1");
     const categoryId = category.rows[0]?.id;
     if (!categoryId) throw new Error("Jalwa Originals category is unavailable.");
