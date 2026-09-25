@@ -1,0 +1,29 @@
+name: Dispatch Premium staging release
+
+on:
+  push:
+    branches:
+      - ops/dispatch-premium-staging-20260925
+    paths:
+      - .github/workflows/ops-dispatch-premium-staging.yml
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    env:
+      TARGET_SHA: 274d763696701433c76b25b4286e6c871e9b6e4c
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Prove main is exact Premium release
+        run: |
+          set -euo pipefail
+          actual="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+          test "$actual" = "$TARGET_SHA"
+      - name: Dispatch canonical staging deploy on main
+        run: |
+          set -euo pipefail
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-staging.yml/dispatches" -f ref=main
