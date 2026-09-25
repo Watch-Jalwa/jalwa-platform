@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 jobs:
   recover:
@@ -31,7 +32,14 @@ jobs:
           printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
           chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
-      - name: Clear only stale Jalwa pull clients and fetch immutable worker image once
+      - name: Authenticate staging host to GHCR
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          printf '%s' "$GHCR_TOKEN" | ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin"
+      - name: Clear stale pull clients and fetch immutable worker image once
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" "APP_DIR='$APP_DIR' RELEASE_SHA='$RELEASE_SHA' bash -s" <<'REMOTE'
@@ -71,7 +79,12 @@ jobs:
             timeout --signal=TERM --kill-after=20s 420 docker pull "$worker"
           fi
           docker image inspect --format '{{.RepoTags}}|{{.Id}}|{{.Size}}' "$worker"
+
           echo '=== unchanged live containers ==='
           docker ps --format '{{.Names}}|{{.Status}}|{{.Image}}' | grep '^jalwa-' || true
           echo 'Worker image cache is ready; no container or database mutation was performed.'
           REMOTE
+      - name: Logout host from GHCR
+        if: always()
+        run: |
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "docker logout ghcr.io >/dev/null 2>&1 || true"
