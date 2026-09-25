@@ -24,3 +24,17 @@ export function selectPlaybackPath(mediaPath, format, enhancedQuality) {
     maxHeight: 480,
   };
 }
+
+export function selectPlaybackAuthorizationPrefix(pathPrefix, selectedMediaPath, format, enhancedQuality) {
+  const prefix = String(pathPrefix ?? "").replace(/^\/+/, "");
+  const mediaPath = String(selectedMediaPath ?? "").replace(/^\/+/, "");
+  if (
+    format === "hls"
+    && !enhancedQuality
+    && prefix.endsWith("/")
+    && mediaPath.startsWith(`${prefix}480p/`)
+  ) {
+    return `${prefix}480p/`;
+  }
+  return prefix;
+}
