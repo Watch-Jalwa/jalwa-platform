@@ -31,8 +31,8 @@ async function insertFixture(
     [input.id, input.slug, input.access, input.title, input.categoryId, input.future ? new Date(Date.now() + 7 * 86400000).toISOString() : new Date().toISOString()],
   );
   await client.query(
-    `insert into public.rights_records(content_id,source_url,creator,licence_code,attribution_text,commercial_use_confirmed,modification_confirmed,self_hosting_confirmed,embedding_confirmed,status,verified_at)
-     values($1,'https://watch-jalwa.com/qa-fixture','Jalwa QA','JALWA-QA','Jalwa QA staging fixture',true,true,true,true,'approved',now())`,
+    `insert into public.rights_records(content_id,source_url,creator,licence_code,attribution_text,evidence_url,evidence_note,takedown_contact,commercial_use_confirmed,modification_confirmed,self_hosting_confirmed,embedding_confirmed,status,verified_at)
+     values($1,'https://watch-jalwa.com/qa-fixture','Jalwa QA','JALWA-QA','Jalwa QA staging fixture','https://watch-jalwa.com/qa-fixture/rights','Synthetic staging-only fixture with explicit rights evidence for Premium certification.','qa-rights@watch-jalwa.com',true,true,true,true,'approved',now())`,
     [input.id],
   );
   const mediaPath = `processed/${input.id}/${input.asset}/master.m3u8`;
