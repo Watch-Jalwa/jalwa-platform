@@ -1,0 +1,36 @@
+name: Diagnose Premium staging identity
+
+on:
+  push:
+    branches:
+      - diagnostics/premium-staging-identity-20260925
+    paths:
+      - .github/workflows/diagnose-premium-staging-identity.yml
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+    steps:
+      - name: Configure pinned SSH
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+      - name: Read current staging identity only
+        run: |
+          set -euo pipefail
+          echo "public_health=$(curl -fsS --max-time 20 https://$DOMAIN/api/health | jq -c '{status,version,service}')"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST"             "docker exec jalwa-web-staging sh -lc 'printf \"web_sha=%s\\n\" \"\$GIT_SHA\"'; docker exec jalwa-worker-staging sh -lc 'printf \"worker_sha=%s\\n\" \"\$GIT_SHA\"'; docker ps --format '{{.Names}} {{.Status}}' | grep -E '^jalwa-(web|worker|postgres)-staging '"
