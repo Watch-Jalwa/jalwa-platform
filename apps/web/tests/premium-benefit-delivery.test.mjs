@@ -32,9 +32,12 @@ test("enhanced quality gets the master ladder while standard is capped to 480p",
 
 test("database policies enforce early access and Premium collections", async () => {
   const sql = await readFile(migrationUrl, "utf8");
+  const hardening = await readFile(new URL("../../../database/migrations/202609250002_premium_benefit_enforcement_hardening.sql", import.meta.url), "utf8");
   assert.ok(sql.includes("has_active_benefit('early_access')"));
   assert.ok(sql.includes("has_active_benefit('premium_collections')"));
   assert.ok(sql.includes("is_content_effectively_available_for_viewer"));
+  assert.ok(hardening.includes("has_active_benefit('early_access')"));
+  assert.doesNotMatch(hardening, /has_internal_alpha_access/);
 });
 
 test("frontend consumes ad-free, quality, AI and Premium hub state", async () => {
