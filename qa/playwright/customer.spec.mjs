@@ -11,6 +11,7 @@ import {
 } from "./helpers/staging.mjs";
 
 const customerEmail = (process.env.STAGING_QA_CUSTOMER_EMAIL ?? "").trim();
+const freeCustomerEmail = (process.env.STAGING_QA_UNAUTHORIZED_EMAIL ?? "").trim();
 const baseRunId = process.env.QA_RUN_ID ?? `customer-${Date.now()}`;
 const runAttempt = process.env.GITHUB_RUN_ATTEMPT?.trim();
 const runId = `${baseRunId}${runAttempt ? `-attempt-${runAttempt}` : ""}`.slice(0, 120);
@@ -19,12 +20,6 @@ const config = qaConfig();
 let customer;
 let freeCustomer;
 let price;
-
-function qaSiblingEmail(email, suffix) {
-  const at = email.lastIndexOf("@");
-  if (at < 1) throw new Error("Invalid QA customer email.");
-  return `${email.slice(0, at)}+${suffix}-${runId.slice(-12)}${email.slice(at)}`;
-}
 
 async function playbackToken(page, contentId, deviceKey = "") {
   return page.evaluate(async ({ contentId, deviceKey }) => {
@@ -39,9 +34,10 @@ async function playbackToken(page, contentId, deviceKey = "") {
 test.describe.serial("authenticated Premium customer", () => {
   test.beforeAll(async () => {
     if (!customerEmail) throw new Error("STAGING_QA_CUSTOMER_EMAIL is required for customer certification.");
+    if (!freeCustomerEmail) throw new Error("STAGING_QA_UNAUTHORIZED_EMAIL is required for the free-tier Premium comparison.");
     const helpers = await import("./helpers/staging.mjs");
     customer = await helpers.ensureQaUser(config, customerEmail, "subscriber");
-    freeCustomer = await helpers.ensureQaUser(config, qaSiblingEmail(customerEmail, "premium-free"), "subscriber");
+    freeCustomer = await helpers.ensureQaUser(config, freeCustomerEmail, "subscriber");
     price = await getActivePrice(config);
     const fixture = await qaPremiumFixtures(config, "POST", { premiumUserId: customer.id, freeUserId: freeCustomer.id });
     expect(fixture.ok, `Premium fixture setup failed with HTTP ${fixture.status}.`).toBeTruthy();
@@ -50,6 +46,7 @@ test.describe.serial("authenticated Premium customer", () => {
   test.afterAll(async () => {
     const cleanup = await qaPremiumFixtures(config, "DELETE");
     expect(cleanup.ok, `Premium fixture cleanup failed with HTTP ${cleanup.status}.`).toBeTruthy();
+    if (freeCustomerEmail) await ensureQaUser(config, freeCustomerEmail, "viewer");
   });
 
   test("anonymous checkout is denied", async ({ request }) => {
