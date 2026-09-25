@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { PREMIUM_BENEFIT_CODES, resolveAiDailyLimit, selectPlaybackPath } from "../lib/premium/benefits.mjs";
+import { PREMIUM_BENEFIT_CODES, resolveAiDailyLimit, selectPlaybackAuthorizationPrefix, selectPlaybackPath } from "../lib/premium/benefits.mjs";
 
 const migrationUrl = new URL("../../../database/migrations/202609250001_premium_benefit_delivery.sql", import.meta.url);
 const layoutUrl = new URL("../app/layout.tsx", import.meta.url);
@@ -26,6 +26,8 @@ test("enhanced quality gets the master ladder while standard is capped to 480p",
   assert.equal(selectPlaybackPath(path, "hls", false).maxHeight, 480);
   assert.equal(selectPlaybackPath(path, "hls", true).mediaPath, path);
   assert.equal(selectPlaybackPath(path, "hls", true).maxHeight, 720);
+  assert.equal(selectPlaybackAuthorizationPrefix("processed/c/a/", "processed/c/a/480p/index.m3u8", "hls", false), "processed/c/a/480p/");
+  assert.equal(selectPlaybackAuthorizationPrefix("processed/c/a/", path, "hls", true), "processed/c/a/");
 });
 
 test("database policies enforce early access and Premium collections", async () => {
@@ -41,6 +43,9 @@ test("frontend consumes ad-free, quality, AI and Premium hub state", async () =>
   assert.ok(premiumPage.includes("premium-early-access"));
   assert.ok(premiumPage.includes("premium-collections"));
   assert.ok(playback.includes("selectPlaybackPath"));
+  assert.ok(playback.includes("selectPlaybackAuthorizationPrefix"));
+  assert.ok(playback.includes("authorizedPathPrefix"));
+  assert.ok(playback.includes("pathPrefix: authorizedPathPrefix"));
   assert.ok(playback.includes("enhanced_quality"));
   assert.ok(ai.includes("resolveAiDailyLimit"));
 });
