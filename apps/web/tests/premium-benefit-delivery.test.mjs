@@ -41,6 +41,14 @@ test("database policies enforce early access and Premium collections", async () 
   assert.doesNotMatch(hardening, /has_internal_alpha_access/);
 });
 
+test("Premium playback checks entitlement before device registration", async () => {
+  const playback = await readFile(playbackUrl, "utf8");
+  const entitlementIndex = playback.indexOf('p_benefit: "premium_catalogue"');
+  const deviceIndex = playback.indexOf('database.rpc("register_device"');
+  assert.ok(entitlementIndex >= 0, "Premium entitlement check must exist");
+  assert.ok(deviceIndex > entitlementIndex, "Premium entitlement must be denied before protected-device registration");
+});
+
 test("frontend consumes ad-free, quality, AI and Premium hub state", async () => {
   const [layout, premiumPage, playback, ai] = await Promise.all([layoutUrl,premiumPageUrl,playbackUrl,aiUrl].map((url) => readFile(url, "utf8")));
   assert.ok(layout.includes("JalwaAdSlot"));

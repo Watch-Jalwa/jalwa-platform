@@ -56,6 +56,12 @@ export async function POST(request: Request, { params }: { params: Params }) {
   if (!content || content.status !== "published") return NextResponse.json({ error: "Content unavailable." }, { status: 404 });
   if (content.access_level === "registered" && !user) return NextResponse.json({ error: "Sign in required.", code: "sign_in_required" }, { status: 401 });
 
+  if (content.access_level === "premium") {
+    if (!user) return NextResponse.json({ error: "Sign in required.", code: "sign_in_required" }, { status: 401 });
+    const { data: entitled } = await database.rpc("has_active_benefit", { p_benefit: "premium_catalogue" });
+    if (!entitled) return NextResponse.json({ error: "Premium entitlement is required.", code: "payment_required" }, { status: 402 });
+  }
+
   let deviceId: string | null = null;
   if (user && content.access_level !== "public") {
     const deviceKey = request.headers.get("x-jalwa-device-key")?.trim();
@@ -73,12 +79,6 @@ export async function POST(request: Request, { params }: { params: Params }) {
       }, { status: 403 });
     }
     deviceId = data;
-  }
-
-  if (content.access_level === "premium") {
-    if (!user) return NextResponse.json({ error: "Sign in required.", code: "sign_in_required" }, { status: 401 });
-    const { data: entitled } = await database.rpc("has_active_benefit", { p_benefit: "premium_catalogue" });
-    if (!entitled) return NextResponse.json({ error: "Premium entitlement is required.", code: "payment_required" }, { status: 402 });
   }
 
   let enhancedQuality = false;
