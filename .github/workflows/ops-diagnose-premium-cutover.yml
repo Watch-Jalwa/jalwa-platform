@@ -44,6 +44,11 @@ jobs:
           docker exec jalwa-worker-staging sh -lc 'printf "%s\n" "${GIT_SHA:-missing}"' 2>/dev/null || true
           echo "local_health:"
           curl -fsS --max-time 10 http://127.0.0.1:3001/api/health 2>/dev/null | jq -c '{status,service,version}' || true
+          echo "expected_images:"
+          docker image inspect "ghcr.io/watch-jalwa/jalwa-platform-web:$EXPECTED_SHA" --format 'web {{.Id}} {{.Size}}' 2>/dev/null || echo 'web missing'
+          docker image inspect "ghcr.io/watch-jalwa/jalwa-platform-worker:$EXPECTED_SHA" --format 'worker {{.Id}} {{.Size}}' 2>/dev/null || echo 'worker missing'
+          echo "docker_space:"
+          docker system df
           echo "disk:"
           df -P / | awk 'NR==2 {print $5}'
           REMOTE
