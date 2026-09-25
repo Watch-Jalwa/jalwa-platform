@@ -17,14 +17,30 @@ jobs:
     timeout-minutes: 10
     env:
       BASE_URL: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
       QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}
     steps:
-      - name: Probe Premium fixture safely
+      - name: Hydrate protected staging QA secret and probe fixture
         run: |
           set -euo pipefail
-          test -n "$QA_SECRET"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          qa="$QA_SECRET"
+          if [[ -z "$qa" ]]; then
+            qa="$(ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "awk 'index(\$0,\"STAGING_QA_SECRET=\")==1 {print substr(\$0,19); exit}' '$APP_DIR/.env.staging'")"
+            if [[ "$qa" == \"*\" && "$qa" == *\" ]]; then qa="${qa:1:${#qa}-2}"; fi
+            if [[ "$qa" == \'*\' && "$qa" == *\' ]]; then qa="${qa:1:${#qa}-2}"; fi
+          fi
+          test -n "$qa"
+          echo "::add-mask::$qa"
           response="$(mktemp)"
-          status="$(curl -sS -o "$response" -w '%{http_code}' -X POST "$BASE_URL/api/internal/qa/premium-features" -H "x-jalwa-qa-token: $QA_SECRET" -H 'content-type: application/json' --data '{}')"
+          status="$(curl -sS -o "$response" -w '%{http_code}' -X POST "$BASE_URL/api/internal/qa/premium-features" -H "x-jalwa-qa-token: $qa" -H 'content-type: application/json' --data '{}')"
           printf 'status=%s\n' "$status"
           jq -c '{ok:(.ok // false),error:(.error // null)}' "$response"
-          curl -sS -X DELETE "$BASE_URL/api/internal/qa/premium-features" -H "x-jalwa-qa-token: $QA_SECRET" >/dev/null || true
+          curl -sS -X DELETE "$BASE_URL/api/internal/qa/premium-features" -H "x-jalwa-qa-token: $qa" >/dev/null || true
