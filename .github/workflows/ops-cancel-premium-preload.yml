@@ -1,0 +1,21 @@
+name: Cancel blocked Premium preload
+
+on:
+  push:
+    branches: ["ops/premium-recert-20260925"]
+    paths: [".github/workflows/ops-cancel-premium-preload.yml"]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          gh run cancel 36157872358 --repo "$REPO"
