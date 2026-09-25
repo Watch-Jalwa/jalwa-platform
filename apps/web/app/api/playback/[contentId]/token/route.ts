@@ -96,7 +96,8 @@ export async function POST(request: Request, { params }: { params: Params }) {
     .maybeSingle();
   if (!playback?.media_asset_id || !playback.media_url) return NextResponse.json({ error: "Playback is not ready." }, { status: 409 });
 
-  const mediaPath = playback.media_url.replace(/^\/+/, "");
+  const selectedPlayback = selectPlaybackPath(playback.media_url, playback.format, enhancedQuality);
+  const mediaPath = selectedPlayback.mediaPath;
   const pathPrefix = `processed/${contentId}/${playback.media_asset_id}/`;
   if (!mediaPath.startsWith(pathPrefix) || mediaPath.includes("..")) {
     return NextResponse.json({ error: "Playback media path is invalid." }, { status: 409 });
