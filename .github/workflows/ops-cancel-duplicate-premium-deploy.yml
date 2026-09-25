@@ -1,0 +1,25 @@
+name: Cancel duplicate Premium staging deploy
+
+on:
+  push:
+    branches:
+      - "ops/premium-recert-20260925"
+    paths:
+      - ".github/workflows/ops-cancel-duplicate-premium-deploy.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel only duplicate queued deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          DUPLICATE_RUN_ID: "36156537033"
+        run: |
+          set -euo pipefail
+          gh run cancel "$DUPLICATE_RUN_ID" --repo "$REPO"
