@@ -1,4 +1,5 @@
-import { NextResponse } from "next/server";\nimport type { PoolClient } from "pg";
+import { NextResponse } from "next/server";
+import type { PoolClient } from "pg";
 import { databasePool } from "@/lib/database/pool";
 import { stagingQaAuthorized } from "../_guard";
 
