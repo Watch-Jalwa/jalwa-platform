@@ -5,6 +5,7 @@ import {
   expectNoHorizontalOverflow,
   expectSubscriptionAndEntitlements,
   getActivePrice,
+  ensureQaUser,
   qaConfig,
   qaFetch,
   qaPremiumFixtures,
