@@ -1,0 +1,25 @@
+name: Cancel stuck Premium candidate deploy
+
+on:
+  push:
+    branches:
+      - "ops/premium-recert-20260925"
+    paths:
+      - ".github/workflows/ops-cancel-stuck-premium-candidate.yml"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel only stuck Jalwa candidate deploy run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: "36155146305"
+        run: |
+          set -euo pipefail
+          gh run cancel "$RUN_ID" --repo "$REPO"
