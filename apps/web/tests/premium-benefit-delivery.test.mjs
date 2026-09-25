@@ -9,6 +9,7 @@ const premiumPageUrl = new URL("../app/premium/page.tsx", import.meta.url);
 const playbackUrl = new URL("../app/api/playback/[contentId]/token/route.ts", import.meta.url);
 const aiUrl = new URL("../app/api/ai/query/route.ts", import.meta.url);
 const customerSpecUrl = new URL("../../../qa/playwright/customer.spec.mjs", import.meta.url);
+const premiumFixtureUrl = new URL("../app/api/internal/qa/premium-features/route.ts", import.meta.url);
 
 test("Premium benefit registry contains every commercial promise", () => {
   assert.deepEqual([...PREMIUM_BENEFIT_CODES].sort(), ["ai_plus","early_access","enhanced_quality","jalwa_ads_free","premium_catalogue","premium_collections"].sort());
@@ -57,5 +58,13 @@ test("staging browser suite names every Premium benefit journey", async () => {
   const spec = (await readFile(customerSpecUrl, "utf8")).toLowerCase();
   for (const marker of ["premium catalogue access", "early access original", "ad-free interface", "enhanced playback quality", "ask jalwa allowance", "premium collections"]) {
     assert.ok(spec.includes(marker), "missing browser coverage marker: " + marker);
+  }
+});
+
+
+test("Premium staging fixture satisfies production rights-approval requirements", async () => {
+  const fixture = await readFile(premiumFixtureUrl, "utf8");
+  for (const marker of ["evidence_url", "evidence_note", "takedown_contact", "commercial_use_confirmed", "self_hosting_confirmed"]) {
+    assert.ok(fixture.includes(marker), "Premium QA fixture is missing rights field: " + marker);
   }
 });
