@@ -1,0 +1,33 @@
+name: Cancel stale staging run 36152088113
+
+on:
+  push:
+    branches:
+      - ops/cancel-stale-staging-36152088113
+    paths:
+      - .github/workflows/cancel-stale-staging-run.yml
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_RUN: "36152088113"
+      EXPECTED_TARGET_SHA: "2b30288df1e57996a0a059884ddb633dad299bcc"
+      STAGING_URL: "https://jalwa-platform.codistan.org"
+    steps:
+      - name: Guard and cancel only the stale pre-cutover run
+        run: |
+          set -euo pipefail
+          run_json="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN")"
+          test "$(jq -r .head_sha <<<"$run_json")" = "$EXPECTED_TARGET_SHA"
+          test "$(jq -r .status <<<"$run_json")" = "in_progress"
+          health="$(curl -fsS --max-time 20 "$STAGING_URL/api/health")"
+          jq -e --arg sha "$EXPECTED_TARGET_SHA" '.status=="ready" and .version==$sha' <<<"$health" >/dev/null
+          gh api --method POST "repos/$GITHUB_REPOSITORY/actions/runs/$TARGET_RUN/cancel" >/dev/null
+          echo "Cancelled stale staging run $TARGET_RUN only after proving staging remained healthy on $EXPECTED_TARGET_SHA."
