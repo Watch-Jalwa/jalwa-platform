@@ -1,0 +1,164 @@
+name: Certify all Premium benefits web-only
+
+on:
+  push:
+    branches: ["ops/premium-recert-20260925"]
+    paths: [".github/workflows/ops-certify-premium-benefits.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  certify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: staging
+    env:
+      RELEASE_SHA: "9d07aae93b7cf1d2c50936e93f62c7894f02698c"
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      STAGING_QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}
+      STAGING_QA_CUSTOMER_EMAIL: ${{ vars.STAGING_QA_CUSTOMER_EMAIL || 'acceptance+customer@watch-jalwa.com' }}
+      STAGING_QA_UNAUTHORIZED_EMAIL: ${{ vars.STAGING_QA_UNAUTHORIZED_EMAIL || 'acceptance+viewer@watch-jalwa.com' }}
+      STAGING_BASE_URL: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      ALLOW_MOCK_PAYMENTS: "true"
+      QA_RUN_ID: premium-benefits-${{ github.run_id }}
+      COMPOSE_PROJECT_NAME: jalwa-platform
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - name: Configure pinned SSH and hydrate QA secret
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
+          if [[ -z "$STAGING_QA_SECRET" ]]; then
+            value="$(ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "awk 'index(\$0,\"STAGING_QA_SECRET=\")==1 {print substr(\$0,19); exit}' '$APP_DIR/.env.staging'")"
+            [[ -n "$value" ]] || { echo 'STAGING_QA_SECRET unavailable' >&2; exit 1; }
+            echo "::add-mask::$value"
+            printf 'STAGING_QA_SECRET=%s\n' "$value" >> "$GITHUB_ENV"
+          fi
+
+      - name: Temporarily activate exact Premium web image only
+        id: switch
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' RELEASE_SHA='$RELEASE_SHA' RUN_ID='$GITHUB_RUN_ID' COMPOSE_PROJECT_NAME='$COMPOSE_PROJECT_NAME' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          cd "$APP_DIR"
+          env_file="$APP_DIR/.env.staging"
+          compose_file="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml"
+          test -s "$env_file"
+          old_sha="$(docker exec jalwa-web-staging sh -lc 'printf "%s" "$GIT_SHA"')"
+          [[ "$old_sha" =~ ^[0-9a-f]{40}$ ]]
+          docker exec jalwa-worker-staging sh -lc "test \"\$GIT_SHA\" = \"$old_sha\""
+          old_manifest="$APP_DIR/deployments/$old_sha.images.env"
+          if [[ -s "$old_manifest" ]]; then
+            old_web="$(awk -F= '/^JALWA_WEB_IMAGE=/{print substr($0,index($0,"=")+1); exit}' "$old_manifest")"
+            old_worker="$(awk -F= '/^JALWA_WORKER_IMAGE=/{print substr($0,index($0,"=")+1); exit}' "$old_manifest")"
+          else
+            old_web="ghcr.io/watch-jalwa/jalwa-platform-web:$old_sha"
+            old_worker="ghcr.io/watch-jalwa/jalwa-platform-worker:$old_sha"
+          fi
+          test -n "$old_web" && test -n "$old_worker"
+          cp -a "$env_file" "$APP_DIR/.env.staging.before-premium-proof-$RUN_ID"
+          printf '%s\n' "$old_sha" > "$APP_DIR/.premium-proof-$RUN_ID.oldsha"
+          printf '%s\n' "$old_web" > "$APP_DIR/.premium-proof-$RUN_ID.oldweb"
+          printf '%s\n' "$old_worker" > "$APP_DIR/.premium-proof-$RUN_ID.oldworker"
+
+          upsert() {
+            local key="$1" value="$2" tmp
+            tmp="$(mktemp "$env_file.XXXXXX")"
+            awk -v key="$key" -v value="$value" 'BEGIN{done=0} $0 ~ "^" key "=" {if(!done) print key "=" value; done=1; next} {print} END{if(!done) print key "=" value}' "$env_file" > "$tmp"
+            chmod 600 "$tmp"; mv -f "$tmp" "$env_file"
+          }
+          new_web="ghcr.io/watch-jalwa/jalwa-platform-web:$RELEASE_SHA"
+          docker image inspect "$new_web" >/dev/null
+          upsert GIT_SHA "$RELEASE_SHA"
+          upsert JALWA_IMAGE_TAG "$RELEASE_SHA"
+          upsert JALWA_WEB_IMAGE "$new_web"
+          upsert JALWA_WORKER_IMAGE "$old_worker"
+          upsert PAYMENT_PROVIDER mock
+          upsert ALLOW_MOCK_PAYMENTS true
+          export COMPOSE_FILE="$compose_file"
+          docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$env_file" config --quiet
+          docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$env_file" up -d --no-deps --pull never --force-recreate web --wait
+          docker exec jalwa-web-staging sh -lc "test \"\$GIT_SHA\" = \"$RELEASE_SHA\""
+          docker exec jalwa-worker-staging sh -lc "test \"\$GIT_SHA\" = \"$old_sha\""
+          REMOTE
+          for attempt in {1..30}; do
+            health="$(curl -fsS --max-time 15 "$STAGING_BASE_URL/api/health" 2>/dev/null || true)"
+            if jq -e --arg sha "$RELEASE_SHA" '.status=="ready" and .version==$sha' <<<"$health" >/dev/null 2>&1; then exit 0; fi
+            sleep 2
+          done
+          echo 'Exact Premium web image did not become ready.' >&2
+          exit 1
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        if: steps.switch.outcome == 'success'
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Install pinned Premium browser harness
+        if: steps.switch.outcome == 'success'
+        run: |
+          set -euo pipefail
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          npx playwright install --with-deps chromium
+
+      - name: Prove checkout, exact entitlements and all six Premium benefits
+        id: premium
+        if: steps.switch.outcome == 'success'
+        run: |
+          set -euo pipefail
+          npx playwright test qa/playwright/customer.spec.mjs --config=playwright.staging.config.mjs
+
+      - name: Always restore prior certified web runtime
+        if: always() && steps.switch.outcome == 'success'
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' COMPOSE_PROJECT_NAME='$COMPOSE_PROJECT_NAME' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+          cd "$APP_DIR"
+          env_file="$APP_DIR/.env.staging"
+          compose_file="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml"
+          backup="$APP_DIR/.env.staging.before-premium-proof-$RUN_ID"
+          oldsha_file="$APP_DIR/.premium-proof-$RUN_ID.oldsha"
+          oldweb_file="$APP_DIR/.premium-proof-$RUN_ID.oldweb"
+          oldworker_file="$APP_DIR/.premium-proof-$RUN_ID.oldworker"
+          test -s "$backup" && test -s "$oldsha_file" && test -s "$oldweb_file" && test -s "$oldworker_file"
+          old_sha="$(cat "$oldsha_file")"
+          old_web="$(cat "$oldweb_file")"
+          old_worker="$(cat "$oldworker_file")"
+          mv -f "$backup" "$env_file"
+          chmod 600 "$env_file"
+          upsert() {
+            local key="$1" value="$2" tmp
+            tmp="$(mktemp "$env_file.XXXXXX")"
+            awk -v key="$key" -v value="$value" 'BEGIN{done=0} $0 ~ "^" key "=" {if(!done) print key "=" value; done=1; next} {print} END{if(!done) print key "=" value}' "$env_file" > "$tmp"
+            chmod 600 "$tmp"; mv -f "$tmp" "$env_file"
+          }
+          upsert GIT_SHA "$old_sha"
+          upsert JALWA_IMAGE_TAG "$old_sha"
+          upsert JALWA_WEB_IMAGE "$old_web"
+          upsert JALWA_WORKER_IMAGE "$old_worker"
+          export COMPOSE_FILE="$compose_file"
+          docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$env_file" config --quiet
+          docker compose --project-name "$COMPOSE_PROJECT_NAME" --env-file "$env_file" up -d --no-deps --pull never --force-recreate web --wait
+          docker exec jalwa-web-staging sh -lc "test \"\$GIT_SHA\" = \"$old_sha\""
+          docker exec jalwa-worker-staging sh -lc "test \"\$GIT_SHA\" = \"$old_sha\""
+          rm -f "$oldsha_file" "$oldweb_file" "$oldworker_file"
+          REMOTE
