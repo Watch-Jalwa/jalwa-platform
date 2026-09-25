@@ -7,6 +7,7 @@ import {
   getActivePrice,
   qaConfig,
   qaFetch,
+  qaPremiumFixtures,
 } from "./helpers/staging.mjs";
 
 const customerEmail = (process.env.STAGING_QA_CUSTOMER_EMAIL ?? "").trim();
@@ -16,13 +17,39 @@ const runId = `${baseRunId}${runAttempt ? `-attempt-${runAttempt}` : ""}`.slice(
 const config = qaConfig();
 
 let customer;
+let freeCustomer;
 let price;
 
-test.describe("authenticated Premium customer", () => {
+function qaSiblingEmail(email, suffix) {
+  const at = email.lastIndexOf("@");
+  if (at < 1) throw new Error("Invalid QA customer email.");
+  return `${email.slice(0, at)}+${suffix}-${runId.slice(-12)}${email.slice(at)}`;
+}
+
+async function playbackToken(page, contentId, deviceKey = "") {
+  return page.evaluate(async ({ contentId, deviceKey }) => {
+    const response = await fetch(`/api/playback/${contentId}/token`, {
+      method: "POST",
+      headers: deviceKey ? { "x-jalwa-device-key": deviceKey } : {},
+    });
+    return { status: response.status, body: await response.json().catch(() => ({})) };
+  }, { contentId, deviceKey });
+}
+
+test.describe.serial("authenticated Premium customer", () => {
   test.beforeAll(async () => {
     if (!customerEmail) throw new Error("STAGING_QA_CUSTOMER_EMAIL is required for customer certification.");
-    customer = await (await import("./helpers/staging.mjs")).ensureQaUser(config, customerEmail, "subscriber");
+    const helpers = await import("./helpers/staging.mjs");
+    customer = await helpers.ensureQaUser(config, customerEmail, "subscriber");
+    freeCustomer = await helpers.ensureQaUser(config, qaSiblingEmail(customerEmail, "premium-free"), "subscriber");
     price = await getActivePrice(config);
+    const fixture = await qaPremiumFixtures(config, "POST", { premiumUserId: customer.id, freeUserId: freeCustomer.id });
+    expect(fixture.ok, `Premium fixture setup failed with HTTP ${fixture.status}.`).toBeTruthy();
+  });
+
+  test.afterAll(async () => {
+    const cleanup = await qaPremiumFixtures(config, "DELETE");
+    expect(cleanup.ok, `Premium fixture cleanup failed with HTTP ${cleanup.status}.`).toBeTruthy();
   });
 
   test("anonymous checkout is denied", async ({ request }) => {
@@ -96,6 +123,136 @@ test.describe("authenticated Premium customer", () => {
     const { data: order } = await orderResponse.json();
     expect(order?.status).toBe("succeeded");
     await expectSubscriptionAndEntitlements(config, customer.id, price);
+  });
+
+
+  test("Premium catalogue access is denied free and allowed after Premium activation", async ({ browser }) => {
+    const freeContext = await browser.newContext({ baseURL: config.baseUrl });
+    const premiumContext = await browser.newContext({ baseURL: config.baseUrl });
+    try {
+      const freePage = await freeContext.newPage();
+      await authenticatePage(freePage, config, freeCustomer.email, "/premium");
+      const denied = await playbackToken(freePage, "00000000-0000-4000-8000-00000000a101", "qa-free-premium-device");
+      expect(denied.status).toBe(402);
+      expect(denied.body?.code).toBe("payment_required");
+
+      const premiumPage = await premiumContext.newPage();
+      await authenticatePage(premiumPage, config, customer.email, "/premium");
+      const allowed = await playbackToken(premiumPage, "00000000-0000-4000-8000-00000000a101", "qa-paid-premium-device");
+      expect(allowed.status).toBe(200);
+      expect(allowed.body?.qualityTier).toBe("enhanced");
+    } finally {
+      await freeContext.close();
+      await premiumContext.close();
+    }
+  });
+
+  test("early access Original is hidden free and visible to Premium", async ({ browser }) => {
+    const freeContext = await browser.newContext({ baseURL: config.baseUrl });
+    const premiumContext = await browser.newContext({ baseURL: config.baseUrl });
+    try {
+      const freePage = await freeContext.newPage();
+      await authenticatePage(freePage, config, freeCustomer.email, "/premium");
+      const freeResponse = await freePage.goto("/watch/qa-premium-early-access-original", { waitUntil: "domcontentloaded" });
+      expect(freeResponse?.status()).toBe(404);
+
+      const premiumPage = await premiumContext.newPage();
+      await authenticatePage(premiumPage, config, customer.email, "/premium");
+      const paidResponse = await premiumPage.goto("/watch/qa-premium-early-access-original", { waitUntil: "domcontentloaded" });
+      expect(paidResponse?.status()).toBe(200);
+      await expect(premiumPage.locator("body")).toContainText("Early access");
+      await expect(premiumPage.locator("body")).toContainText("QA Early Access Jalwa Original");
+      await premiumPage.goto("/premium", { waitUntil: "networkidle" });
+      await expect(premiumPage.getByTestId("premium-early-access")).toContainText("QA Early Access Jalwa Original");
+    } finally {
+      await freeContext.close();
+      await premiumContext.close();
+    }
+  });
+
+  test("ad-free interface removes Jalwa promotion for Premium", async ({ browser }) => {
+    const freeContext = await browser.newContext({ baseURL: config.baseUrl });
+    const premiumContext = await browser.newContext({ baseURL: config.baseUrl });
+    try {
+      const freePage = await freeContext.newPage();
+      await authenticatePage(freePage, config, freeCustomer.email, "/");
+      await freePage.goto("/", { waitUntil: "networkidle" });
+      await expect(freePage.getByTestId("jalwa-ad-slot")).toBeVisible();
+
+      const premiumPage = await premiumContext.newPage();
+      await authenticatePage(premiumPage, config, customer.email, "/");
+      await premiumPage.goto("/", { waitUntil: "networkidle" });
+      await expect(premiumPage.getByTestId("jalwa-ad-slot")).toHaveCount(0);
+    } finally {
+      await freeContext.close();
+      await premiumContext.close();
+    }
+  });
+
+  test("enhanced playback quality caps free at 480p and unlocks full ladder for Premium", async ({ browser }) => {
+    const freeContext = await browser.newContext({ baseURL: config.baseUrl });
+    const premiumContext = await browser.newContext({ baseURL: config.baseUrl });
+    try {
+      const freePage = await freeContext.newPage();
+      await authenticatePage(freePage, config, freeCustomer.email, "/");
+      const standard = await playbackToken(freePage, "00000000-0000-4000-8000-00000000a103");
+      expect(standard.status).toBe(200);
+      expect(standard.body?.qualityTier).toBe("standard");
+      expect(standard.body?.maxQualityHeight).toBe(480);
+      expect(standard.body?.url).toContain("/480p/index.m3u8");
+
+      const premiumPage = await premiumContext.newPage();
+      await authenticatePage(premiumPage, config, customer.email, "/");
+      const enhanced = await playbackToken(premiumPage, "00000000-0000-4000-8000-00000000a103");
+      expect(enhanced.status).toBe(200);
+      expect(enhanced.body?.qualityTier).toBe("enhanced");
+      expect(enhanced.body?.maxQualityHeight).toBe(720);
+      expect(enhanced.body?.url).toContain("/master.m3u8");
+    } finally {
+      await freeContext.close();
+      await premiumContext.close();
+    }
+  });
+
+  test("Ask Jalwa allowance shows 5 free and 50 Premium without enabling AI provider", async ({ browser }) => {
+    const freeContext = await browser.newContext({ baseURL: config.baseUrl });
+    const premiumContext = await browser.newContext({ baseURL: config.baseUrl });
+    try {
+      const freePage = await freeContext.newPage();
+      await authenticatePage(freePage, config, freeCustomer.email, "/ask");
+      await freePage.goto("/ask", { waitUntil: "networkidle" });
+      await expect(freePage.getByTestId("ask-jalwa-allowance")).toContainText("5 questions/day");
+
+      const premiumPage = await premiumContext.newPage();
+      await authenticatePage(premiumPage, config, customer.email, "/ask");
+      await premiumPage.goto("/ask", { waitUntil: "networkidle" });
+      await expect(premiumPage.getByTestId("ask-jalwa-allowance")).toContainText("50 questions/day");
+    } finally {
+      await freeContext.close();
+      await premiumContext.close();
+    }
+  });
+
+  test("Premium collections stay locked free and render for Premium", async ({ browser }) => {
+    const freeContext = await browser.newContext({ baseURL: config.baseUrl });
+    const premiumContext = await browser.newContext({ baseURL: config.baseUrl });
+    try {
+      const freePage = await freeContext.newPage();
+      await authenticatePage(freePage, config, freeCustomer.email, "/premium");
+      await freePage.goto("/premium", { waitUntil: "networkidle" });
+      await expect(freePage.locator('[data-benefit-code="premium_collections"]')).toHaveAttribute("data-benefit-state", "locked");
+      await expect(freePage.locator("body")).not.toContainText("QA Premium Collection");
+
+      const premiumPage = await premiumContext.newPage();
+      await authenticatePage(premiumPage, config, customer.email, "/premium");
+      await premiumPage.goto("/premium", { waitUntil: "networkidle" });
+      await expect(premiumPage.locator('[data-benefit-code="premium_collections"]')).toHaveAttribute("data-benefit-state", "unlocked");
+      await expect(premiumPage.getByTestId("premium-collections")).toContainText("QA Premium Collection");
+      await expect(premiumPage.getByTestId("premium-collections")).toContainText("QA Premium Catalogue Title");
+    } finally {
+      await freeContext.close();
+      await premiumContext.close();
+    }
   });
 
   test("complete Premium purchase passes on Mobile Chromium", async ({ browser }) => {

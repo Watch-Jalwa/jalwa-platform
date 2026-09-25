@@ -2,7 +2,7 @@ import { liveSourcesEnabled } from "@/lib/live-sources/registry";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import { createClient } from "@/lib/database/server";
 import { categories as demoCategories, featuredContent } from "./demo-data";
-import type { CatalogueCategory, CatalogueItem, LiveCatalogueCollection, PlaybackSource } from "./types";
+import type { CatalogueCategory, CatalogueItem, LiveCatalogueCollection, PlaybackSource, PremiumCatalogueCollection } from "./types";
 
 function asString(value: unknown) { return typeof value === "string" ? value : null; }
 function asTimestamp(value: unknown) {
@@ -80,7 +80,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
   try {
     const database = await createClient();
     const { data, error } = await database.from("content_items")
-      .select("id,slug,title_en,title_ur,description_en,content_type,hosting_mode,access_level,duration_seconds,thumbnail_url,primary_category_id")
+      .select("id,slug,title_en,title_ur,description_en,content_type,hosting_mode,access_level,duration_seconds,thumbnail_url,primary_category_id,publish_at")
       .eq("slug", slug).maybeSingle();
     if (error) throw error;
     if (!data) return null;
@@ -158,6 +158,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       playback: source,
       sourceUrl: rights?.source_url ?? source?.officialSourceUrl ?? source?.externalUrl,
       attribution: rights?.attribution_text ?? source?.requiredAttribution,
+      isEarlyAccess: Boolean(data.publish_at && new Date(data.publish_at).getTime() > Date.now()),
     };
   } catch (error) {
     if (canUseDemoData()) return featuredContent.find((item) => item.slug === slug) ?? null;
@@ -204,5 +205,79 @@ export async function getLiveCatalogue(): Promise<{ items: CatalogueItem[]; coll
     return { items: topLevel, collections };
   } catch (error) {
     return catalogueFailure("live", error);
+  }
+}
+
+
+export async function getPremiumEarlyAccess(limit = 12): Promise<CatalogueItem[]> {
+  if (canUseDemoData()) return [];
+  requireDatabase();
+  try {
+    const database = await createClient();
+    const { data: entitled, error: entitlementError } = await database.rpc("has_active_benefit", { p_benefit: "early_access" });
+    if (entitlementError) throw entitlementError;
+    if (!entitled) return [];
+    const now = new Date().toISOString();
+    const { data, error } = await database.from("content_items")
+      .select("slug")
+      .eq("status", "published")
+      .eq("access_level", "premium")
+      .gt("publish_at", now)
+      .order("publish_at", { ascending: true })
+      .limit(Math.max(1, Math.min(limit, 24)));
+    if (error) throw error;
+    const items = await Promise.all((data ?? []).map((row) => getContentBySlug(row.slug)));
+    return items.filter((item): item is CatalogueItem => Boolean(item?.isEarlyAccess));
+  } catch (error) {
+    return catalogueFailure("premium_early_access", error);
+  }
+}
+
+export async function getPremiumCollections(): Promise<PremiumCatalogueCollection[]> {
+  if (canUseDemoData()) return [];
+  requireDatabase();
+  try {
+    const database = await createClient();
+    const { data: entitled, error: entitlementError } = await database.rpc("has_active_benefit", { p_benefit: "premium_collections" });
+    if (entitlementError) throw entitlementError;
+    if (!entitled) return [];
+
+    const { data: collections, error } = await database.from("collections")
+      .select("id,slug,title_en,description_en")
+      .eq("status", "published")
+      .eq("access_level", "premium")
+      .order("publish_at", { ascending: false });
+    if (error) throw error;
+    const ids = (collections ?? []).map((row) => row.id);
+    if (!ids.length) return [];
+
+    const { data: membership, error: membershipError } = await database.from("collection_items")
+      .select("collection_id,content_id,sort_order")
+      .in("collection_id", ids)
+      .order("sort_order");
+    if (membershipError) throw membershipError;
+    const contentIds = [...new Set((membership ?? []).map((row) => row.content_id))];
+    const { data: rows, error: contentError } = contentIds.length
+      ? await database.from("content_items").select("id,slug").in("id", contentIds)
+      : { data: [], error: null };
+    if (contentError) throw contentError;
+    const slugById = new Map((rows ?? []).map((row) => [row.id, row.slug]));
+    const itemBySlug = new Map<string, CatalogueItem>();
+    for (const slug of [...new Set([...slugById.values()])]) {
+      const item = await getContentBySlug(slug);
+      if (item) itemBySlug.set(slug, item);
+    }
+
+    return (collections ?? []).map((collection) => ({
+      slug: collection.slug,
+      title: collection.title_en,
+      description: collection.description_en,
+      items: (membership ?? [])
+        .filter((entry) => entry.collection_id === collection.id)
+        .map((entry) => itemBySlug.get(slugById.get(entry.content_id) ?? ""))
+        .filter((item): item is CatalogueItem => Boolean(item)),
+    }));
+  } catch (error) {
+    return catalogueFailure("premium_collections", error);
   }
 }
