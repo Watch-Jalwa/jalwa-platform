@@ -1,0 +1,26 @@
+name: Dispatch exact Premium staging deploy
+on:
+  push:
+    branches:
+      - ops/premium-final-deploy-20260925
+    paths:
+      - .github/workflows/dispatch-premium-final-staging.yml
+permissions:
+  contents: read
+  actions: write
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify main still equals certified Premium candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: 9d07aae93b7cf1d2c50936e93f62c7894f02698c
+        run: |
+          set -euo pipefail
+          actual="$(gh api repos/$GITHUB_REPOSITORY/commits/main --jq .sha)"
+          test "$actual" = "$EXPECTED_SHA" || { echo "main moved: $actual" >&2; exit 1; }
+      - name: Dispatch canonical staging deployment from main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy-staging.yml --ref main
