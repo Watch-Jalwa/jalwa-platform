@@ -70,7 +70,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Sear
       <CheckoutButton preview={preview} priceCode={price.code} priceId={price.id}>Choose {price.billing_period === "year" ? "annual" : "monthly"}</CheckoutButton>
     </article>)}</div>}
 
-    <section className="panel benefits-panel"><h2>Premium includes</h2><ul>{PREMIUM_BENEFITS.map((benefit) => <li key={benefit}>✓ {benefit}</li>)}</ul><Link className="button button-secondary" href="/premium">See how every Premium benefit works</Link></section>
+    <section className="panel benefits-panel"><h2>Premium includes</h2><ul>{PREMIUM_BENEFITS.map((benefit) => <li key={benefit}>✓ {benefit}</li>)}</ul></section>
     <section className="panel payment-note"><h2>How payment works</h2>{serviceEnabled ? <p>Jalwa links your wallet through JazzCash’s hosted page. The payment service starts the subscription after JazzCash confirms the link, and Jalwa updates Premium only from verified server-side state. Never enter your JazzCash MPIN on Jalwa.</p> : <p>Jalwa creates an order, redirects you to the configured provider and waits for a signed server-to-server webhook. A browser success page never grants Premium by itself.</p>}<Link href="/legal/terms">View subscription terms</Link></section>
   </div>;
 }

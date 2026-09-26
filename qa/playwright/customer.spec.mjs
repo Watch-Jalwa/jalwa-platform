@@ -26,24 +26,6 @@ async function newQaContext(browser, deviceKey, options = {}) {
   return context;
 }
 
-async function revokeAllQaDevices(browser, email) {
-  const context = await newQaContext(browser, `qa-maintenance-${runId}-${email.split("@")[0]}`.slice(0, 150));
-  const page = await context.newPage();
-  try {
-    await authenticatePage(page, config, email, "/devices");
-    await page.goto("/devices", { waitUntil: "networkidle" });
-    for (let attempt = 0; attempt < 10; attempt += 1) {
-      const revoke = page.getByRole("button", { name: "Revoke", exact: true });
-      if (await revoke.count() === 0) break;
-      await revoke.first().click();
-      await page.waitForTimeout(150);
-    }
-    expect(await page.getByRole("button", { name: "Revoke", exact: true }).count(), `Active QA devices remain for ${email}.`).toBe(0);
-  } finally {
-    await context.close();
-  }
-}
-
 let customer;
 let freeCustomer;
 let price;
@@ -59,16 +41,14 @@ async function playbackToken(page, contentId, deviceKey = "") {
 }
 
 test.describe.serial("authenticated Premium customer", () => {
-  test.beforeAll(async ({ browser }) => {
+  test.beforeAll(async () => {
     if (!customerEmail) throw new Error("STAGING_QA_CUSTOMER_EMAIL is required for customer certification.");
     if (!freeCustomerEmail) throw new Error("STAGING_QA_UNAUTHORIZED_EMAIL is required for the free-tier Premium comparison.");
     const helpers = await import("./helpers/staging.mjs");
     customer = await helpers.ensureQaUser(config, customerEmail, "subscriber");
     freeCustomer = await helpers.ensureQaUser(config, freeCustomerEmail, "subscriber");
-    await revokeAllQaDevices(browser, customer.email);
-    await revokeAllQaDevices(browser, freeCustomer.email);
-    price = await getActivePrice(config);
     const fixture = await qaPremiumFixtures(config, "POST", { premiumUserId: customer.id, freeUserId: freeCustomer.id });
+    price = await getActivePrice(config);
     expect(fixture.ok, `Premium fixture setup failed with HTTP ${fixture.status}.`).toBeTruthy();
   });
 

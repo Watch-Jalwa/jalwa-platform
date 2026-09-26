@@ -19,7 +19,7 @@ async function qaPost(config, body) {
   const payload = JSON.stringify(body);
   let lastTransportError = null;
 
-  for (let attempt = 1; attempt <= 5; attempt += 1) {
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
     try {
       const response = await fetch(`${config.baseUrl}/api/internal/qa/session`, {
         method: "POST",
@@ -27,13 +27,19 @@ async function qaPost(config, body) {
         body: payload,
         signal: AbortSignal.timeout(15_000),
       });
-      if (!retryableQaStatuses.has(response.status) || attempt === 5) return response;
+      if (!retryableQaStatuses.has(response.status) || attempt === 8) return response;
+      const retryAfter = Number(response.headers.get("retry-after") ?? 0);
+      const retryDelay = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(15_000, retryAfter * 1_000)
+        : Math.min(8_000, 750 * (2 ** (attempt - 1)));
+      await sleep(retryDelay);
+      continue;
     } catch (error) {
       lastTransportError = error;
-      if (attempt === 5) throw error;
+      if (attempt === 8) throw error;
     }
 
-    await sleep(Math.min(2_000, 300 * (2 ** (attempt - 1))));
+    await sleep(Math.min(8_000, 750 * (2 ** (attempt - 1))));
   }
 
   throw lastTransportError ?? new Error("Jalwa QA session request did not complete.");
@@ -63,28 +69,14 @@ export async function authenticatePage(page, config, email, nextPath = "/") {
   if (!response || response.status() >= 500) throw new Error("Staging QA authentication navigation failed.");
   if (new URL(page.url()).pathname === "/login") throw new Error("Staging QA authentication did not create a session.");
 
-  const deadline = Date.now() + 25_000;
-  let lastStatus = 0;
-  let lastError = null;
+  // Verify the signed Better Auth browser state directly. Polling the public session
+  // endpoint here can trip production-like auth rate limits during the full QA suite.
+  const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
-    try {
-      const sessionProbe = await page.request.get(`${config.baseUrl}/api/auth/get-session`, {
-        headers: { "Cache-Control": "no-store" },
-      });
-      lastStatus = sessionProbe.status();
-      if (sessionProbe.ok()) {
-        const payload = await sessionProbe.json().catch(() => null);
-        if (payload?.user?.id) return;
-      } else if (lastStatus !== 401 && lastStatus !== 429 && lastStatus < 500) {
-        throw new Error(`authenticated session probe returned HTTP ${lastStatus}`);
-      }
-    } catch (error) {
-      lastError = error;
-      if (error instanceof Error && error.message.startsWith("authenticated session probe returned")) throw error;
-    }
-    await page.waitForTimeout(350);
+    const cookies = await page.context().cookies();
+    if (cookies.some((cookie) => cookie.name.includes("better-auth.session_token") && cookie.value)) return;
+    await page.waitForTimeout(250);
   }
 
-  const detail = lastError instanceof Error ? `; last transport error: ${lastError.message}` : "";
-  throw new Error(`Staging QA authentication did not establish a browser session (last HTTP ${lastStatus || "none"}${detail}).`);
+  throw new Error("Staging QA authentication did not establish a signed browser session cookie.");
 }

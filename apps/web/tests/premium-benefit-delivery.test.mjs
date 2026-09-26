@@ -11,6 +11,9 @@ const playbackUrl = new URL("../app/api/playback/[contentId]/token/route.ts", im
 const aiUrl = new URL("../app/api/ai/query/route.ts", import.meta.url);
 const customerSpecUrl = new URL("../../../qa/playwright/customer.spec.mjs", import.meta.url);
 const premiumFixtureUrl = new URL("../app/api/internal/qa/premium-features/route.ts", import.meta.url);
+const qaAuthUrl = new URL("../../../scripts/lib/staging-qa-auth.mjs", import.meta.url);
+const billingUrl = new URL("../app/billing/page.tsx", import.meta.url);
+const pricingUrl = new URL("../app/pricing/page.tsx", import.meta.url);
 
 test("Premium benefit registry contains every commercial promise", () => {
   assert.deepEqual([...PREMIUM_BENEFIT_CODES].sort(), ["ai_plus","early_access","enhanced_quality","jalwa_ads_free","premium_catalogue","premium_collections"].sort());
@@ -66,12 +69,21 @@ test("frontend consumes ad-free, quality, AI and Premium hub state", async () =>
 });
 
 test("staging browser suite names every Premium benefit journey", async () => {
-  const spec = (await readFile(customerSpecUrl, "utf8")).toLowerCase();
-  assert.ok(spec.includes("revokeallqadevices"), "Premium browser suite must clear stale QA device registrations through customer self-service");
+  const [spec, fixture] = await Promise.all([readFile(customerSpecUrl, "utf8"), readFile(premiumFixtureUrl, "utf8")]);
+  const lower = spec.toLowerCase();
   assert.ok(spec.includes("jalwa_device_key"), "Premium browser suite must use deterministic per-run device keys");
+  assert.ok(fixture.includes("update public.user_devices set revoked_at=now() where user_id=any($1::uuid[])"), "Protected Premium fixture must revoke stale synthetic QA devices");
+  assert.ok(fixture.includes("premiumUserId") && fixture.includes("freeUserId"), "Device reset must be scoped to explicit Premium/free QA users");
+  assert.doesNotMatch(spec, /revokeAllQaDevices/);
   for (const marker of ["premium catalogue access", "early access original", "ad-free interface", "enhanced playback quality", "ask jalwa allowance", "premium collections"]) {
-    assert.ok(spec.includes(marker), "missing browser coverage marker: " + marker);
+    assert.ok(lower.includes(marker), "missing browser coverage marker: " + marker);
   }
+});
+
+test("staging QA authentication verifies signed cookie state without rate-limit polling", async () => {
+  const helper = await readFile(qaAuthUrl, "utf8");
+  assert.ok(helper.includes("better-auth.session_token"));
+  assert.doesNotMatch(helper, /\/api\/auth\/get-session/);
 });
 
 
@@ -80,4 +92,22 @@ test("Premium staging fixture satisfies production rights-approval requirements"
   for (const marker of ["evidence_url", "evidence_note", "takedown_contact", "commercial_use_confirmed", "self_hosting_confirmed"]) {
     assert.ok(fixture.includes(marker), "Premium QA fixture is missing rights field: " + marker);
   }
+});
+
+
+test("Premium QA device cleanup is staging-only and restricted to allowlisted identities", async () => {
+  const fixture = await readFile(premiumFixtureUrl, "utf8");
+  assert.ok(fixture.includes("stagingQaAuthorized"));
+  assert.ok(fixture.includes("qaEmailAllowed"));
+  assert.ok(fixture.includes("Exactly two distinct QA user IDs are required."));
+  assert.ok(fixture.includes("Premium QA device reset is restricted to allowlisted staging identities."));
+  assert.match(fixture, /update public\.user_devices set revoked_at=now\(\)/);
+  assert.doesNotMatch(fixture, /delete from public\.user_devices/);
+});
+
+test("Premium hub remains discoverable without changing the approved public Pricing layout", async () => {
+  const [billing, pricing] = await Promise.all([readFile(billingUrl, "utf8"), readFile(pricingUrl, "utf8")]);
+  assert.ok(billing.includes('href="/premium"'));
+  assert.ok(billing.includes("Premium benefits"));
+  assert.doesNotMatch(pricing, /See how every Premium benefit works/);
 });

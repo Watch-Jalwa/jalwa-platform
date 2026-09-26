@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import type { PoolClient } from "pg";
 import { databasePool } from "@/lib/database/pool";
-import { stagingQaAuthorized } from "../_guard";
+import { qaEmailAllowed, stagingQaAuthorized } from "../_guard";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const FIXTURES = {
   premium: { id: "00000000-0000-4000-8000-00000000a101", asset: "00000000-0000-4000-8000-00000000b101", slug: "qa-premium-catalogue-title" },
@@ -19,6 +21,24 @@ async function cleanup(client: PoolClient) {
     [FIXTURES.premium.id, FIXTURES.early.id, FIXTURES.quality.id],
     [FIXTURES.premium.slug, FIXTURES.early.slug, FIXTURES.quality.slug],
   ]);
+}
+
+async function resetQaDevices(client: PoolClient, userIds: string[]) {
+  if (userIds.length !== 2 || userIds.some((id) => !uuidPattern.test(id)) || new Set(userIds).size !== 2) {
+    throw new Error("Exactly two distinct QA user IDs are required.");
+  }
+  const users = await client.query<{ id: string; email: string }>(
+    `select id,email from public."user" where id=any($1::uuid[])`,
+    [userIds],
+  );
+  if (users.rowCount !== 2 || users.rows.some((user) => !qaEmailAllowed(user.email))) {
+    throw new Error("Premium QA device reset is restricted to allowlisted staging identities.");
+  }
+  const result = await client.query(
+    "update public.user_devices set revoked_at=now() where user_id=any($1::uuid[]) and revoked_at is null",
+    [userIds],
+  );
+  return result.rowCount ?? 0;
 }
 
 async function insertFixture(
@@ -51,10 +71,14 @@ async function insertFixture(
 
 export async function POST(request: Request) {
   if (!stagingQaAuthorized(request)) return NextResponse.json({ error: "Not found." }, { status: 404 });
+  const body = await request.json().catch(() => ({})) as { premiumUserId?: string; freeUserId?: string };
+  const premiumUserId = body.premiumUserId?.trim() ?? "";
+  const freeUserId = body.freeUserId?.trim() ?? "";
   const client = await databasePool.connect();
   try {
     await client.query("begin");
     await cleanup(client);
+    const devicesRevoked = await resetQaDevices(client, [premiumUserId, freeUserId]);
     const category = await client.query("select id from public.categories where slug='originals' limit 1");
     const categoryId = category.rows[0]?.id;
     if (!categoryId) throw new Error("Jalwa Originals category is unavailable.");
@@ -70,7 +94,7 @@ export async function POST(request: Request) {
     );
     await client.query("insert into public.collection_items(collection_id,content_id,sort_order) values($1,$2,0)", [FIXTURES.collection.id, FIXTURES.premium.id]);
     await client.query("commit");
-    return NextResponse.json({ ok: true, fixtures: FIXTURES }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ ok: true, fixtures: FIXTURES, devicesRevoked }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     await client.query("rollback").catch(() => undefined);
     return NextResponse.json({ error: error instanceof Error ? error.message : "Premium QA fixture setup failed." }, { status: 500 });

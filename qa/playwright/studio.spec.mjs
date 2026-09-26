@@ -65,7 +65,7 @@ async function expectAuthorized(page, route, pattern = null) {
   if (pattern) await expect(page.locator("body")).toContainText(pattern);
 }
 
-test.describe("Studio authorization and Premium reporting", () => {
+test.describe.serial("Studio authorization and Premium reporting", () => {
   test.beforeAll(async () => {
     for (const [name, value] of Object.entries({ adminEmail, rightsEmail, viewerEmail, financeEmail, reportViewerEmail })) {
       if (!value) throw new Error(`${name} is required for Studio certification.`);
@@ -123,7 +123,7 @@ test.describe("Studio authorization and Premium reporting", () => {
   });
 
   test("finance role can use every Premium report, filters, pagination, empty states and CSV export", async ({ page }) => {
-    await authenticatePage(page, config, finance.email, "/studio/finance/reports");
+    await authenticateVerified(page, finance.email, 200);
     await page.goto("/studio/finance/reports", { waitUntil: "networkidle" });
     await expect(page.locator("body")).toContainText(/Premium reports/i);
 
