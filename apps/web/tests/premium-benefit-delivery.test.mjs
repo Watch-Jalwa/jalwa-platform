@@ -81,3 +81,13 @@ test("Premium staging fixture satisfies production rights-approval requirements"
     assert.ok(fixture.includes(marker), "Premium QA fixture is missing rights field: " + marker);
   }
 });
+
+
+test("Premium staging browser state is deterministic across repeated certification runs", async () => {
+  const [fixture, spec] = await Promise.all([readFile(premiumFixtureUrl, "utf8"), readFile(customerSpecUrl, "utf8")]);
+  assert.ok(fixture.includes("delete from public.user_devices where user_id=any($1::uuid[])"));
+  assert.ok(fixture.includes("premiumUserId"));
+  assert.ok(fixture.includes("freeUserId"));
+  assert.match(spec, /ensureQaUser,/);
+  assert.ok(spec.includes('await ensureQaUser(config, freeCustomerEmail, "viewer")'));
+});
