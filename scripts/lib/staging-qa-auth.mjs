@@ -19,7 +19,7 @@ async function qaPost(config, body) {
   const payload = JSON.stringify(body);
   let lastTransportError = null;
 
-  for (let attempt = 1; attempt <= 5; attempt += 1) {
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
     try {
       const response = await fetch(`${config.baseUrl}/api/internal/qa/session`, {
         method: "POST",
@@ -27,13 +27,19 @@ async function qaPost(config, body) {
         body: payload,
         signal: AbortSignal.timeout(15_000),
       });
-      if (!retryableQaStatuses.has(response.status) || attempt === 5) return response;
+      if (!retryableQaStatuses.has(response.status) || attempt === 8) return response;
+      const retryAfter = Number(response.headers.get("retry-after") ?? 0);
+      const retryDelay = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(15_000, retryAfter * 1_000)
+        : Math.min(8_000, 750 * (2 ** (attempt - 1)));
+      await sleep(retryDelay);
+      continue;
     } catch (error) {
       lastTransportError = error;
-      if (attempt === 5) throw error;
+      if (attempt === 8) throw error;
     }
 
-    await sleep(Math.min(2_000, 300 * (2 ** (attempt - 1))));
+    await sleep(Math.min(8_000, 750 * (2 ** (attempt - 1))));
   }
 
   throw lastTransportError ?? new Error("Jalwa QA session request did not complete.");
