@@ -72,7 +72,7 @@ test("staging browser suite names every Premium benefit journey", async () => {
   const [spec, fixture] = await Promise.all([readFile(customerSpecUrl, "utf8"), readFile(premiumFixtureUrl, "utf8")]);
   const lower = spec.toLowerCase();
   assert.ok(spec.includes("jalwa_device_key"), "Premium browser suite must use deterministic per-run device keys");
-  assert.ok(fixture.includes("delete from public.user_devices where user_id=any($1::uuid[])"), "Protected Premium fixture must clear stale synthetic QA devices");
+  assert.ok(fixture.includes("update public.user_devices set revoked_at=now() where user_id=any($1::uuid[])"), "Protected Premium fixture must revoke stale synthetic QA devices");
   assert.ok(fixture.includes("premiumUserId") && fixture.includes("freeUserId"), "Device reset must be scoped to explicit Premium/free QA users");
   assert.doesNotMatch(spec, /revokeAllQaDevices/);
   for (const marker of ["premium catalogue access", "early access original", "ad-free interface", "enhanced playback quality", "ask jalwa allowance", "premium collections"]) {
