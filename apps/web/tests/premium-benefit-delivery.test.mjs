@@ -5,6 +5,7 @@ import { PREMIUM_BENEFIT_CODES, resolveAiDailyLimit, selectPlaybackAuthorization
 
 const migrationUrl = new URL("../../../database/migrations/202609250001_premium_benefit_delivery.sql", import.meta.url);
 const layoutUrl = new URL("../app/layout.tsx", import.meta.url);
+const adSlotUrl = new URL("../components/jalwa-ad-slot.tsx", import.meta.url);
 const premiumPageUrl = new URL("../app/premium/page.tsx", import.meta.url);
 const playbackUrl = new URL("../app/api/playback/[contentId]/token/route.ts", import.meta.url);
 const aiUrl = new URL("../app/api/ai/query/route.ts", import.meta.url);
@@ -50,8 +51,10 @@ test("Premium playback checks entitlement before device registration", async () 
 });
 
 test("frontend consumes ad-free, quality, AI and Premium hub state", async () => {
-  const [layout, premiumPage, playback, ai] = await Promise.all([layoutUrl,premiumPageUrl,playbackUrl,aiUrl].map((url) => readFile(url, "utf8")));
+  const [layout, adSlot, premiumPage, playback, ai] = await Promise.all([layoutUrl,adSlotUrl,premiumPageUrl,playbackUrl,aiUrl].map((url) => readFile(url, "utf8")));
   assert.ok(layout.includes("JalwaAdSlot"));
+  assert.ok(adSlot.includes("!state.signedIn"));
+  assert.ok(adSlot.includes('state.benefits.has("jalwa_ads_free")'));
   assert.ok(premiumPage.includes("premium-early-access"));
   assert.ok(premiumPage.includes("premium-collections"));
   assert.ok(playback.includes("selectPlaybackPath"));
@@ -64,6 +67,8 @@ test("frontend consumes ad-free, quality, AI and Premium hub state", async () =>
 
 test("staging browser suite names every Premium benefit journey", async () => {
   const spec = (await readFile(customerSpecUrl, "utf8")).toLowerCase();
+  assert.ok(spec.includes("revokeallqadevices"), "Premium browser suite must clear stale QA device registrations through customer self-service");
+  assert.ok(spec.includes("jalwa_device_key"), "Premium browser suite must use deterministic per-run device keys");
   for (const marker of ["premium catalogue access", "early access original", "ad-free interface", "enhanced playback quality", "ask jalwa allowance", "premium collections"]) {
     assert.ok(spec.includes(marker), "missing browser coverage marker: " + marker);
   }
