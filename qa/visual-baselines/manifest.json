@@ -2,10 +2,10 @@
   "schema_version": 1,
   "policy": "Human-approved hashes only. Never update automatically from CI.",
   "approval": {
-    "reference": "user-directed-premium-completion-2026-09-26",
-    "approved_at": "2026-09-26",
-    "source_release_sha": "442eff21faf3457d898a2b4e1111711386513a4e",
-    "source_qa_run_id": "completion-36234779742"
+    "reference": "user-approved-2026-09-11-chat-535c421bc5c63547a3c049c03f7fb67832bdc3d2",
+    "approved_at": "2026-09-11",
+    "source_release_sha": "535c421bc5c63547a3c049c03f7fb67832bdc3d2",
+    "source_qa_run_id": "completion-34575901206"
   },
   "baselines": {
     "home": {
@@ -18,7 +18,7 @@
     },
     "pricing": {
       "route": "/pricing",
-      "sha256": "bb9908fd70512cce33b6054622d1d9eb58450cd8235eeb488450dd722cfcdd47"
+      "sha256": "fec4c63ee62c61e5870ef4621de20b2ba86c585d054fde4a88d0afcb3af80bb3"
     },
     "login": {
       "route": "/login",
