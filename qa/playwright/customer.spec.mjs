@@ -5,6 +5,7 @@ import {
   expectNoHorizontalOverflow,
   expectSubscriptionAndEntitlements,
   getActivePrice,
+  ensureQaUser,
   qaConfig,
   qaFetch,
   qaPremiumFixtures,
@@ -16,6 +17,32 @@ const baseRunId = process.env.QA_RUN_ID ?? `customer-${Date.now()}`;
 const runAttempt = process.env.GITHUB_RUN_ATTEMPT?.trim();
 const runId = `${baseRunId}${runAttempt ? `-attempt-${runAttempt}` : ""}`.slice(0, 120);
 const config = qaConfig();
+const premiumDeviceKey = `qa-premium-${runId}`.slice(0, 150);
+const freeDeviceKey = `qa-free-${runId}`.slice(0, 150);
+
+async function newQaContext(browser, deviceKey, options = {}) {
+  const context = await browser.newContext({ baseURL: config.baseUrl, ...options });
+  await context.addInitScript((key) => localStorage.setItem("jalwa_device_key", key), deviceKey);
+  return context;
+}
+
+async function revokeAllQaDevices(browser, email) {
+  const context = await newQaContext(browser, `qa-maintenance-${runId}-${email.split("@")[0]}`.slice(0, 150));
+  const page = await context.newPage();
+  try {
+    await authenticatePage(page, config, email, "/devices");
+    await page.goto("/devices", { waitUntil: "networkidle" });
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const revoke = page.getByRole("button", { name: "Revoke", exact: true });
+      if (await revoke.count() === 0) break;
+      await revoke.first().click();
+      await page.waitForTimeout(150);
+    }
+    expect(await page.getByRole("button", { name: "Revoke", exact: true }).count(), `Active QA devices remain for ${email}.`).toBe(0);
+  } finally {
+    await context.close();
+  }
+}
 
 let customer;
 let freeCustomer;
@@ -32,15 +59,21 @@ async function playbackToken(page, contentId, deviceKey = "") {
 }
 
 test.describe.serial("authenticated Premium customer", () => {
-  test.beforeAll(async () => {
+  test.beforeAll(async ({ browser }) => {
     if (!customerEmail) throw new Error("STAGING_QA_CUSTOMER_EMAIL is required for customer certification.");
     if (!freeCustomerEmail) throw new Error("STAGING_QA_UNAUTHORIZED_EMAIL is required for the free-tier Premium comparison.");
     const helpers = await import("./helpers/staging.mjs");
     customer = await helpers.ensureQaUser(config, customerEmail, "subscriber");
     freeCustomer = await helpers.ensureQaUser(config, freeCustomerEmail, "subscriber");
+    await revokeAllQaDevices(browser, customer.email);
+    await revokeAllQaDevices(browser, freeCustomer.email);
     price = await getActivePrice(config);
     const fixture = await qaPremiumFixtures(config, "POST", { premiumUserId: customer.id, freeUserId: freeCustomer.id });
     expect(fixture.ok, `Premium fixture setup failed with HTTP ${fixture.status}.`).toBeTruthy();
+  });
+
+  test.beforeEach(async ({ page }) => {
+    await page.addInitScript((key) => localStorage.setItem("jalwa_device_key", key), premiumDeviceKey);
   });
 
   test.afterAll(async () => {
@@ -124,8 +157,8 @@ test.describe.serial("authenticated Premium customer", () => {
 
 
   test("Premium catalogue access is denied free and allowed after Premium activation", async ({ browser }) => {
-    const freeContext = await browser.newContext({ baseURL: config.baseUrl });
-    const premiumContext = await browser.newContext({ baseURL: config.baseUrl });
+    const freeContext = await newQaContext(browser, freeDeviceKey);
+    const premiumContext = await newQaContext(browser, premiumDeviceKey);
     try {
       const freePage = await freeContext.newPage();
       await authenticatePage(freePage, config, freeCustomer.email, "/premium");
@@ -145,8 +178,8 @@ test.describe.serial("authenticated Premium customer", () => {
   });
 
   test("early access Original is hidden free and visible to Premium", async ({ browser }) => {
-    const freeContext = await browser.newContext({ baseURL: config.baseUrl });
-    const premiumContext = await browser.newContext({ baseURL: config.baseUrl });
+    const freeContext = await newQaContext(browser, freeDeviceKey);
+    const premiumContext = await newQaContext(browser, premiumDeviceKey);
     try {
       const freePage = await freeContext.newPage();
       await authenticatePage(freePage, config, freeCustomer.email, "/premium");
@@ -171,8 +204,8 @@ test.describe.serial("authenticated Premium customer", () => {
   });
 
   test("ad-free interface removes Jalwa promotion for Premium", async ({ browser }) => {
-    const freeContext = await browser.newContext({ baseURL: config.baseUrl });
-    const premiumContext = await browser.newContext({ baseURL: config.baseUrl });
+    const freeContext = await newQaContext(browser, freeDeviceKey);
+    const premiumContext = await newQaContext(browser, premiumDeviceKey);
     try {
       const freePage = await freeContext.newPage();
       await authenticatePage(freePage, config, freeCustomer.email, "/");
@@ -190,8 +223,8 @@ test.describe.serial("authenticated Premium customer", () => {
   });
 
   test("enhanced playback quality caps free at 480p and unlocks full ladder for Premium", async ({ browser }) => {
-    const freeContext = await browser.newContext({ baseURL: config.baseUrl });
-    const premiumContext = await browser.newContext({ baseURL: config.baseUrl });
+    const freeContext = await newQaContext(browser, freeDeviceKey);
+    const premiumContext = await newQaContext(browser, premiumDeviceKey);
     try {
       const freePage = await freeContext.newPage();
       await authenticatePage(freePage, config, freeCustomer.email, "/");
@@ -224,8 +257,8 @@ test.describe.serial("authenticated Premium customer", () => {
   });
 
   test("Ask Jalwa allowance shows 5 free and 50 Premium without enabling AI provider", async ({ browser }) => {
-    const freeContext = await browser.newContext({ baseURL: config.baseUrl });
-    const premiumContext = await browser.newContext({ baseURL: config.baseUrl });
+    const freeContext = await newQaContext(browser, freeDeviceKey);
+    const premiumContext = await newQaContext(browser, premiumDeviceKey);
     try {
       const freePage = await freeContext.newPage();
       await authenticatePage(freePage, config, freeCustomer.email, "/ask");
@@ -243,8 +276,8 @@ test.describe.serial("authenticated Premium customer", () => {
   });
 
   test("Premium collections stay locked free and render for Premium", async ({ browser }) => {
-    const freeContext = await browser.newContext({ baseURL: config.baseUrl });
-    const premiumContext = await browser.newContext({ baseURL: config.baseUrl });
+    const freeContext = await newQaContext(browser, freeDeviceKey);
+    const premiumContext = await newQaContext(browser, premiumDeviceKey);
     try {
       const freePage = await freeContext.newPage();
       await authenticatePage(freePage, config, freeCustomer.email, "/premium");
@@ -265,9 +298,8 @@ test.describe.serial("authenticated Premium customer", () => {
   });
 
   test("complete Premium purchase passes on Mobile Chromium", async ({ browser }) => {
-    const context = await browser.newContext({
+    const context = await newQaContext(browser, premiumDeviceKey, {
       ...devices["Pixel 7"],
-      baseURL: config.baseUrl,
       locale: "en-PK",
       timezoneId: "Asia/Karachi",
       reducedMotion: "reduce",
