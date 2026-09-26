@@ -11,6 +11,7 @@ const playbackUrl = new URL("../app/api/playback/[contentId]/token/route.ts", im
 const aiUrl = new URL("../app/api/ai/query/route.ts", import.meta.url);
 const customerSpecUrl = new URL("../../../qa/playwright/customer.spec.mjs", import.meta.url);
 const premiumFixtureUrl = new URL("../app/api/internal/qa/premium-features/route.ts", import.meta.url);
+const qaAuthUrl = new URL("../../../scripts/lib/staging-qa-auth.mjs", import.meta.url);
 const billingUrl = new URL("../app/billing/page.tsx", import.meta.url);
 const pricingUrl = new URL("../app/pricing/page.tsx", import.meta.url);
 
@@ -68,13 +69,21 @@ test("frontend consumes ad-free, quality, AI and Premium hub state", async () =>
 });
 
 test("staging browser suite names every Premium benefit journey", async () => {
-  const spec = (await readFile(customerSpecUrl, "utf8")).toLowerCase();
-  assert.ok(spec.includes("qapremiumfixtures"), "Premium browser suite must reset deterministic staging fixtures through the protected QA boundary");
-  assert.ok(spec.includes("premiumuserid") && spec.includes("freeuserid"), "Premium fixture reset must be scoped to the exact two QA identities");
+  const [spec, fixture] = await Promise.all([readFile(customerSpecUrl, "utf8"), readFile(premiumFixtureUrl, "utf8")]);
+  const lower = spec.toLowerCase();
   assert.ok(spec.includes("jalwa_device_key"), "Premium browser suite must use deterministic per-run device keys");
+  assert.ok(fixture.includes("delete from public.user_devices where user_id=any($1::uuid[])"), "Protected Premium fixture must clear stale synthetic QA devices");
+  assert.ok(fixture.includes("premiumUserId") && fixture.includes("freeUserId"), "Device reset must be scoped to explicit Premium/free QA users");
+  assert.doesNotMatch(spec, /revokeAllQaDevices/);
   for (const marker of ["premium catalogue access", "early access original", "ad-free interface", "enhanced playback quality", "ask jalwa allowance", "premium collections"]) {
-    assert.ok(spec.includes(marker), "missing browser coverage marker: " + marker);
+    assert.ok(lower.includes(marker), "missing browser coverage marker: " + marker);
   }
+});
+
+test("staging QA authentication verifies signed cookie state without rate-limit polling", async () => {
+  const helper = await readFile(qaAuthUrl, "utf8");
+  assert.ok(helper.includes("better-auth.session_token"));
+  assert.doesNotMatch(helper, /\/api\/auth\/get-session/);
 });
 
 
