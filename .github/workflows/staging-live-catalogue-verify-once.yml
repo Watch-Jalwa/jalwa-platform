@@ -1,0 +1,185 @@
+name: One-off staging live catalogue verification
+
+on:
+  push:
+    branches:
+      - ops/live-catalogue-verify-2026-09-29
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: staging
+      url: https://${{ vars.STAGING_DOMAIN }}
+    env:
+      RELEASE_SHA: 166e42a4273f17d8e21eb04e5f0a63d9cb588901
+      HOST: ${{ vars.STAGING_HOST }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      APP_DIR: /opt/codistan/jalwa-platform
+      DB_CONTAINER: jalwa-postgres-staging
+      WEB_CONTAINER: jalwa-web-staging
+      JALWA_BROWSER_BASE_URL: https://${{ vars.STAGING_DOMAIN }}
+      JALWA_EXPECTED_VERSION: 166e42a4273f17d8e21eb04e5f0a63d9cb588901
+      JALWA_PUBLIC_DOMAIN_LIVE_REPORT_FILE: live-catalogue-browser-acceptance.json
+
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          test -n "$HOST" && test -n "$DOMAIN" && test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Verify exact deployed release and enabled runtime flag
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec $WEB_CONTAINER sh -lc 'test \"\$GIT_SHA\" = \"$RELEASE_SHA\" && test \"\$PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED\" = true'"
+
+      - name: Run provider-aware health across active sources
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "secret=\$(docker exec $WEB_CONTAINER printenv CRON_SECRET); test -n \"\$secret\"; curl --fail-with-body --silent --show-error --retry 3 --retry-all-errors --connect-timeout 15 --max-time 600 -X POST 'https://$DOMAIN/api/cron/source-health' -H \"Authorization: Bearer \$secret\" -H 'Content-Type: application/json'" \
+            > live-source-health.json
+          cat live-source-health.json
+          jq -e '.checked >= 52' live-source-health.json >/dev/null
+
+      - name: Capture and enforce exact 52-source database state
+        run: |
+          set -euo pipefail
+          cat > /tmp/live-state.sql <<'SQL'
+          with rows as (
+            select
+              m.source_key,
+              m.slug,
+              m.user_facing_entry,
+              c.id as content_id,
+              c.status as content_status,
+              c.is_available as content_available,
+              public.is_content_effectively_available(c.id) as effective_available,
+              p.id as playback_source_id,
+              p.status as playback_status,
+              p.is_available as playback_available,
+              l.enabled as config_enabled,
+              l.next_review_at,
+              exists (
+                select 1
+                from public.rights_records r
+                where r.content_id=c.id
+                  and r.status='approved'
+                  and not r.rights_hold
+                  and (r.expires_at is null or r.expires_at > now())
+              ) as current_rights,
+              h.status as health_status,
+              h.availability,
+              h.checked_at,
+              h.message,
+              h.terms_review_due
+            from public.approved_live_catalogue_manifest m
+            left join public.content_items c on c.slug=m.slug
+            left join public.playback_sources p on p.content_id=c.id and p.is_primary
+            left join public.live_source_configs l on l.playback_source_id=p.id and l.source_key=m.source_key
+            left join public.playback_source_health h on h.playback_source_id=p.id
+          )
+          select jsonb_pretty(jsonb_build_object(
+            'checked_at', now(),
+            'manifest_sources', count(*),
+            'direct_entries', count(*) filter (where user_facing_entry),
+            'enabled_configs', count(*) filter (where config_enabled),
+            'published_items', count(*) filter (where content_status='published' and content_available),
+            'available_playback', count(*) filter (where playback_status='active' and playback_available),
+            'effective_available', count(*) filter (where effective_available),
+            'current_rights', count(*) filter (where current_rights),
+            'overdue_reviews', count(*) filter (where next_review_at is null or next_review_at <= now() or terms_review_due),
+            'health_recent', count(*) filter (where checked_at >= now() - interval '20 minutes'),
+            'healthy', count(*) filter (where health_status='healthy' and availability='healthy'),
+            'off_air', count(*) filter (where availability='off_air'),
+            'degraded', count(*) filter (where health_status='degraded' or availability='degraded'),
+            'unavailable', count(*) filter (where health_status='unavailable' or availability='unavailable'),
+            'problems', coalesce(jsonb_agg(jsonb_build_object(
+              'source_key', source_key,
+              'slug', slug,
+              'health_status', health_status,
+              'availability', availability,
+              'checked_at', checked_at,
+              'message', message,
+              'next_review_at', next_review_at
+            )) filter (where
+              not config_enabled
+              or content_status <> 'published'
+              or not content_available
+              or playback_status <> 'active'
+              or not playback_available
+              or not effective_available
+              or not current_rights
+              or next_review_at is null
+              or next_review_at <= now()
+              or coalesce(terms_review_due,false)
+              or health_status in ('degraded','unavailable')
+              or availability in ('degraded','unavailable')
+              or checked_at is null
+              or checked_at < now() - interval '20 minutes'
+            ), '[]'::jsonb)
+          ))
+          from rows;
+          SQL
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa /tmp/live-state.sql "$USER@$HOST:/tmp/jalwa-live-state.sql"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i $DB_CONTAINER psql -At -v ON_ERROR_STOP=1 -U postgres -d postgres < /tmp/jalwa-live-state.sql; rm -f /tmp/jalwa-live-state.sql" \
+            > live-catalogue-db-state.json
+          cat live-catalogue-db-state.json
+          jq -e '
+            .manifest_sources == 52 and
+            .direct_entries == 44 and
+            .enabled_configs == 52 and
+            .published_items == 52 and
+            .available_playback == 52 and
+            .effective_available == 52 and
+            .current_rights == 52 and
+            .overdue_reviews == 0 and
+            .health_recent == 52 and
+            .degraded == 0 and
+            .unavailable == 0 and
+            (.problems | length) == 0
+          ' live-catalogue-db-state.json >/dev/null
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Install pinned live-source browser harness
+        run: |
+          npm install --no-save --package-lock=false --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          npx playwright install --with-deps chromium
+
+      - name: Run full 46-entry mobile/browser acceptance
+        run: node scripts/public-domain-live-acceptance.mjs
+
+      - name: Upload verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: staging-live-catalogue-verification-${{ env.RELEASE_SHA }}-${{ github.run_id }}
+          if-no-files-found: warn
+          retention-days: 30
+          path: |
+            live-source-health.json
+            live-catalogue-db-state.json
+            live-catalogue-browser-acceptance.json
