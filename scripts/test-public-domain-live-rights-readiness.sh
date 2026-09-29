@@ -8,8 +8,9 @@ manifest="database/migrations/202608010005_approved_live_catalogue_manifest.sql"
 state="scripts/set-public-domain-live-catalogue-state.sql"
 seed="scripts/seed-public-domain-live-sources.sql"
 workflow=".github/workflows/set-public-domain-live-sources.yml"
+launch_refresh="database/migrations/202609290001_live_catalogue_upstream_refresh.sql"
 
-for file in "$initial" "$institutional" "$open_government" "$manifest" "$state" "$seed" "$workflow"; do
+for file in "$initial" "$institutional" "$open_government" "$manifest" "$state" "$seed" "$workflow" "$launch_refresh"; do
   [[ -s "$file" ]] || { echo "Missing required rights-readiness file: $file" >&2; exit 1; }
 done
 
@@ -38,8 +39,17 @@ if grep -Eiq '\binsert[[:space:]]+into\b|\bupdate[[:space:]]+public\.|\bdelete[[
 fi
 grep -q "v_manifest <> 52" "$seed"
 grep -q "'user_facing_entries',46" "$seed"
-grep -q "'current_image_entries',23" "$seed"
-grep -q "'official_link_entries',22" "$seed"
+grep -q "'current_image_entries',16" "$seed"
+grep -q "'official_link_entries',29" "$seed"
+grep -q "v_fallbacks <> 7" "$launch_refresh"
+grep -q "v_images <> 16" "$launch_refresh"
+grep -q "v_links <> 29" "$launch_refresh"
+grep -q "v_embeds <> 7" "$launch_refresh"
+grep -q "set self_hosting_confirmed=false" "$launch_refresh"
+if grep -q "set enabled=true" "$launch_refresh"; then
+  echo "Launch refresh must not enable live sources." >&2
+  exit 1
+fi
 
 grep -q "set-public-domain-live-catalogue-state.sql" "$workflow"
 grep -q "set_database_state true" "$workflow"
