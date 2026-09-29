@@ -13,7 +13,7 @@ const HOSTS = {
   senate: ["www.senate.gov", "senate.gov"],
 };
 
-function officialLink([key, title, titleUrdu, description, provider, url, terms, attribution, hosts]) {
+function officialLink([key, title, titleUrdu, description, provider, url, terms, attribution, hosts, extra = {}]) {
   return [key, {
     key,
     slug: key,
@@ -29,6 +29,7 @@ function officialLink([key, title, titleUrdu, description, provider, url, terms,
     refreshIntervalSeconds: 900,
     freshnessThresholdSeconds: 86400,
     offAirAllowed: true,
+    ...extra,
   }];
 }
 
@@ -87,7 +88,7 @@ const linkRows = [
   ["nih-videocast", "NIH VideoCast", "این آئی ایچ ویڈیو کاسٹ", "Official National Institutes of Health live scientific events. Inline use remains event-specific because guest material may retain copyright.", "nih", "https://videocast.nih.gov/", "https://www.nlm.nih.gov/web_policies.html", "Source: National Institutes of Health. NIH does not endorse Jalwa.", HOSTS.nih],
   ["fda-advisory-committee-live", "FDA Advisory Committee Live", "ایف ڈی اے مشاورتی کمیٹی براہ راست", "Official U.S. Food and Drug Administration advisory-committee calendar and webcast access.", "fda", "https://www.fda.gov/advisory-committees/advisory-committee-calendar", "https://www.fda.gov/about-fda/about-website/website-policies", "Source: U.S. Food and Drug Administration. FDA does not endorse Jalwa.", HOSTS.fda],
   ["sec-public-meetings", "SEC Public Meetings", "ایس ای سی عوامی اجلاس", "Official U.S. Securities and Exchange Commission public-meeting and event schedule.", "sec", "https://www.sec.gov/newsroom/meetings-events", "https://www.sec.gov/about/privacy-information", "Source: U.S. Securities and Exchange Commission. The SEC does not endorse Jalwa.", HOSTS.sec],
-  ["fcc-open-meetings", "FCC Open Meetings and Workshops", "ایف سی سی کھلے اجلاس اور ورکشاپس", "Official Federal Communications Commission live meeting and workshop coverage.", "fcc", "https://www.fcc.gov/live", "https://www.fcc.gov/encyclopedia/website-policies-notices", "Source: Federal Communications Commission. The FCC does not endorse Jalwa.", HOSTS.fcc],
+  ["fcc-open-meetings", "FCC Open Meetings and Workshops", "ایف سی سی کھلے اجلاس اور ورکشاپس", "Official Federal Communications Commission live meeting and workshop coverage.", "fcc", "https://www.fcc.gov/live", "https://www.fcc.gov/general/website-notices", "Source: Federal Communications Commission. The FCC does not endorse Jalwa.", HOSTS.fcc, { allowAutomatedProbe403: true }],
   ["europe-by-satellite-ebs", "Europe by Satellite — EbS", "یورپ بائی سیٹلائٹ ای بی ایس", "Official European Commission EbS live audiovisual service. Jalwa opens the official ad-free service and does not restream it.", "european_commission", "https://audiovisual.ec.europa.eu/en/ebs/live/1", "https://commission.europa.eu/legal-notice_en", "© European Union, 2026 — Source: European Commission Audiovisual Service. No endorsement of Jalwa is implied.", HOSTS.eu],
   ["europe-by-satellite-ebs-plus", "Europe by Satellite — EbS+", "یورپ بائی سیٹلائٹ ای بی ایس پلس", "Official European Commission EbS+ live audiovisual service. Jalwa opens the official ad-free service and does not restream it.", "european_commission", "https://audiovisual.ec.europa.eu/en/ebs/live/2", "https://commission.europa.eu/legal-notice_en", "© European Union, 2026 — Source: European Commission Audiovisual Service. No endorsement of Jalwa is implied.", HOSTS.eu],
   ["us-house-floorcast", "U.S. House FloorCast", "امریکی ایوان نمائندگان فلور کاسٹ", "Official U.S. House floor proceedings. This entry is official-link only and must remain free of commercial sponsorship around the source.", "us_house", "https://live.house.gov/", "https://www.house.gov/website-information/content", "Source: U.S. House of Representatives. The House does not endorse Jalwa.", HOSTS.house],
