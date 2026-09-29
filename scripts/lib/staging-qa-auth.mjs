@@ -6,6 +6,40 @@ const required = (name) => {
 
 const retryableQaStatuses = new Set([429, 502, 503, 504]);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const qaSessionCookies = new Map();
+
+const signedSessionCookies = (cookies) => cookies.filter(
+  (cookie) => cookie.name.includes("better-auth.session_token") && cookie.value,
+);
+
+function qaSessionKey(config, email) {
+  return `${new URL(config.baseUrl).origin}|${email.trim().toLowerCase()}`;
+}
+
+async function rememberQaSession(page, config, key) {
+  const cookies = await page.context().cookies(config.baseUrl);
+  if (signedSessionCookies(cookies).length === 0) return false;
+  qaSessionCookies.set(key, cookies);
+  return true;
+}
+
+async function restoreQaSession(page, config, email, nextPath) {
+  const key = qaSessionKey(config, email);
+  const cached = qaSessionCookies.get(key);
+  if (!cached?.length) return false;
+
+  await page.context().addCookies(cached);
+  const target = new URL(nextPath.startsWith("/") ? nextPath : "/", config.baseUrl);
+  const response = await page.goto(target.toString(), { waitUntil: "domcontentloaded" });
+  if (!response || response.status() >= 500 || new URL(page.url()).pathname === "/login") {
+    qaSessionCookies.delete(key);
+    return false;
+  }
+
+  if (await rememberQaSession(page, config, key)) return true;
+  qaSessionCookies.delete(key);
+  return false;
+}
 
 export function qaConfig() {
   return {
@@ -64,6 +98,9 @@ export async function generateMagicLink(config, email, nextPath = "/") {
 }
 
 export async function authenticatePage(page, config, email, nextPath = "/") {
+  const key = qaSessionKey(config, email);
+  if (await restoreQaSession(page, config, email, nextPath)) return;
+
   const actionLink = await generateMagicLink(config, email, nextPath);
   const response = await page.goto(actionLink, { waitUntil: "domcontentloaded" });
   if (!response || response.status() >= 500) throw new Error("Staging QA authentication navigation failed.");
@@ -73,8 +110,7 @@ export async function authenticatePage(page, config, email, nextPath = "/") {
   // endpoint here can trip production-like auth rate limits during the full QA suite.
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
-    const cookies = await page.context().cookies();
-    if (cookies.some((cookie) => cookie.name.includes("better-auth.session_token") && cookie.value)) return;
+    if (await rememberQaSession(page, config, key)) return;
     await page.waitForTimeout(250);
   }
 
