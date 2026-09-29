@@ -1,0 +1,60 @@
+name: One-off live upstream probe
+on:
+  push:
+    branches:
+      - ops/live-upstream-probe-2026-09-29
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Probe current official media endpoints
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36'
+          probe() {
+            local name="$1" url="$2"
+            printf '\n=== %s ===\n%s\n' "$name" "$url"
+            curl -L --max-redirs 3 --connect-timeout 10 --max-time 30 -A "$UA" -sS -D /tmp/h -o /tmp/b "$url" || true
+            head -n 1 /tmp/h || true
+            grep -iE '^(content-type|content-length|last-modified|location):' /tmp/h | tail -10 || true
+            wc -c /tmp/b || true
+          }
+          probe usgs-ml 'https://volcanoes.usgs.gov/observatories/hvo/cams/MLcam/images/M.jpg'
+          probe usgs-mt 'https://volcanoes.usgs.gov/observatories/hvo/cams/MTcam/images/M.jpg'
+          probe usgs-mk2 'https://volcanoes.usgs.gov/observatories/hvo/cams/MK2cam/images/M.jpg'
+          probe usgs-mk 'https://volcanoes.usgs.gov/observatories/hvo/cams/MKcam/images/M.jpg'
+          probe usgs-delaware 'https://usgs-nims-images.s3.amazonaws.com/overlay/NJ_Delaware_River_at_Belvidere/NJ_Delaware_River_at_Belvidere_newest.jpg'
+          probe usgs-hopatcong 'https://usgs-nims-images.s3.amazonaws.com/overlay/NJ_Lake_Hopatcong_at_Landing/NJ_Lake_Hopatcong_at_Landing_newest.jpg'
+          probe usgs-rancocas 'https://usgs-nims-images.s3.amazonaws.com/overlay/NJ_North_Branch_Rancocas_Creek_at_Pemberton/NJ_North_Branch_Rancocas_Creek_at_Pemberton_newest.jpg'
+          probe nps-devils 'https://www.nps.gov/webcams-deto/deto5.jpg'
+          probe nps-sunrise 'https://www.nps.gov/webcams-mora/SunriseMtn.jpg'
+          probe nps-paradise 'https://www.nps.gov/webcams-mora/mountain.jpg'
+          probe nps-tatoosh 'https://www.nps.gov/webcams-mora/tatoosh.jpg'
+          probe nps-pine 'https://www.nps.gov/webcams-gumo/gumo1.jpg'
+          probe nps-elcapitan 'https://www.nps.gov/webcams-gumo/gumo2.jpg'
+          probe nps-bigmeadows 'https://www.nps.gov/webcams-shen/bvc2.jpg'
+          probe nps-smokies 'https://www.nps.gov/featurecontent/ard/webcams/images/gsnglarge.jpg'
+          probe nps-pointreyes 'https://www.nps.gov/featurecontent/ard/webcams/images/pore.jpg'
+          probe nps-yellowstone 'https://www.nps.gov/webcams-yell/mammoth_electric.jpg'
+          probe nps-glacier 'https://www.nps.gov/webcams-glac/stmaryallsky-resize.jpg'
+          probe nps-bunker 'https://www.nps.gov/webcams-bost/sw-ts.jpeg'
+          probe nps-elmorro 'https://www.nps.gov/webcams-chir/elmo_cam.jpg'
+
+      - name: Inspect NPS dynamic webcam pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          UA='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36'
+          for id in             81B46C72-1DD8-B71B-0BDC8D1824EBB9A7             81B46B71-1DD8-B71B-0B55074571E08B1E
+          do
+            echo "=== NPS $id ==="
+            curl -L --connect-timeout 10 --max-time 30 -A "$UA" -sS "https://www.nps.gov/media/webcam/view.htm?id=$id" > /tmp/page
+            grep -Eo 'https?://[^"'"'"' <>]+|/[A-Za-z0-9_./?=&%-]+\.(jpg|jpeg|png|webp|gif)(\?[^"'"'"' <>]*)?' /tmp/page | grep -Ei 'webcam|phenocam|\.jpg|\.jpeg|\.png|\.webp|\.gif' | sort -u | head -80 || true
+            curl -L --connect-timeout 10 --max-time 30 -A "$UA" -sS "https://www.nps.gov/customcf/webcam/dsp_webcam_image.cfm?id=$id" > /tmp/custom || true
+            echo "-- customcf candidates --"
+            grep -Eo 'https?://[^"'"'"' <>]+|/[A-Za-z0-9_./?=&%-]+\.(jpg|jpeg|png|webp|gif)(\?[^"'"'"' <>]*)?' /tmp/custom | grep -Ei 'webcam|phenocam|\.jpg|\.jpeg|\.png|\.webp|\.gif' | sort -u | head -80 || true
+          done
