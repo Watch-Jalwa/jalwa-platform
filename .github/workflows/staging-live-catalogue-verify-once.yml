@@ -17,15 +17,15 @@ jobs:
       url: https://${{ vars.STAGING_DOMAIN }}
     env:
       RELEASE_SHA: 166e42a4273f17d8e21eb04e5f0a63d9cb588901
-      HOST: ${{ vars.STAGING_HOST }}
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
       USER: ${{ vars.STAGING_USER || 'codistan' }}
-      DOMAIN: ${{ vars.STAGING_DOMAIN }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
       APP_DIR: /opt/codistan/jalwa-platform
       DB_CONTAINER: jalwa-postgres-staging
       WEB_CONTAINER: jalwa-web-staging
-      JALWA_BROWSER_BASE_URL: https://${{ vars.STAGING_DOMAIN }}
+      JALWA_BROWSER_BASE_URL: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
       JALWA_EXPECTED_VERSION: 166e42a4273f17d8e21eb04e5f0a63d9cb588901
       JALWA_PUBLIC_DOMAIN_LIVE_REPORT_FILE: live-catalogue-browser-acceptance.json
 
