@@ -60,8 +60,8 @@ begin
   if v_items <> 52 then raise exception 'Approved live inventory is incomplete'; end if;
   if v_configs <> 52 then raise exception 'Approved live source review metadata is incomplete'; end if;
   if v_rights <> 52 then raise exception 'Approved live rights records are incomplete'; end if;
-  if v_images <> 23 then raise exception 'Approved current-image hosting modes are incorrect'; end if;
-  if v_links <> 22 then raise exception 'Conditional sources must remain official-link only'; end if;
+  if v_images <> 16 then raise exception 'Approved current-image hosting modes are incorrect'; end if;
+  if v_links <> 29 then raise exception 'Conditional sources must remain official-link only'; end if;
 end $$;
 
 select jsonb_build_object(
@@ -69,8 +69,8 @@ select jsonb_build_object(
   'content_items',52,
   'source_configs',52,
   'approved_rights',52,
-  'current_image_entries',23,
-  'official_link_entries',22,
+  'current_image_entries',16,
+  'official_link_entries',29,
   'collections',2,
   'earliest_rights_review_expires_at',(
     select min(l.next_review_at)
