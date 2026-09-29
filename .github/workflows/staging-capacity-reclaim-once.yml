@@ -32,7 +32,7 @@ jobs:
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
 
-      - name: Reclaim only old images unused by any container
+      - name: Reclaim images unused by any container
         run: |
           set -euo pipefail
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
@@ -72,24 +72,12 @@ jobs:
           done >> "$protected"
           sort -u -o "$protected" "$protected"
 
-          now="$(date +%s)"
           removed=0
           freed_before="$(df -B1 --output=avail / | tail -1 | tr -d ' ')"
 
           while read -r id; do
             [[ -n "$id" ]] || continue
             if grep -Fxq "$id" "$protected"; then
-              continue
-            fi
-
-            created="$(docker image inspect --format '{{.Created}}' "$id" 2>/dev/null || true)"
-            [[ -n "$created" ]] || continue
-            created_epoch="$(date -d "$created" +%s 2>/dev/null || echo 0)"
-            [[ "$created_epoch" =~ ^[0-9]+$ ]] || continue
-            age_seconds=$(( now - created_epoch ))
-
-            # Keep all images from the last 72 hours; only old inactive cache is eligible.
-            if (( age_seconds < 259200 )); then
               continue
             fi
 
@@ -109,7 +97,7 @@ jobs:
           after="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
           freed_after="$(df -B1 --output=avail / | tail -1 | tr -d ' ')"
           freed=$(( freed_after - freed_before ))
-          echo "Removed $removed old image IDs unused by any container; freed approximately $freed bytes."
+          echo "Removed $removed image IDs unused by any container; freed approximately $freed bytes."
           echo "Root filesystem usage after inactive-image reclaim: ${after}%."
           docker system df
 
