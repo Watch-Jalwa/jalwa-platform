@@ -44,6 +44,10 @@ jobs:
           probe nps-bunker 'https://www.nps.gov/webcams-bost/sw-ts.jpeg'
           probe nps-elmorro 'https://www.nps.gov/webcams-chir/elmo_cam.jpg'
           probe nps-shenandoah-phenocam 'https://phenocam.nau.edu/data/latest/shenandoah.jpg'
+          probe fcc-browser 'https://www.fcc.gov/live'
+          probe senate-browser 'https://www.senate.gov/floor/'
+          probe nasa-youtube-embed 'https://www.youtube-nocookie.com/embed/MuHIx2q0Wjs?autoplay=0&playsinline=1&rel=0'
+          probe nasa-youtube-oembed 'https://www.youtube.com/oembed?url=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%3DMuHIx2q0Wjs&format=json'
 
           echo '=== REFERER RETRIES ==='
           for pair in \
