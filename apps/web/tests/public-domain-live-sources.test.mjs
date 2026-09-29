@@ -17,6 +17,7 @@ const acceptanceUrl = new URL("../../../scripts/public-domain-live-acceptance.mj
 const stagingWorkflowUrl = new URL("../../../.github/workflows/staging-acceptance.yml", import.meta.url);
 const activationWorkflowUrl = new URL("../../../.github/workflows/set-public-domain-live-sources.yml", import.meta.url);
 const cssUrl = new URL("../app/phase9.css", import.meta.url);
+const launchRefreshUrl = new URL("../../../database/migrations/202609290001_live_catalogue_upstream_refresh.sql", import.meta.url);
 
 async function text(url) { return readFile(url, "utf8"); }
 
@@ -62,8 +63,8 @@ test("manifest drives the complete controlled catalogue", async () => {
   assert.match(manifest, /v_total <> 52/);
   assert.match(manifest, /v_direct <> 44/);
   assert.match(seed, /v_manifest <> 52/);
-  assert.match(seed, /v_images <> 23/);
-  assert.match(seed, /v_links <> 22/);
+  assert.match(seed, /v_images <> 16/);
+  assert.match(seed, /v_links <> 29/);
   assert.match(seed, /'user_facing_entries',46/);
   assert.doesNotMatch(seed, /\binsert\s+into\b|\bupdate\s+public\.|\bdelete\s+from\b/i);
   assert.match(state, /approved_live_catalogue_manifest/);
@@ -90,6 +91,10 @@ test("provider-aware health still handles review expiry and repeated failures", 
   assert.match(health, /failures >= 3/);
   assert.match(health, /terms_review_due/);
   assert.match(health, /content_hash/);
+  const security = await text(securityUrl);
+  assert.match(security, /officialYouTubeEmbed\(definition\.embedVideoId\)/);
+  assert.doesNotMatch(security, /youtube\.com\/oembed/);
+  assert.match(security, /allowAutomatedProbe403/);
 });
 
 test("mobile live experience preserves delivery and non-endorsement boundaries", async () => {
@@ -113,4 +118,16 @@ test("staging acceptance covers 46 entries and secured images", async () => {
   assert.match(acceptance, /nps-devils-tower-entrance/);
   assert.match(workflow, /seed-public-domain-live-sources\.sql/);
   assert.match(workflow, /test:staging:playwright:media/);
+});
+
+
+test("launch live-source refresh preserves 52 controlled records while narrowing unsafe delivery", async () => {
+  const migration = await text(launchRefreshUrl);
+  assert.match(migration, /v_fallbacks <> 7/);
+  assert.match(migration, /v_images <> 16/);
+  assert.match(migration, /v_links <> 29/);
+  assert.match(migration, /v_embeds <> 7/);
+  assert.match(migration, /nps-painted-desert-inn/);
+  assert.match(migration, /usgs-mauna-loa-mtcam/);
+  assert.doesNotMatch(migration, /set enabled=true/);
 });
