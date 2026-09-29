@@ -55,7 +55,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "secret=\$(docker exec $WEB_CONTAINER printenv CRON_SECRET); test -n \"\$secret\"; curl --fail-with-body --silent --show-error --retry 3 --retry-all-errors --connect-timeout 15 --max-time 600 -X POST 'https://$DOMAIN/api/cron/source-health' -H \"Authorization: Bearer \$secret\" -H 'Content-Type: application/json'" \
+            "docker exec $WEB_CONTAINER node -e 'const secret=process.env.CRON_SECRET||\""; if(!secret) process.exit(2); fetch(\"http://127.0.0.1:3000/api/cron/source-health\",{method:\"POST\",headers:{authorization:\"Bearer \"+secret,\"content-type\":\"application/json\"}}).then(async r=>{const t=await r.text(); console.log(t); if(!r.ok) process.exit(1)}).catch(e=>{console.error(e);process.exit(1)})'" \
             > live-source-health.json
           cat live-source-health.json
           jq -e '.checked >= 52' live-source-health.json >/dev/null
