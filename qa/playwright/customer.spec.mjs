@@ -142,13 +142,13 @@ test.describe.serial("authenticated Premium customer", () => {
     try {
       const freePage = await freeContext.newPage();
       await authenticatePage(freePage, config, freeCustomer.email, "/premium");
-      const denied = await playbackToken(freePage, "00000000-0000-4000-8000-00000000a101", "qa-free-premium-device");
+      const denied = await playbackToken(freePage, "00000000-0000-4000-8000-00000000a101", freeDeviceKey);
       expect(denied.status).toBe(402);
       expect(denied.body?.code).toBe("payment_required");
 
       const premiumPage = await premiumContext.newPage();
       await authenticatePage(premiumPage, config, customer.email, "/premium");
-      const allowed = await playbackToken(premiumPage, "00000000-0000-4000-8000-00000000a101", "qa-paid-premium-device");
+      const allowed = await playbackToken(premiumPage, "00000000-0000-4000-8000-00000000a101", premiumDeviceKey);
       expect(allowed.status).toBe(200);
       expect(allowed.body?.qualityTier).toBe("enhanced");
     } finally {
@@ -170,7 +170,7 @@ test.describe.serial("authenticated Premium customer", () => {
       await authenticatePage(premiumPage, config, customer.email, "/premium");
       const paidResponse = await premiumPage.goto("/watch/qa-premium-early-access-original", { waitUntil: "domcontentloaded" });
       expect(paidResponse?.status()).toBe(200);
-      const earlyPlayback = await playbackToken(premiumPage, "00000000-0000-4000-8000-00000000a102", "qa-paid-early-access-device");
+      const earlyPlayback = await playbackToken(premiumPage, "00000000-0000-4000-8000-00000000a102", premiumDeviceKey);
       expect(earlyPlayback.status).toBe(200);
       expect(earlyPlayback.body?.qualityTier).toBe("enhanced");
       await expect(premiumPage.locator("body")).toContainText("Early access");
