@@ -32,8 +32,26 @@ function officialLink([key, title, titleUrdu, description, provider, url, terms,
   }];
 }
 
-function npsCamera([key, title, titleUrdu, description, id]) {
+function npsSource([key, title, titleUrdu, description, id, imageUrl = null]) {
   const pageUrl = `https://www.nps.gov/media/webcam/view.htm?id=${id}`;
+  if (!imageUrl) {
+    return [key, {
+      key,
+      slug: key,
+      title,
+      titleUrdu,
+      description: `${description} Jalwa opens the official NPS webcam page because a rights-approved, fresh public image is not safely proxyable.`,
+      provider: "nps",
+      adapter: "official_live_link",
+      officialSourceUrl: pageUrl,
+      termsUrl: "https://www.nps.gov/aboutus/disclaimer.htm",
+      attribution: "Source: National Park Service. NPS does not endorse Jalwa.",
+      allowedHosts: HOSTS.nps,
+      refreshIntervalSeconds: 900,
+      freshnessThresholdSeconds: 86400,
+      offAirAllowed: true,
+    }];
+  }
   return [key, {
     key,
     slug: key,
@@ -46,8 +64,7 @@ function npsCamera([key, title, titleUrdu, description, id]) {
     termsUrl: "https://www.nps.gov/aboutus/disclaimer.htm",
     attribution: "Source: National Park Service. No claim to original U.S. Government works. NPS does not endorse Jalwa.",
     allowedHosts: HOSTS.nps,
-    imageUrl: pageUrl,
-    imagePathPattern: "^/webcams-[a-z0-9-]+/[^?#]+\\.(?:jpe?g|png|webp|gif)$",
+    imageUrl,
     refreshIntervalSeconds: 300,
     freshnessThresholdSeconds: 7200,
   }];
@@ -78,26 +95,26 @@ const linkRows = [
 ];
 
 const npsRows = [
-  ["nps-devils-tower-entrance", "NPS Devils Tower Entrance", "نیشنل پارک سروس ڈیولز ٹاور داخلی منظر", "Current official National Park Service view near the Devils Tower entrance.", "353840EE-9D49-67A6-C3D2292B5251E4DD"],
-  ["nps-mount-rainier-sunrise", "NPS Mount Rainier Sunrise", "ماؤنٹ رینیئر سن رائز منظر", "Current official National Park Service view from Sunrise at Mount Rainier.", "81B462EC-1DD8-B71B-0B99F890C596FA16"],
-  ["nps-mount-rainier-paradise", "NPS Mount Rainier Paradise", "ماؤنٹ رینیئر پیراڈائز منظر", "Current official National Park Service mountain view from Paradise.", "81B46307-1DD8-B71B-0B72918A4B2EB790"],
-  ["nps-mount-rainier-tatoosh", "NPS Mount Rainier Tatoosh Range", "ماؤنٹ رینیئر ٹیٹوش رینج", "Current official National Park Service view of the Tatoosh Range.", "81B46402-1DD8-B71B-0B95C911C1395AAC"],
-  ["nps-guadalupe-pine-springs", "NPS Guadalupe Pine Springs Canyon", "گواڈالوپ پائن اسپرنگز کینین", "Current official National Park Service view from Pine Springs Canyon.", "E73E3175-DF46-3AF2-28593FC1F83AE264"],
-  ["nps-guadalupe-el-capitan", "NPS Guadalupe El Capitan", "گواڈالوپ ایل کیپٹن منظر", "Current official National Park Service view of El Capitan.", "9849DE2B-BC23-1110-33CED7C04E8AAF05"],
-  ["nps-shenandoah-mountain-view", "NPS Shenandoah Mountain View", "شیننڈوا پہاڑی منظر", "Current official National Park Service mountain view in Shenandoah.", "81B46B71-1DD8-B71B-0B55074571E08B1E"],
-  ["nps-shenandoah-big-meadows", "NPS Shenandoah Big Meadows", "شیننڈوا بگ میڈوز", "Current official National Park Service view of Big Meadows.", "81B46B99-1DD8-B71B-0B124A40CC3384CE"],
-  ["nps-smokies-newfound-gap", "NPS Great Smoky Mountains Newfound Gap", "گریٹ اسموکی ماؤنٹینز نیوفاؤنڈ گیپ", "Current official National Park Service view at Newfound Gap.", "C589EEEF-1DD8-B71B-0B0463C308FF64DD"],
-  ["nps-point-reyes-beach", "NPS Point Reyes Beach", "پوائنٹ ریئس ساحلی منظر", "Current official National Park Service beach view at Point Reyes.", "5A967BB2-CB78-43A7-1C861C4554D5D50D"],
-  ["nps-yellowstone-electric-peak", "NPS Yellowstone Electric Peak", "ییلو اسٹون الیکٹرک پیک", "Current official National Park Service north-entrance and Electric Peak view.", "81B468AB-1DD8-B71B-0BE84D8E8E0F1112"],
-  ["nps-glacier-night-sky", "NPS Glacier Night Sky", "گلیشیئر نائٹ اسکائی", "Current official National Park Service night-sky view in Glacier National Park.", "D4BDFE7E-AC7F-D681-8A03C820E06CBA0A"],
-  ["nps-bunker-hill-west", "NPS Bunker Hill Monument West View", "بنکر ہل یادگار مغربی منظر", "Current official National Park Service westward view from Bunker Hill Monument.", "B17835F2-AC01-8A62-F2F0EC85B33643D3"],
-  ["nps-painted-desert-inn", "NPS Painted Desert Inn", "پینٹڈ ڈیزرٹ اِن منظر", "Current official National Park Service view at Painted Desert Inn.", "81B46C72-1DD8-B71B-0BDC8D1824EBB9A7"],
-  ["nps-el-morro", "NPS El Morro National Monument", "ایل مورو قومی یادگار", "Current official National Park Service view at El Morro National Monument.", "81B46AD5-1DD8-B71B-0BFB3F36B5DDC6EF"],
+  ["nps-devils-tower-entrance", "NPS Devils Tower Entrance", "نیشنل پارک سروس ڈیولز ٹاور داخلی منظر", "Current official National Park Service view near the Devils Tower entrance.", "353840EE-9D49-67A6-C3D2292B5251E4DD", "https://www.nps.gov/webcams-deto/deto5.jpg"],
+  ["nps-mount-rainier-sunrise", "NPS Mount Rainier Sunrise", "ماؤنٹ رینیئر سن رائز منظر", "Current official National Park Service view from Sunrise at Mount Rainier.", "81B462EC-1DD8-B71B-0B99F890C596FA16", "https://www.nps.gov/webcams-mora/SunriseMtn.jpg"],
+  ["nps-mount-rainier-paradise", "NPS Mount Rainier Paradise", "ماؤنٹ رینیئر پیراڈائز منظر", "Current official National Park Service mountain view from Paradise.", "81B46307-1DD8-B71B-0B72918A4B2EB790", "https://www.nps.gov/webcams-mora/mountain.jpg"],
+  ["nps-mount-rainier-tatoosh", "NPS Mount Rainier Tatoosh Range", "ماؤنٹ رینیئر ٹیٹوش رینج", "Current official National Park Service view of the Tatoosh Range.", "81B46402-1DD8-B71B-0B95C911C1395AAC", "https://www.nps.gov/webcams-mora/tatoosh.jpg"],
+  ["nps-guadalupe-pine-springs", "NPS Guadalupe Pine Springs Canyon", "گواڈالوپ پائن اسپرنگز کینین", "Official National Park Service Pine Springs Canyon webcam.", "E73E3175-DF46-3AF2-28593FC1F83AE264"],
+  ["nps-guadalupe-el-capitan", "NPS Guadalupe El Capitan", "گواڈالوپ ایل کیپٹن منظر", "Current official National Park Service view of El Capitan.", "9849DE2B-BC23-1110-33CED7C04E8AAF05", "https://www.nps.gov/webcams-gumo/gumo2.jpg"],
+  ["nps-shenandoah-mountain-view", "NPS Shenandoah Mountain View", "شیننڈوا پہاڑی منظر", "Official National Park Service Mountain View webcam.", "81B46B71-1DD8-B71B-0B55074571E08B1E"],
+  ["nps-shenandoah-big-meadows", "NPS Shenandoah Big Meadows", "شیننڈوا بگ میڈوز", "Official National Park Service Big Meadows webcam.", "81B46B99-1DD8-B71B-0B124A40CC3384CE"],
+  ["nps-smokies-newfound-gap", "NPS Great Smoky Mountains Newfound Gap", "گریٹ اسموکی ماؤنٹینز نیوفاؤنڈ گیپ", "Current official National Park Service view at Newfound Gap.", "C589EEEF-1DD8-B71B-0B0463C308FF64DD", "https://www.nps.gov/featurecontent/ard/webcams/images/gsnglarge.jpg"],
+  ["nps-point-reyes-beach", "NPS Point Reyes Beach", "پوائنٹ ریئس ساحلی منظر", "Current official National Park Service beach view at Point Reyes.", "5A967BB2-CB78-43A7-1C861C4554D5D50D", "https://www.nps.gov/featurecontent/ard/webcams/images/pore.jpg"],
+  ["nps-yellowstone-electric-peak", "NPS Yellowstone Electric Peak", "ییلو اسٹون الیکٹرک پیک", "Current official National Park Service north-entrance and Electric Peak view.", "81B468AB-1DD8-B71B-0BE84D8E8E0F1112", "https://www.nps.gov/webcams-yell/mammoth_electric.jpg"],
+  ["nps-glacier-night-sky", "NPS Glacier Night Sky", "گلیشیئر نائٹ اسکائی", "Official National Park Service night-sky webcam in Glacier National Park.", "D4BDFE7E-AC7F-D681-8A03C820E06CBA0A"],
+  ["nps-bunker-hill-west", "NPS Bunker Hill Monument West View", "بنکر ہل یادگار مغربی منظر", "Current official National Park Service westward view from Bunker Hill Monument.", "B17835F2-AC01-8A62-F2F0EC85B33643D3", "https://www.nps.gov/webcams-bost/sw-ts.jpeg"],
+  ["nps-painted-desert-inn", "NPS Painted Desert Inn", "پینٹڈ ڈیزرٹ اِن منظر", "Official National Park Service webcam at Painted Desert Inn.", "81B46C72-1DD8-B71B-0BDC8D1824EBB9A7"],
+  ["nps-el-morro", "NPS El Morro National Monument", "ایل مورو قومی یادگار", "Official National Park Service webcam at El Morro National Monument.", "81B46AD5-1DD8-B71B-0BFB3F36B5DDC6EF"],
 ];
 
 export const OPEN_GOVERNMENT_LIVE_SOURCES = Object.fromEntries([
   ...linkRows.map(officialLink),
-  ...npsRows.map(npsCamera),
+  ...npsRows.map(npsSource),
 ]);
 
 export const OPEN_GOVERNMENT_TOP_LEVEL_KEYS = Object.keys(OPEN_GOVERNMENT_LIVE_SOURCES);
