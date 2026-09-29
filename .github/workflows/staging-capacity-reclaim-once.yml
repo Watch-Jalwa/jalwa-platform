@@ -1,0 +1,117 @@
+name: One-off staging inactive image reclaim
+
+on:
+  push:
+    branches: ["fix/staging-capacity-reclaim-2026-09-29"]
+
+permissions:
+  contents: read
+
+jobs:
+  reclaim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          test -n "$HOST" && test -n "$KNOWN_HOSTS" && test -n "$SSH_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Reclaim only old images unused by any container
+        run: |
+          set -euo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -Eeuo pipefail
+
+          before="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+          echo "Root filesystem usage before inactive-image reclaim: ${before}%."
+          docker system df
+
+          if (( before < 85 )); then
+            echo 'Capacity is already below the deployment threshold; no image removal required.'
+            exit 0
+          fi
+
+          protected="$(mktemp)"
+          trap 'rm -f "$protected"' EXIT
+
+          # Every image referenced by any running OR stopped container is protected.
+          while read -r container; do
+            [[ -n "$container" ]] || continue
+            docker inspect --format '{{.Image}}' "$container" 2>/dev/null || true
+          done < <(docker ps -aq) | sort -u > "$protected"
+
+          # Preserve Jalwa's recorded rollback images even when no container currently references them.
+          for marker in .last-good-image .previous-good-image; do
+            if [[ -s "$APP_DIR/$marker" ]]; then
+              sha="$(tr -d '[:space:]' < "$APP_DIR/$marker")"
+              if [[ "$sha" =~ ^[0-9a-f]{40}$ ]]; then
+                for ref in \
+                  "ghcr.io/watch-jalwa/jalwa-platform-web:$sha" \
+                  "ghcr.io/watch-jalwa/jalwa-platform-worker:$sha"; do
+                  docker image inspect --format '{{.Id}}' "$ref" 2>/dev/null || true
+                done
+              fi
+            fi
+          done >> "$protected"
+          sort -u -o "$protected" "$protected"
+
+          now="$(date +%s)"
+          removed=0
+          freed_before="$(df -B1 --output=avail / | tail -1 | tr -d ' ')"
+
+          while read -r id; do
+            [[ -n "$id" ]] || continue
+            if grep -Fxq "$id" "$protected"; then
+              continue
+            fi
+
+            created="$(docker image inspect --format '{{.Created}}' "$id" 2>/dev/null || true)"
+            [[ -n "$created" ]] || continue
+            created_epoch="$(date -d "$created" +%s 2>/dev/null || echo 0)"
+            [[ "$created_epoch" =~ ^[0-9]+$ ]] || continue
+            age_seconds=$(( now - created_epoch ))
+
+            # Keep all images from the last 72 hours; only old inactive cache is eligible.
+            if (( age_seconds < 259200 )); then
+              continue
+            fi
+
+            if docker image rm "$id" >/dev/null 2>&1; then
+              removed=$((removed + 1))
+            fi
+
+            usage="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+            if (( usage < 85 )); then
+              break
+            fi
+          done < <(docker image ls --no-trunc --format '{{.ID}}' | sort -u)
+
+          docker image prune -f >/dev/null || true
+          docker builder prune -af >/dev/null || true
+
+          after="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+          freed_after="$(df -B1 --output=avail / | tail -1 | tr -d ' ')"
+          freed=$(( freed_after - freed_before ))
+          echo "Removed $removed old image IDs unused by any container; freed approximately $freed bytes."
+          echo "Root filesystem usage after inactive-image reclaim: ${after}%."
+          docker system df
+
+          test "$after" -lt 85
+          REMOTE
