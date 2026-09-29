@@ -27,6 +27,9 @@ const officialLinkSlugs = [
   "dvids-live-webcasts", "dvids-pentagon-press-briefings", "dvids-white-house-public-events", "dvids-navy-recruit-graduations", "dvids-defense-conferences-ceremonies",
   "nasa-plus-live-events", "nasa-mission-launch-coverage", "nasa-space-to-ground", "nih-videocast", "fda-advisory-committee-live",
   "sec-public-meetings", "fcc-open-meetings", "europe-by-satellite-ebs", "europe-by-satellite-ebs-plus", "us-house-floorcast", "us-senate-floor-webcast",
+  "usgs-mauna-loa-mtcam",
+  "nps-guadalupe-pine-springs", "nps-shenandoah-mountain-view", "nps-shenandoah-big-meadows",
+  "nps-glacier-night-sky", "nps-painted-desert-inn", "nps-el-morro",
 ];
 
 const browser = await chromium.launch({ headless: true });
@@ -42,7 +45,7 @@ try {
   const body = await page.locator("body").innerText();
   for (const title of expectedTitles) assert.match(body, new RegExp(title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), `${title} missing from /live`);
   assert.doesNotMatch(body, /Premium/i, "Approved public live sources must not be Premium-gated");
-  assert.match(body, /does not sponsor or endorse Jalwa/i);
+  assert.match(body, /do(?:es)? not sponsor or endorse Jalwa/i);
   assert.match(body, /official source/i);
   const dimensions = await page.evaluate(() => ({ clientWidth: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth }));
   assert.ok(dimensions.scrollWidth <= dimensions.clientWidth + 1, `Mobile /live overflow: ${dimensions.scrollWidth} > ${dimensions.clientWidth}`);

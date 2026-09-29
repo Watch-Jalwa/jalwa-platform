@@ -17,7 +17,10 @@ const IMAGE_LIMIT_BYTES = 12_000_000;
 const REQUEST_TIMEOUT_MS = 10_000;
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
-type ExtendedLiveSourceDefinition = LiveSourceDefinition & { imagePathPattern?: string };
+type ExtendedLiveSourceDefinition = LiveSourceDefinition & {
+  imagePathPattern?: string;
+  allowAutomatedProbe403?: boolean;
+};
 
 function privateIpv4(address: string) {
   const parts = address.split(".").map(Number);
@@ -66,7 +69,7 @@ async function fetchAllowed(value: string, definition: LiveSourceDefinition, met
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
       headers: {
         accept: method === "GET" ? "text/html,image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9,*/*;q=0.2" : "*/*",
-        "user-agent": "Jalwa-Approved-Live/2.0 (+https://watch-jalwa.com)",
+        "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36",
       },
     });
     if (response.status >= 300 && response.status < 400) {
@@ -227,6 +230,7 @@ export async function resolveLiveImage(sourceKey: string): Promise<ResolvedLiveI
 }
 
 async function checkOfficialLink(definition: LiveSourceDefinition) {
+  const extended = definition as ExtendedLiveSourceDefinition;
   const head = await fetchAllowed(definition.officialSourceUrl, definition, "HEAD");
   if (head.response.ok) {
     await head.response.body?.cancel();
@@ -234,7 +238,22 @@ async function checkOfficialLink(definition: LiveSourceDefinition) {
   }
   await head.response.body?.cancel();
   const get = await fetchAllowed(definition.officialSourceUrl, definition, "GET");
-  if (!get.response.ok) throw new Error(`Official source page returned HTTP ${get.response.status}.`);
+  if (!get.response.ok) {
+    const automatedProbeBlocked = extended.allowAutomatedProbe403 && get.response.status === 403;
+    await get.response.body?.cancel();
+    if (automatedProbeBlocked) {
+      return {
+        availability: "healthy" as const,
+        embedUrl: null,
+        message: "Official source blocks automated probes; browser access is the supported delivery path.",
+        sourceTimestamp: null,
+        etag: get.response.headers.get("etag"),
+        lastModified: get.response.headers.get("last-modified"),
+        contentHash: null,
+      };
+    }
+    throw new Error(`Official source page returned HTTP ${get.response.status}.`);
+  }
   const contentType = get.response.headers.get("content-type")?.split(";", 1)[0]?.toLowerCase() ?? "";
   if (contentType && !contentType.includes("html")) throw new Error("Official source page did not return HTML.");
   await readBounded(get.response, HTML_LIMIT_BYTES);
@@ -247,9 +266,10 @@ export async function checkLiveSource(sourceKey: string) {
   if (definition.adapter === "official_live_link") return checkOfficialLink(definition);
   if (definition.adapter === "official_live_embed") {
     if (definition.embedVideoId) {
-      const oembed = `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${definition.embedVideoId}`)}&format=json`;
-      const { response } = await fetchAllowed(oembed, definition);
+      const embedUrl = officialYouTubeEmbed(definition.embedVideoId);
+      const { response } = await fetchAllowed(embedUrl, definition);
       if (!response.ok) throw new Error(`Official YouTube player returned HTTP ${response.status}.`);
+      await response.body?.cancel();
     }
     const result = await resolveOfficialEmbed(sourceKey);
     return { ...result, sourceTimestamp: null, etag: null, lastModified: null, contentHash: null };

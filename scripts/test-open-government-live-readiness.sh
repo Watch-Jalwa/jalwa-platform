@@ -8,16 +8,19 @@ manifest="database/migrations/202608010005_approved_live_catalogue_manifest.sql"
 state="scripts/set-public-domain-live-catalogue-state.sql"
 seed="scripts/seed-public-domain-live-sources.sql"
 acceptance="scripts/public-domain-live-acceptance.mjs"
+launch_refresh="database/migrations/202609290001_live_catalogue_upstream_refresh.sql"
 
-for file in "$sources" "$security" "$migration" "$manifest" "$state" "$seed" "$acceptance"; do
+for file in "$sources" "$security" "$migration" "$manifest" "$state" "$seed" "$acceptance" "$launch_refresh"; do
   [[ -s "$file" ]] || { echo "Missing open-government readiness file: $file" >&2; exit 1; }
 done
 
-grep -q 'npsRows.map(npsCamera)' "$sources"
+grep -q 'npsRows.map(npsSource)' "$sources"
 grep -q 'linkRows.map(officialLink)' "$sources"
 grep -q 'Object.assign(LIVE_SOURCE_REGISTRY' "$sources"
-grep -q 'imagePathPattern' "$sources"
-grep -q 'pathPattern.test(allowed.pathname)' "$security"
+grep -q 'https://www.nps.gov/webcams-deto/deto5.jpg' "$sources"
+grep -q 'https://www.nps.gov/webcams-bost/sw-ts.jpeg' "$sources"
+grep -q 'assertAllowedPublicHttps' "$security"
+grep -q 'allowAutomatedProbe403' "$security"
 grep -q "v_items <> 31" "$migration"
 grep -q "v_images <> 15" "$migration"
 grep -q "v_links <> 16" "$migration"
@@ -27,6 +30,12 @@ grep -q "v_direct <> 44" "$manifest"
 grep -q 'approved_live_catalogue_manifest' "$state"
 grep -q "v_manifest <> 52" "$seed"
 grep -q "'user_facing_entries',46" "$seed"
+grep -q "'current_image_entries',16" "$seed"
+grep -q "'official_link_entries',29" "$seed"
+grep -q "v_fallbacks <> 7" "$launch_refresh"
+grep -q "v_images <> 16" "$launch_refresh"
+grep -q "v_links <> 29" "$launch_refresh"
+grep -q "v_embeds <> 7" "$launch_refresh"
 grep -q 'NPS Devils Tower Entrance' "$acceptance"
 grep -q 'U.S. Senate Floor Webcast' "$acceptance"
 

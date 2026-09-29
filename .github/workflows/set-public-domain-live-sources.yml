@@ -196,7 +196,7 @@ jobs:
             echo "- Release: $RELEASE_SHA"
             echo '- Underlying approved items: 52'
             echo '- User-facing inventory: 46'
-            echo '- Delivery split: 23 secured current images, 22 official links, 7 official embeds'
+            echo '- Delivery split: 16 secured current images, 29 official links, 7 official embeds'
             echo '- Rights review expires: 2026-10-30T09:51:00Z'
             if [[ "$DESIRED_STATE" == true ]]; then
               echo '- Database publication, provider-aware health and 390×844 reduced-motion browser acceptance passed'
