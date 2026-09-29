@@ -75,6 +75,10 @@ jobs:
             curl -L --connect-timeout 10 --max-time 30 -A "$UA" -sS "https://www.nps.gov/media/webcam/view.htm?id=$id" > /tmp/page
             grep -Eo 'https?://[^"'"'"' <>]+|/[A-Za-z0-9_./?=&%-]+\.(jpg|jpeg|png|webp|gif)(\?[^"'"'"' <>]*)?' /tmp/page | grep -Ei 'webcam|phenocam|\.jpg|\.jpeg|\.png|\.webp|\.gif' | sort -u | head -80 || true
             curl -L --connect-timeout 10 --max-time 30 -A "$UA" -sS "https://www.nps.gov/customcf/webcam/dsp_webcam_image.cfm?id=$id" > /tmp/custom || true
+            echo "-- webcam container context --"
+            grep -A12 -B6 -i 'webcamRefreshImage' /tmp/page | head -120 || true
+            echo "-- loader context --"
+            grep -A20 -B5 -i 'loader.cfm\|webcamRefresh' /tmp/page | head -160 || true
             echo "-- raw webcam markers --"
             grep -iE 'webcam|image|$id' /tmp/page | head -120 || true
             echo "-- customcf candidates --"
