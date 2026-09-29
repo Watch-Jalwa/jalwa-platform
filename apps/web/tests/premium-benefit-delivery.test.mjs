@@ -72,12 +72,15 @@ test("staging browser suite names every Premium benefit journey", async () => {
   const [spec, fixture] = await Promise.all([readFile(customerSpecUrl, "utf8"), readFile(premiumFixtureUrl, "utf8")]);
   const lower = spec.toLowerCase();
   assert.ok(spec.includes("jalwa_device_key"), "Premium browser suite must use deterministic per-run device keys");
-  assert.ok(spec.includes("playbackToken(freePage, \"00000000-0000-4000-8000-00000000a101\", freeDeviceKey)"), "Free protected playback must use the current run-scoped device key");
-  assert.ok(spec.includes("playbackToken(premiumPage, \"00000000-0000-4000-8000-00000000a101\", premiumDeviceKey)"), "Premium protected playback must use the current run-scoped device key");
-  assert.ok(spec.includes("playbackToken(premiumPage, \"00000000-0000-4000-8000-00000000a102\", premiumDeviceKey)"), "Early-access protected playback must use the current run-scoped device key");
+  assert.ok(spec.includes("retryScopedDeviceKey"), "Premium browser retries must derive a fresh deterministic device key");
+  assert.ok(spec.includes("testInfo.retry"), "Premium browser device keys must vary across Playwright serial retries");
+  assert.ok(spec.includes("playbackToken(freePage, \"00000000-0000-4000-8000-00000000a101\", freePlaybackDeviceKey)"), "Free protected playback must use the current retry-scoped device key");
+  assert.ok(spec.includes("playbackToken(premiumPage, \"00000000-0000-4000-8000-00000000a101\", premiumPlaybackDeviceKey)"), "Premium protected playback must use the current retry-scoped device key");
+  assert.ok(spec.includes("playbackToken(premiumPage, \"00000000-0000-4000-8000-00000000a102\", premiumPlaybackDeviceKey)"), "Early-access protected playback must use the current retry-scoped device key");
   assert.doesNotMatch(spec, /qa-(?:free-premium|paid-premium|paid-early-access)-device/);
   assert.ok(fixture.includes("update public.user_devices set revoked_at=now() where user_id=any($1::uuid[])"), "Protected Premium fixture must revoke stale synthetic QA devices");
   assert.ok(fixture.includes("premiumUserId") && fixture.includes("freeUserId"), "Device reset must be scoped to explicit Premium/free QA users");
+  assert.ok(spec.includes("/00000000-0000-4000-8000-00000000b103\\/$/"), "Enhanced playback assertion must validate the full fixture asset UUID path");
   assert.doesNotMatch(spec, /revokeAllQaDevices/);
   for (const marker of ["premium catalogue access", "early access original", "ad-free interface", "enhanced playback quality", "ask jalwa allowance", "premium collections"]) {
     assert.ok(lower.includes(marker), "missing browser coverage marker: " + marker);
