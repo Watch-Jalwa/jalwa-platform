@@ -80,9 +80,12 @@ test("staging browser suite names every Premium benefit journey", async () => {
   }
 });
 
-test("staging QA authentication verifies signed cookie state without rate-limit polling", async () => {
+test("staging QA authentication reuses verified signed browser sessions without rate-limit polling", async () => {
   const helper = await readFile(qaAuthUrl, "utf8");
   assert.ok(helper.includes("better-auth.session_token"));
+  assert.ok(helper.includes("qaSessionCookies"));
+  assert.ok(helper.includes("page.context().addCookies"));
+  assert.ok(helper.includes("restoreQaSession"));
   assert.doesNotMatch(helper, /\/api\/auth\/get-session/);
 });
 
