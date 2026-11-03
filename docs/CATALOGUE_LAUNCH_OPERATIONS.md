@@ -61,6 +61,18 @@ Use the catalogue operations filters to find:
 - expired rights;
 - rights expiring within 30 days.
 
+## Live-test 50 intake pack
+
+Working files for issues #155–#157 (staging only; production unauthorized):
+
+- `content/live-test-50-intake.jsonl` — 50 exact asset-page URLs (30 short / 10 medium / 5 long / 3 audio / 2 official links).
+- `content/live-test-50-rights-packages.jsonl` — item-level evidence package scaffold for Rights Lead review.
+- `content/live-test-50-launch-catalogue.jsonl` — governed draft catalogue derived from the intake pack.
+- `scripts/import-live-test-50-drafts-staging.sql` — staging-only draft + pending-rights import (never publishes).
+- Workflow: **Staging live-test 50 draft import** (`.github/workflows/staging-live-test-50-import.yml`).
+
+Import always leaves `content_items.status=draft` and `rights_records.status=pending`. Media encode, rights approval and publish remain human-gated Studio steps.
+
 ## Staging acceptance
 
 Before production deployment:
