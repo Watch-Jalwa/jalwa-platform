@@ -70,14 +70,39 @@ async function importItem(database, item) {
     const { error } = await database.from("rights_records").update(rightsPayload).eq("id", existingRights.id);
     if (error) throw error;
   }
+
+  const { error: auditError } = await database.from("audit_logs").insert({
+    actor_id: null,
+    action: "catalogue_draft_imported",
+    entity_type: "content_item",
+    entity_id: contentId,
+    metadata: {
+      slug: item.slug,
+      source_url: source.externalUrl,
+      hosting_mode: item.hostingMode,
+      preserved_content_status: preservedStatus,
+      preserved_approved_rights: existingRights?.status === "approved",
+      importer: "import-launch-catalogue.mjs",
+    },
+  });
+  if (auditError) throw auditError;
+
   return { slug: item.slug, contentId, preservedContentStatus: preservedStatus, preservedApprovedRights: existingRights?.status === "approved" };
 }
 
 async function main() {
   const filePath = process.argv[2];
   const commit = process.argv.includes("--commit");
+  const allowPlaceholders = process.argv.includes("--allow-placeholders");
   const minimumItems = Number(process.argv.find((arg) => arg.startsWith("--min="))?.split("=")[1] ?? 1);
-  if (!filePath) throw new Error("Usage: node scripts/import-launch-catalogue.mjs <catalogue.jsonl|catalogue.csv> [--min=150] [--commit]");
+  if (!filePath) throw new Error("Usage: node scripts/import-launch-catalogue.mjs <catalogue.jsonl|catalogue.csv> [--min=1] [--commit]");
+  if (commit && allowPlaceholders) {
+    throw new Error("--allow-placeholders cannot be combined with --commit; placeholders are validation-only");
+  }
+  if (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error("Legacy Supabase environment variables are not supported; use DATABASE_URL against direct PostgreSQL");
+  }
+
   const items = await loadCatalogueFile(filePath);
   const validation = validateLaunchCatalogue(items, { minimumItems, allowPlaceholders: false });
   if (!validation.ok) {
@@ -86,16 +111,19 @@ async function main() {
     return;
   }
   if (!commit) {
-    console.log(JSON.stringify({ mode: "dry-run", ...validation }, null, 2));
+    console.log(JSON.stringify({ mode: "dry-run", database: "postgresql", ...validation }, null, 2));
     return;
   }
 
   const pool = createPool(env("DATABASE_URL"), { max: 4 });
   const database = createDatabaseClient(pool, { role: "service_role" });
   try {
-    const imported = [];
-    for (const item of items) imported.push(await importItem(database, item));
-    console.log(JSON.stringify({ mode: "commit", imported }, null, 2));
+    const imported = await database.transaction(async (tx) => {
+      const rows = [];
+      for (const item of items) rows.push(await importItem(tx, item));
+      return rows;
+    });
+    console.log(JSON.stringify({ mode: "commit", database: "postgresql", imported }, null, 2));
   } finally {
     await pool.end();
   }

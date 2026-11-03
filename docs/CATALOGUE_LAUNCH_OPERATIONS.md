@@ -15,15 +15,16 @@ node scripts/launch-catalogue.mjs content/launch-catalogue.csv --min=1
 node scripts/import-launch-catalogue.mjs content/launch-catalogue.csv --min=1
 ```
 
-Commit a validated batch to a configured staging backend:
+Commit a validated batch to the active direct PostgreSQL staging backend:
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=https://api.staging.example \
-SUPABASE_SERVICE_ROLE_KEY=... \
+DATABASE_URL=postgresql://jalwa:...@127.0.0.1:5432/jalwa_staging \
 node scripts/import-launch-catalogue.mjs content/launch-catalogue.csv --min=1 --commit
 ```
 
-The service-role key must only be used from an administrator workstation or protected CI job. It must never be exposed to the browser.
+`--commit` always writes drafts with `rights_records.status=pending`, never auto-publishes, never overwrites an approved rights decision, and rejects demonstrator YouTube IDs / `example.com` placeholders. `--allow-placeholders` is validation-only and cannot be combined with `--commit`.
+
+`DATABASE_URL` must only be used from an administrator workstation or protected CI job. It must never be exposed to the browser. Legacy Supabase environment variables are rejected.
 
 ## Rights approval gate
 
