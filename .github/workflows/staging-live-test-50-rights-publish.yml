@@ -64,9 +64,27 @@ jobs:
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
             "REMOTE_DIR='$remote_dir' APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
           set -euo pipefail
-          # Export required runtime values from staging env without printing secrets.
+          media_dir="$REMOTE_DIR/media"
+          install -d -m 700 "$media_dir"
+          files=(
+            'Mossy_Tree_CC0.webm'
+            'Baking_cookies.ogv'
+            'Ocean_surface_waves.ogv'
+            'Tiny_Water_Fall-HD.ogv'
+            'Tree_trimmer.webm'
+            'Counting_from_1_to_20_in_Chisenbop.webm'
+            'Vanellus_vanellus.ogv'
+          )
+          for file in "${files[@]}"; do
+            if [[ ! -s "$media_dir/$file" ]]; then
+              curl -fsSL --retry 3 --retry-delay 2 \
+                -A 'JalwaStagingIngest/1.0' \
+                -o "$media_dir/$file" \
+                "https://commons.wikimedia.org/wiki/Special:FilePath/${file}"
+            fi
+            test -s "$media_dir/$file"
+          done
           set -a
-          # shellcheck disable=SC1090
           while IFS= read -r line; do
             case "$line" in
               DATABASE_URL=*|R2_ACCOUNT_ID=*|R2_ACCESS_KEY_ID=*|R2_SECRET_ACCESS_KEY=*|R2_BUCKET=*|R2_INCOMING_BUCKET=*|R2_PROCESSED_BUCKET=*|R2_ENDPOINT=*)
@@ -77,8 +95,6 @@ jobs:
           set +a
           test -n "${DATABASE_URL:-}"
           test -n "${R2_ACCOUNT_ID:-}"
-          # Host networking is required for Commons download + R2. Rewrite DB host to the
-          # postgres container IP so the URL still works outside the compose network DNS.
           pg_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' jalwa-postgres-staging | awk 'NF{print; exit}')"
           test -n "$pg_ip"
           DATABASE_URL="$(printf '%s' "$DATABASE_URL" | sed -E "s#(@)([^/@]+)(:[0-9]+/)#@${pg_ip}\\3#")"
@@ -93,8 +109,10 @@ jobs:
             -e R2_INCOMING_BUCKET \
             -e R2_PROCESSED_BUCKET \
             -e R2_ENDPOINT \
+            -e WAVE1_MEDIA_DIR=/media \
             -e WAVE1_WAIT_MS=900000 \
             -v "$REMOTE_DIR/staging-ingest-live-test-wave1.mjs:/opt/jalwa-ingest/staging-ingest-live-test-wave1.mjs:ro" \
+            -v "$media_dir:/media:ro" \
             -w /tmp/jalwa-ingest \
             node:22-bookworm-slim \
             bash -lc 'mkdir -p /tmp/jalwa-ingest && cd /tmp/jalwa-ingest && cp /opt/jalwa-ingest/staging-ingest-live-test-wave1.mjs . && printf "%s\n" "{\"name\":\"jalwa-wave1\",\"type\":\"module\"}" > package.json && npm install --no-audit --no-fund pg@8.16.3 @aws-sdk/client-s3@3.758.0 >/tmp/npm.log 2>&1 && node ./staging-ingest-live-test-wave1.mjs' \

@@ -45,6 +45,12 @@ function incomingBucket() {
 }
 
 async function downloadCommons(file, target) {
+  const localDir = process.env.WAVE1_MEDIA_DIR?.trim();
+  if (localDir) {
+    const localPath = join(localDir, file);
+    await pipeline(createReadStream(localPath), createWriteStream(target));
+    return;
+  }
   const url = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file)}`;
   const response = await fetch(url, { redirect: "follow", headers: { "user-agent": "JalwaStagingIngest/1.0" } });
   if (!response.ok || !response.body) throw new Error(`Download failed for ${file}: HTTP ${response.status}`);
@@ -114,60 +120,68 @@ async function main() {
         continue;
       }
 
-      const assetId = existing.rows[0]?.id || randomUUID();
-      const extension = item.file.split(".").pop() || "bin";
-      const storageKey = `incoming/${row.id}/${assetId}/source.${extension}`;
-      const localPath = join(work, `${item.slug}.${extension}`);
-      await downloadCommons(item.file, localPath);
-      const checksum = await sha256File(localPath);
-      const sizeBytes = await uploadIncoming(s3, storageKey, localPath, item.mime);
-      const jobType = row.content_type === "short" || row.content_type === "audio" || (row.duration_seconds != null && row.duration_seconds <= 90)
-        ? "short_mp4"
-        : "hls";
-
-      await pool.query("begin");
       try {
-        await pool.query("select set_config('request.jwt.claim.role','service_role',true)");
-        await pool.query("set local role service_role");
-        await pool.query(
-          `insert into media_assets (
-             id, content_id, kind, status, storage_key, mime_type, size_bytes, checksum, is_available, metadata
-           ) values ($1,$2,$3,'queued',$4,$5,$6,$7,false,$8::jsonb)
-           on conflict (id) do update set
-             status='queued', storage_key=excluded.storage_key, mime_type=excluded.mime_type,
-             size_bytes=excluded.size_bytes, checksum=excluded.checksum, is_available=false,
-             metadata=excluded.metadata`,
-          [
-            assetId,
-            row.id,
-            item.kind,
-            storageKey,
-            item.mime,
-            sizeBytes,
-            checksum,
-            JSON.stringify({
-              original_filename: item.file,
-              pipeline: jobType,
-              source: "wikimedia_commons",
-              wave: "live-test-50-wave1",
-            }),
-          ],
-        );
-        await pool.query(
-          `insert into media_jobs (media_asset_id, job_type, status)
-           select $1, $2::public.media_job_type, 'queued'
-           where not exists (
-             select 1 from media_jobs where media_asset_id=$1 and status in ('queued','processing')
-           )`,
-          [assetId, jobType],
-        );
-        await pool.query("commit");
-      } catch (error) {
-        await pool.query("rollback");
-        throw error;
-      }
+        const assetId = existing.rows[0]?.id || randomUUID();
+        const extension = item.file.split(".").pop() || "bin";
+        const storageKey = `incoming/${row.id}/${assetId}/source.${extension}`;
+        const localPath = join(work, `${item.slug}.${extension}`);
+        await downloadCommons(item.file, localPath);
+        const checksum = await sha256File(localPath);
+        const sizeBytes = await uploadIncoming(s3, storageKey, localPath, item.mime);
+        const jobType = row.content_type === "short" || row.content_type === "audio" || (row.duration_seconds != null && row.duration_seconds <= 90)
+          ? "short_mp4"
+          : "hls";
 
-      results.push({ slug: item.slug, status: "queued", assetId, sizeBytes, jobType });
+        await pool.query("begin");
+        try {
+          await pool.query("select set_config('request.jwt.claim.role','service_role',true)");
+          await pool.query("set local role service_role");
+          await pool.query(
+            `insert into media_assets (
+               id, content_id, kind, status, storage_key, mime_type, size_bytes, checksum, is_available, metadata
+             ) values ($1,$2,$3,'queued',$4,$5,$6,$7,false,$8::jsonb)
+             on conflict (id) do update set
+               status='queued', storage_key=excluded.storage_key, mime_type=excluded.mime_type,
+               size_bytes=excluded.size_bytes, checksum=excluded.checksum, is_available=false,
+               metadata=excluded.metadata`,
+            [
+              assetId,
+              row.id,
+              item.kind,
+              storageKey,
+              item.mime,
+              sizeBytes,
+              checksum,
+              JSON.stringify({
+                original_filename: item.file,
+                pipeline: jobType,
+                source: "wikimedia_commons",
+                wave: "live-test-50-wave1",
+              }),
+            ],
+          );
+          await pool.query(
+            `insert into media_jobs (media_asset_id, job_type, status)
+             select $1, $2::public.media_job_type, 'queued'
+             where not exists (
+               select 1 from media_jobs where media_asset_id=$1 and status in ('queued','processing')
+             )`,
+            [assetId, jobType],
+          );
+          await pool.query("commit");
+        } catch (error) {
+          await pool.query("rollback");
+          throw error;
+        }
+
+        results.push({ slug: item.slug, status: "queued", assetId, sizeBytes, jobType });
+      } catch (error) {
+        results.push({
+          slug: item.slug,
+          status: "ingest_failed",
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     const deadline = Date.now() + Number(process.env.WAVE1_WAIT_MS || 20 * 60 * 1000);
