@@ -9,6 +9,12 @@ compose=(docker compose --env-file "$env_file")
 
 section() { printf '\n===== %s =====\n' "$1"; }
 
+section "Host capacity (read-only)"
+df -hT / || true
+docker system df || true
+usage="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+echo "Root filesystem usage: ${usage}%"
+
 section "Compose services"
 "${compose[@]}" ps || true
 
@@ -37,6 +43,49 @@ set role anon;
 select count(*) as active_categories from public.categories where is_active;
 select count(*) as visible_catalogue_items from public.search_catalogue(null,null,40);
 reset role;
+SQL
+
+section "Approved live-source delivery split (read-only)"
+db_name="$("${compose[@]}" exec -T postgres sh -lc 'printf %s "${POSTGRES_DB:-postgres}"')"
+"${compose[@]}" exec -T postgres psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db_name" <<'SQL' || true
+select
+  l.delivery_adapter,
+  l.expected_media_type,
+  c.hosting_mode,
+  count(*) as source_count
+from public.live_source_configs l
+join public.playback_sources p on p.id = l.playback_source_id
+join public.content_items c on c.id = p.content_id
+join public.approved_live_catalogue_manifest m on m.source_key = l.source_key
+group by 1, 2, 3
+order by 1, 2, 3;
+
+select
+  count(*) filter (
+    where l.delivery_adapter='public_domain_live_image'
+      and l.expected_media_type='current_image'
+      and c.hosting_mode='self_host_open'
+  ) as current_images,
+  count(*) filter (
+    where l.delivery_adapter='official_live_link'
+      and l.expected_media_type='official_link'
+      and c.hosting_mode='external_link'
+  ) as official_links,
+  count(*) filter (
+    where l.delivery_adapter='official_live_embed'
+  ) as official_embeds,
+  count(*) as total_manifest_sources
+from public.live_source_configs l
+join public.playback_sources p on p.id = l.playback_source_id
+join public.content_items c on c.id = p.content_id
+join public.approved_live_catalogue_manifest m on m.source_key = l.source_key;
+
+select exists(
+  select 1
+  from public.jalwa_schema_migrations
+  where filename = '202609290001_live_catalogue_upstream_refresh.sql'
+    and status = 'applied'
+) as launch_refresh_migration_applied;
 SQL
 
 section "Web logs (last 200 lines)"

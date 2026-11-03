@@ -65,7 +65,10 @@ test("manifest drives the complete controlled catalogue", async () => {
   assert.match(seed, /v_manifest <> 52/);
   assert.match(seed, /v_images <> 16/);
   assert.match(seed, /v_links <> 29/);
+  assert.match(seed, /v_embeds <> 7/);
+  assert.match(seed, /\(v_images \+ v_links \+ v_embeds\) <> 52/);
   assert.match(seed, /'user_facing_entries',46/);
+  assert.match(seed, /'official_embed_entries',7/);
   assert.doesNotMatch(seed, /\binsert\s+into\b|\bupdate\s+public\.|\bdelete\s+from\b/i);
   assert.match(state, /approved_live_catalogue_manifest/);
   assert.match(state, /v_expected <> 52/);
