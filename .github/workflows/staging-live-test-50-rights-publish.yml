@@ -1,0 +1,161 @@
+name: Staging live-test 50 rights and wave1 publish
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["fix/staging-certification-blockers"]
+    paths:
+      - "scripts/staging-approve-live-test-50-rights.sql"
+      - "scripts/staging-ingest-live-test-wave1.mjs"
+      - ".github/workflows/staging-live-test-50-rights-publish.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  rights-and-wave1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          test -n "$HOST" && test -n "$KNOWN_HOSTS" && test -n "$SSH_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Approve clear open-licence rights on staging
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i jalwa-postgres-staging sh -lc 'psql -X -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\"'" \
+            < scripts/staging-approve-live-test-50-rights.sql | tee /tmp/rights-approve.out
+          grep -E '"approved_rights"' /tmp/rights-approve.out
+
+      - name: Stage wave1 ingest script on host
+        run: |
+          set -euo pipefail
+          remote_dir="$APP_DIR/candidate-db/$GITHUB_SHA/live-test-wave1"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "install -d -m 700 '$remote_dir'"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            scripts/staging-ingest-live-test-wave1.mjs \
+            "$USER@$HOST:$remote_dir/staging-ingest-live-test-wave1.mjs"
+
+      - name: Ingest and publish wave1 self-host shorts
+        run: |
+          set -euo pipefail
+          remote_dir="$APP_DIR/candidate-db/$GITHUB_SHA/live-test-wave1"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "REMOTE_DIR='$remote_dir' APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          network="$(docker inspect jalwa-postgres-staging --format '{{range $k,$v := .NetworkSettings.Networks}}{{println $k}}{{end}}' | head -n1)"
+          test -n "$network"
+          # Export required runtime values from staging env without printing secrets.
+          set -a
+          # shellcheck disable=SC1090
+          while IFS= read -r line; do
+            case "$line" in
+              DATABASE_URL=*|R2_ACCOUNT_ID=*|R2_ACCESS_KEY_ID=*|R2_SECRET_ACCESS_KEY=*|R2_BUCKET=*|R2_INCOMING_BUCKET=*|R2_PROCESSED_BUCKET=*|R2_ENDPOINT=*)
+                export "$line"
+                ;;
+            esac
+          done < "$APP_DIR/.env.staging"
+          set +a
+          test -n "${DATABASE_URL:-}"
+          test -n "${R2_ACCOUNT_ID:-}"
+          docker run --rm \
+            --network "$network" \
+            -e DATABASE_URL \
+            -e R2_ACCOUNT_ID \
+            -e R2_ACCESS_KEY_ID \
+            -e R2_SECRET_ACCESS_KEY \
+            -e R2_BUCKET \
+            -e R2_INCOMING_BUCKET \
+            -e R2_PROCESSED_BUCKET \
+            -e R2_ENDPOINT \
+            -e WAVE1_WAIT_MS=900000 \
+            -v "$REMOTE_DIR:/work:ro" \
+            -w /work \
+            node:22-bookworm-slim \
+            bash -lc 'npm init -y >/dev/null && npm install --no-audit --no-fund pg@8.16.3 @aws-sdk/client-s3@3.758.0 >/tmp/npm.log 2>&1 && node staging-ingest-live-test-wave1.mjs' \
+            | tee /tmp/wave1-ingest.out
+          REMOTE
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST:/tmp/wave1-ingest.out" /tmp/wave1-ingest.out || true
+          test -s /tmp/wave1-ingest.out
+          grep -E '"published"' /tmp/wave1-ingest.out || true
+
+      - name: Summarize inventory after rights and wave1
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i jalwa-postgres-staging sh -lc 'psql -X -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -At'" <<'SQL' | tee /tmp/live-test-summary.out
+          select json_build_object(
+            'approved_live_test_rights', (
+              select count(*) from rights_records rr
+              join content_items ci on ci.id=rr.content_id
+              where rr.status='approved' and ci.slug like '%'
+                and exists (
+                  select 1 from audit_logs a
+                  where a.entity_id=ci.id and a.action='rights_approved'
+                    and a.metadata->>'importer'='staging-approve-live-test-50-rights.sql'
+                )
+            ),
+            'published_live_test', (
+              select count(*) from content_items
+              where status='published'
+                and slug in (
+                  'mossy-tree-cc0','baking-cookies-cc0','ocean-surface-waves-cc0','tiny-waterfall-cc0',
+                  'tree-trimmer-cc0','counting-chisenbop-cc0','vanellus-vanellus-cc0',
+                  'nasa-images-library-home-link','eso-public-videos-link'
+                )
+            ),
+            'ready_media', (
+              select count(*) from media_assets a
+              join content_items ci on ci.id=a.content_id
+              where a.status='ready' and ci.slug in (
+                'mossy-tree-cc0','baking-cookies-cc0','ocean-surface-waves-cc0','tiny-waterfall-cc0',
+                'tree-trimmer-cc0','counting-chisenbop-cc0','vanellus-vanellus-cc0'
+              )
+            ),
+            'held_pending', (
+              select count(*) from rights_records rr
+              join content_items ci on ci.id=rr.content_id
+              where rr.status='pending' and ci.slug in (
+                'khyber-karma-dvids','op-mustang-dvids','rawhide-ii-border-hub-dvids',
+                'chauntra-village-spring','eastern-hindu-kush-lowari','hunza-valley-wle-2018','indus-kotri-barrage',
+                'earthrise-45th-svs','artemis-i-overview-svs','artemis-science-lunar-flyby-svs',
+                'eso-vista-cosmos-zoom','proxima-centauri-eso-medium'
+              )
+            )
+          );
+          SQL
+
+      - name: Write summary
+        run: |
+          {
+            echo '### Staging live-test rights + wave1 publish'
+            echo "- Exact SHA: \`$GITHUB_SHA\`"
+            echo "- Domain: https://$DOMAIN"
+            echo '- Scope: staging only; production unchanged'
+            echo '```'
+            cat /tmp/rights-approve.out || true
+            echo
+            cat /tmp/live-test-summary.out || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
