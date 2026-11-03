@@ -141,6 +141,7 @@ test("PR staging candidate deploy applies the full migration set including launc
   assert.match(candidate, /reclaim-staging-host-capacity\.sh' pre-cutover/);
   assert.match(candidate, /reclaim-staging-host-capacity\.sh' post-cutover/);
   assert.match(candidate, /seed-public-domain-live-sources\.sql/);
+  assert.match(candidate, /recertify-approved-live-catalogue-reviews-staging\.sql/);
   assert.doesNotMatch(candidate, /MIGRATIONS_DIR='\$remote_db\/migrations'/);
   assert.match(reclaim, /jalwa-platform_jalwa_staging_pgdata/);
   assert.match(reclaim, /test "\$usage" -lt 85/);

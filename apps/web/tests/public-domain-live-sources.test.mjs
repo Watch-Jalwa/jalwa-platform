@@ -134,3 +134,13 @@ test("launch live-source refresh preserves 52 controlled records while narrowing
   assert.match(migration, /usgs-mauna-loa-mtcam/);
   assert.doesNotMatch(migration, /set enabled=true/);
 });
+
+test("staging live catalogue re-review is forward-only and staging-scoped", async () => {
+  const recertifyUrl = new URL("../../../scripts/recertify-approved-live-catalogue-reviews-staging.sql", import.meta.url);
+  const recertify = await text(recertifyUrl);
+  assert.match(recertify, /deployment_environment', true\) <> 'staging'/);
+  assert.match(recertify, /next_review_at=now\(\) \+ interval '90 days'/);
+  assert.match(recertify, /rights_verified_at=now\(\)/);
+  assert.doesNotMatch(recertify, /\bset\s+hosting_mode\b|\bset\s+delivery_adapter\b|\bset\s+status\s*=\s*'approved'/i);
+  assert.match(recertify, /only moves review windows into the future/);
+});

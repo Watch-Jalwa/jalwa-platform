@@ -196,6 +196,16 @@ jobs:
           docker logout ghcr.io >/dev/null 2>&1 || true
           REMOTE
 
+      - name: Record staging-only forward live-catalogue rights re-review
+        run: |
+          set -euo pipefail
+          # Prior launch inventory next_review_at windows ended 2026-10-30 and fail closed.
+          # This records a forward-only staging re-verification; it does not backdate,
+          # change delivery modes, or approve new sources.
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i jalwa-postgres-staging sh -lc 'psql -X -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v deployment_environment=staging'" \
+            < scripts/recertify-approved-live-catalogue-reviews-staging.sql
+
       - name: Activate governed live catalogue in staging
         run: |
           set -euo pipefail
