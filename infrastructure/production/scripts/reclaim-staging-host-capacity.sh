@@ -135,7 +135,8 @@ fi
 
 docker image prune -f >/dev/null
 docker builder prune -af >/dev/null
-docker logout ghcr.io >/dev/null 2>&1 || true
+# Do not docker logout here: candidate/main deploy authenticates to GHCR before
+# reclaim and must still be able to pull the exact release after capacity work.
 
 pre_policy_usage="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
 if [[ "$pre_policy_usage" =~ ^[0-9]+$ ]] && (( pre_policy_usage >= 85 )) && sudo -n true >/dev/null 2>&1; then

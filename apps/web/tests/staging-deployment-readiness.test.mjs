@@ -145,6 +145,7 @@ test("PR staging candidate deploy applies the full migration set including launc
   assert.match(reclaim, /jalwa-platform_jalwa_staging_pgdata/);
   assert.match(reclaim, /test "\$usage" -lt 85/);
   assert.doesNotMatch(reclaim, /docker system prune|docker volume prune/);
+  assert.doesNotMatch(reclaim, /^\s*docker logout\b/m);
   assert.match(capacity, /reclaim-staging-host-capacity\.sh/);
   assert.match(diagnostics, /current_images/);
   assert.match(diagnostics, /launch_refresh_migration_applied/);
