@@ -226,6 +226,16 @@ jobs:
             "docker exec -i jalwa-postgres-staging sh -lc 'psql -X -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -v deployment_environment=staging'" \
             < scripts/seed-public-domain-live-sources.sql
 
+      - name: Import live-test 50 drafts with pending rights
+        run: |
+          set -euo pipefail
+          test -s scripts/import-live-test-50-drafts-staging.sql
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i jalwa-postgres-staging sh -lc 'psql -X -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\"'" \
+            < scripts/import-live-test-50-drafts-staging.sql | tee /tmp/live-test-50-import.out
+          grep -E '"draft_count"[[:space:]]*:[[:space:]]*50' /tmp/live-test-50-import.out
+          grep -E '"pending_rights"[[:space:]]*:[[:space:]]*50' /tmp/live-test-50-import.out
+
       - name: Verify exact candidate is publicly ready
         run: |
           set -euo pipefail
