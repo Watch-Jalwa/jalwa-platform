@@ -48,24 +48,12 @@ jobs:
             < scripts/staging-approve-live-test-50-rights.sql | tee /tmp/rights-approve.out
           grep -E '"approved_rights"' /tmp/rights-approve.out
 
-      - name: Stage wave1 ingest script on host
+      - name: Stage wave1 ingest script and Commons media on host
         run: |
           set -euo pipefail
           remote_dir="$APP_DIR/candidate-db/$GITHUB_SHA/live-test-wave1"
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" "install -d -m 700 '$remote_dir'"
-          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
-            scripts/staging-ingest-live-test-wave1.mjs \
-            "$USER@$HOST:$remote_dir/staging-ingest-live-test-wave1.mjs"
-
-      - name: Ingest and publish wave1 self-host shorts
-        run: |
-          set -euo pipefail
-          remote_dir="$APP_DIR/candidate-db/$GITHUB_SHA/live-test-wave1"
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "REMOTE_DIR='$remote_dir' APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
-          set -euo pipefail
-          media_dir="$REMOTE_DIR/media"
-          install -d -m 700 "$media_dir"
+          media_local="/tmp/wave1-media"
+          install -d -m 700 "$media_local"
           files=(
             'Mossy_Tree_CC0.webm'
             'Baking_cookies.ogv'
@@ -75,13 +63,41 @@ jobs:
             'Counting_from_1_to_20_in_Chisenbop.webm'
             'Vanellus_vanellus.ogv'
           )
+          # Staging host cannot reach Commons (TLS reset). Download on the runner, then scp.
           for file in "${files[@]}"; do
-            if [[ ! -s "$media_dir/$file" ]]; then
-              curl -fsSL --retry 3 --retry-delay 2 \
-                -A 'JalwaStagingIngest/1.0' \
-                -o "$media_dir/$file" \
-                "https://commons.wikimedia.org/wiki/Special:FilePath/${file}"
-            fi
+            curl -fsSL --retry 5 --retry-delay 3 \
+              -A 'JalwaStagingIngest/1.0 (GitHub Actions; staging live-test)' \
+              -o "$media_local/$file" \
+              "https://commons.wikimedia.org/wiki/Special:FilePath/${file}"
+            test -s "$media_local/$file"
+            ls -lh "$media_local/$file"
+          done
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "install -d -m 700 '$remote_dir' '$remote_dir/media'"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            scripts/staging-ingest-live-test-wave1.mjs \
+            "$USER@$HOST:$remote_dir/staging-ingest-live-test-wave1.mjs"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            "$media_local"/* \
+            "$USER@$HOST:$remote_dir/media/"
+
+      - name: Ingest and publish wave1 self-host shorts
+        run: |
+          set -euo pipefail
+          remote_dir="$APP_DIR/candidate-db/$GITHUB_SHA/live-test-wave1"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "REMOTE_DIR='$remote_dir' APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          media_dir="$REMOTE_DIR/media"
+          for file in \
+            Mossy_Tree_CC0.webm \
+            Baking_cookies.ogv \
+            Ocean_surface_waves.ogv \
+            Tiny_Water_Fall-HD.ogv \
+            Tree_trimmer.webm \
+            Counting_from_1_to_20_in_Chisenbop.webm \
+            Vanellus_vanellus.ogv
+          do
             test -s "$media_dir/$file"
           done
           set -a
