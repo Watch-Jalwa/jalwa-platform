@@ -93,7 +93,7 @@ jobs:
             -v "$REMOTE_DIR/staging-ingest-live-test-wave1.mjs:/opt/jalwa-ingest/staging-ingest-live-test-wave1.mjs:ro" \
             -w /tmp/jalwa-ingest \
             node:22-bookworm-slim \
-            bash -lc 'mkdir -p /tmp/jalwa-ingest && cd /tmp/jalwa-ingest && npm init -y >/dev/null && npm install --no-audit --no-fund pg@8.16.3 @aws-sdk/client-s3@3.758.0 >/tmp/npm.log 2>&1 && node /opt/jalwa-ingest/staging-ingest-live-test-wave1.mjs' \
+            bash -lc 'mkdir -p /tmp/jalwa-ingest && cd /tmp/jalwa-ingest && cp /opt/jalwa-ingest/staging-ingest-live-test-wave1.mjs . && printf "%s\n" "{\"name\":\"jalwa-wave1\",\"type\":\"module\"}" > package.json && npm install --no-audit --no-fund pg@8.16.3 @aws-sdk/client-s3@3.758.0 >/tmp/npm.log 2>&1 && node ./staging-ingest-live-test-wave1.mjs' \
             | tee /tmp/wave1-ingest.out
           REMOTE
           scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST:/tmp/wave1-ingest.out" /tmp/wave1-ingest.out || true
