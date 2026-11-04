@@ -40,7 +40,7 @@ jobs:
           command -v ffprobe
       - name: Lint changed video paths (full repository lint still required separately)
         run: |
-          npx eslint apps/web/components/self-hosted-player.tsx 'apps/web/app/watch/[slug]/page.tsx' --max-warnings=0
+          (cd apps/web && npx eslint components/self-hosted-player.tsx 'app/watch/[slug]/page.tsx' --max-warnings=0)
           npm run lint --workspace @jalwa/worker
       - name: Typecheck web and worker
         run: npm run typecheck --workspace @jalwa/web && npm run typecheck --workspace @jalwa/worker
