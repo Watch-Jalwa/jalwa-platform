@@ -1,0 +1,259 @@
+name: Staging live-test wave4 publish
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["fix/staging-certification-blockers"]
+    paths:
+      - "scripts/staging-ingest-live-test-wave4.mjs"
+      - "scripts/staging-reset-stuck-live-test-media.sql"
+      - ".github/workflows/staging-live-test-wave4-publish.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  wave4:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          test "$USER" = codistan
+          test -n "$HOST" && test -n "$KNOWN_HOSTS" && test -n "$SSH_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Reset stuck media jobs
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i jalwa-postgres-staging sh -lc 'psql -X -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\"'" \
+            < scripts/staging-reset-stuck-live-test-media.sql | tee /tmp/reset-stuck.out
+
+      - name: Stage wave4 media on host
+        run: |
+          set -euo pipefail
+          remote_dir="$APP_DIR/candidate-db/$GITHUB_SHA/live-test-wave4"
+          media_local="/tmp/wave4-media"
+          install -d -m 700 "$media_local"
+          python3 - <<'PY'
+          import pathlib, time, urllib.parse, urllib.request, zipfile
+          out = pathlib.Path("/tmp/wave4-media")
+          ua = "JalwaStagingIngest/1.0 (GitHub Actions; staging live-test wave4)"
+          commons = [
+            "Invitation_to_Pakistan.ogv",
+            "Pakistan.ogv",
+            "Upbeat_huamei_bird_calling.oga",
+            "Joseph_Sardin_-_Passer_domesticus_tschilp_call.oga",
+            "Abrasive_sounding_bird_debate.oga",
+            "ESOcast_254_Light.webm",
+            "ESOcast_265_Light.webm",
+          ]
+          direct = [
+            ("elephantsdream-480-h264-st-aac.mov", "https://download.blender.org/ED/elephantsdream-480-h264-st-aac.mov"),
+            ("tears_of_steel_720p.mov", "https://download.blender.org/demo/movies/ToS/tears_of_steel_720p.mov"),
+          ]
+          zips = [
+            ("Sintel.2010.720p.mkv.zip", "https://download.blender.org/demo/movies/Sintel.2010.720p.mkv.zip", "Sintel.2010.720p.mkv"),
+          ]
+          failed = []
+          def fetch(url, dest, timeout=1800):
+            req = urllib.request.Request(url, headers={"User-Agent": ua})
+            with urllib.request.urlopen(req, timeout=timeout) as resp, open(dest, "wb") as fh:
+              while True:
+                chunk = resp.read(1024 * 1024)
+                if not chunk:
+                  break
+                fh.write(chunk)
+            assert dest.stat().st_size > 0
+          for name in commons:
+            dest = out / name
+            if dest.exists() and dest.stat().st_size > 0:
+              print(f"skip {name}"); continue
+            url = "https://commons.wikimedia.org/wiki/Special:FilePath/" + urllib.parse.quote(name)
+            ok = False
+            for attempt in range(1, 5):
+              print(f"fetch {name} attempt={attempt}")
+              try:
+                fetch(url, dest)
+                print(f"ok {name} {dest.stat().st_size}")
+                ok = True
+                break
+              except Exception as exc:
+                if dest.exists(): dest.unlink()
+                print(f"WARN {name}: {exc}")
+                time.sleep(12 * attempt)
+            if not ok: failed.append(name)
+            time.sleep(3)
+          for name, url in direct:
+            dest = out / name
+            if dest.exists() and dest.stat().st_size > 0:
+              print(f"skip {name}"); continue
+            print(f"fetch {name}")
+            try:
+              fetch(url, dest)
+              print(f"ok {name} {dest.stat().st_size}")
+            except Exception as exc:
+              failed.append(name)
+              print(f"WARN {name}: {exc}")
+          for zip_name, url, inner in zips:
+            dest = out / inner
+            if dest.exists() and dest.stat().st_size > 0:
+              print(f"skip {inner}"); continue
+            zpath = out / zip_name
+            print(f"fetch {zip_name}")
+            try:
+              fetch(url, zpath)
+              with zipfile.ZipFile(zpath) as zf:
+                member = next((n for n in zf.namelist() if n.endswith(inner) or n.endswith(".mkv")), None)
+                if not member: raise SystemExit(f"missing {inner} in {zf.namelist()}")
+                with zf.open(member) as src, open(dest, "wb") as dst:
+                  while True:
+                    chunk = src.read(1024 * 1024)
+                    if not chunk: break
+                    dst.write(chunk)
+              print(f"ok {inner} {dest.stat().st_size}")
+            except Exception as exc:
+              failed.append(inner)
+              print(f"WARN {inner}: {exc}")
+          required_any = [
+            "Invitation_to_Pakistan.ogv",
+            "Pakistan.ogv",
+            "elephantsdream-480-h264-st-aac.mov",
+            "tears_of_steel_720p.mov",
+            "Sintel.2010.720p.mkv",
+          ]
+          present = [n for n in required_any if (out / n).exists() and (out / n).stat().st_size > 0]
+          if not present:
+            raise SystemExit(f"no wave4 media downloaded; failed={failed}")
+          print(f"present={present} failed={failed}")
+          PY
+          ls -lh "$media_local"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "install -d -m 700 '$remote_dir' '$remote_dir/media'"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            scripts/staging-ingest-live-test-wave4.mjs \
+            "$USER@$HOST:$remote_dir/staging-ingest-live-test-wave4.mjs"
+          shopt -s nullglob
+          files=("$media_local"/*.{ogv,oga,webm,mov,mkv,mp4})
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "${files[@]}" "$USER@$HOST:$remote_dir/media/"
+
+      - name: Ingest and publish wave4
+        run: |
+          set -euo pipefail
+          remote_dir="$APP_DIR/candidate-db/$GITHUB_SHA/live-test-wave4"
+          ssh -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=200 -i ~/.ssh/jalwa "$USER@$HOST" \
+            "REMOTE_DIR='$remote_dir' APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          media_dir="$REMOTE_DIR/media"
+          set -a
+          while IFS= read -r line; do
+            case "$line" in
+              DATABASE_URL=*|R2_ACCOUNT_ID=*|R2_ACCESS_KEY_ID=*|R2_SECRET_ACCESS_KEY=*|R2_BUCKET=*|R2_INCOMING_BUCKET=*|R2_PROCESSED_BUCKET=*|R2_ENDPOINT=*)
+                export "$line"
+                ;;
+            esac
+          done < "$APP_DIR/.env.staging"
+          set +a
+          pg_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' jalwa-postgres-staging | awk 'NF{print; exit}')"
+          DATABASE_URL="$(printf '%s' "$DATABASE_URL" | sed -E "s#(@)([^/@]+)(:[0-9]+/)#@${pg_ip}\\3#")"
+          export DATABASE_URL
+          docker run --rm \
+            --network host \
+            -e DATABASE_URL -e R2_ACCOUNT_ID -e R2_ACCESS_KEY_ID -e R2_SECRET_ACCESS_KEY \
+            -e R2_BUCKET -e R2_INCOMING_BUCKET -e R2_PROCESSED_BUCKET -e R2_ENDPOINT \
+            -e WAVE4_MEDIA_DIR=/media -e WAVE4_WAIT_MS=5400000 \
+            -v "$REMOTE_DIR/staging-ingest-live-test-wave4.mjs:/opt/jalwa-ingest/staging-ingest-live-test-wave4.mjs:ro" \
+            -v "$media_dir:/media:ro" \
+            -w /tmp/jalwa-ingest \
+            node:22-bookworm-slim \
+            bash -lc 'mkdir -p /tmp/jalwa-ingest && cd /tmp/jalwa-ingest && cp /opt/jalwa-ingest/staging-ingest-live-test-wave4.mjs . && printf "%s\n" "{\"name\":\"jalwa-wave4\",\"type\":\"module\"}" > package.json && npm install --no-audit --no-fund pg@8.16.3 @aws-sdk/client-s3@3.758.0 >/tmp/npm.log 2>&1 && node ./staging-ingest-live-test-wave4.mjs' \
+            | tee /tmp/wave4-ingest.out
+          REMOTE
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST:/tmp/wave4-ingest.out" /tmp/wave4-ingest.out || true
+          test -s /tmp/wave4-ingest.out
+          grep -E '"published"|"ingest_failed"|"already_ready"|"still_busy"' /tmp/wave4-ingest.out || true
+
+      - name: Inventory after wave4
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i jalwa-postgres-staging sh -lc 'psql -X -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\" -At'" <<'SQL' | tee /tmp/summary.out
+          select json_build_object(
+            'approved', 38,
+            'published_approved', (
+              select count(*) from content_items where status='published' and slug in (
+                'mossy-tree-cc0','baking-cookies-cc0','ocean-surface-waves-cc0','tiny-waterfall-cc0',
+                'tree-trimmer-cc0','counting-chisenbop-cc0','vhs-static-cc0-clip','vanellus-vanellus-cc0',
+                'huamei-bird-calling-cc0','house-sparrow-tschilp-cc0','abrasive-bird-debate-cc0',
+                'how-fossils-form-cc-by','artemis-ii-lunar-flyby-svs','artemis-ii-trajectory-svs',
+                'earth-views-from-iss-nasa','hst-fly-by-nasa','hd-earth-views-svs','hst-sm4-rendezvous-nasa',
+                'apollo-11-eagle-has-landed','grca-south-rim-summer-timelapse','grca-animals-broll',
+                'grca-south-rim-winter-scenic','eso-cast-254-light','eso-cast-265-light',
+                'proxima-centauri-flythrough-cc-by','invitation-to-pakistan-nara','promise-of-pakistan-geography',
+                'wikipedia-science-comms-cc-by','big-buck-bunny','sintel','elephants-dream','sprite-fright',
+                'tears-of-steel','spring-blender','cosmos-laundromat','caminandes-llamigos',
+                'nasa-images-library-home-link','eso-public-videos-link'
+              )
+            ),
+            'ready_media', (
+              select count(*) from media_assets a
+              join content_items ci on ci.id=a.content_id
+              where a.status='ready' and ci.slug in (
+                'mossy-tree-cc0','baking-cookies-cc0','ocean-surface-waves-cc0','tiny-waterfall-cc0',
+                'tree-trimmer-cc0','counting-chisenbop-cc0','vhs-static-cc0-clip','vanellus-vanellus-cc0',
+                'huamei-bird-calling-cc0','house-sparrow-tschilp-cc0','abrasive-bird-debate-cc0',
+                'how-fossils-form-cc-by','artemis-ii-lunar-flyby-svs','artemis-ii-trajectory-svs',
+                'earth-views-from-iss-nasa','hst-fly-by-nasa','hd-earth-views-svs','hst-sm4-rendezvous-nasa',
+                'apollo-11-eagle-has-landed','grca-south-rim-summer-timelapse','grca-animals-broll',
+                'grca-south-rim-winter-scenic','eso-cast-254-light','eso-cast-265-light',
+                'proxima-centauri-flythrough-cc-by','invitation-to-pakistan-nara','promise-of-pakistan-geography',
+                'wikipedia-science-comms-cc-by','big-buck-bunny','sintel','elephants-dream','sprite-fright',
+                'tears-of-steel','spring-blender','cosmos-laundromat','caminandes-llamigos'
+              )
+            ),
+            'published_slugs', (
+              select coalesce(json_agg(slug order by slug),'[]'::json) from content_items
+              where status='published' and slug in (
+                'mossy-tree-cc0','baking-cookies-cc0','ocean-surface-waves-cc0','tiny-waterfall-cc0',
+                'tree-trimmer-cc0','counting-chisenbop-cc0','vhs-static-cc0-clip','vanellus-vanellus-cc0',
+                'huamei-bird-calling-cc0','house-sparrow-tschilp-cc0','abrasive-bird-debate-cc0',
+                'how-fossils-form-cc-by','artemis-ii-lunar-flyby-svs','artemis-ii-trajectory-svs',
+                'earth-views-from-iss-nasa','hst-fly-by-nasa','hd-earth-views-svs','hst-sm4-rendezvous-nasa',
+                'apollo-11-eagle-has-landed','grca-south-rim-summer-timelapse','grca-animals-broll',
+                'grca-south-rim-winter-scenic','eso-cast-254-light','eso-cast-265-light',
+                'proxima-centauri-flythrough-cc-by','invitation-to-pakistan-nara','promise-of-pakistan-geography',
+                'wikipedia-science-comms-cc-by','big-buck-bunny','sintel','elephants-dream','sprite-fright',
+                'tears-of-steel','spring-blender','cosmos-laundromat','caminandes-llamigos',
+                'nasa-images-library-home-link','eso-public-videos-link'
+              )
+            )
+          );
+          SQL
+
+      - name: Write summary
+        run: |
+          {
+            echo '### Staging live-test wave4 (#157)'
+            echo "- SHA: \`$GITHUB_SHA\`"
+            echo '```'
+            cat /tmp/summary.out || true
+            echo
+            cat /tmp/wave4-ingest.out || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
