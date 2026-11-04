@@ -26,6 +26,16 @@ async function filesUnder(relative) {
 }
 
 function sourceForDependencyScan(relative, source) {
+  // Keep the importer and staging env rejection guards fail-closed. Neither is a runtime SDK dependency.
+  if (relative === "scripts/import-launch-catalogue.mjs") {
+    const guard = [
+      '  if (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_SERVICE_ROLE_KEY) {',
+      '    throw new Error("Legacy Supabase environment variables are not supported; use DATABASE_URL against direct PostgreSQL");',
+      '  }',
+    ].join("\n");
+    assert.ok(source.includes(guard), "Importer must reject legacy Supabase env vars before any write.");
+    return source.replace(guard, "");
+  }
   if (relative !== ".github/workflows/deploy-staging.yml") return source;
   const guard = /^\s*! grep -qE '\^SUPABASE_\|\^NEXT_PUBLIC_SUPABASE_' "\$env_file" \|\| \{ echo 'Legacy Supabase values remain in \.env\.staging\.' >&2; exit 1; \}\s*$/m;
   assert.match(source, guard, "The only permitted legacy-name reference must be a fail-closed staging environment rejection guard.");

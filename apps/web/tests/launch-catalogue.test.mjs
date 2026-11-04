@@ -132,7 +132,5 @@ test("import script stays on direct PostgreSQL and blocks placeholder commit", a
   assert.match(source, /\.transaction\(/);
   assert.match(source, /catalogue_draft_imported/);
   assert.match(source, /allow-placeholders cannot be combined with --commit/);
-  assert.match(source, /Legacy Supabase environment variables are not supported/);
-  assert.match(source, /process\.env\.NEXT_PUBLIC_SUPABASE_URL \|\| process\.env\.SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(source, /allowPlaceholders: false/);
 });
