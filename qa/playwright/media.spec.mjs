@@ -54,6 +54,42 @@ test.describe("catalogue and media", () => {
     expect(failedSameOrigin).toEqual([]);
   });
 
+
+  test("self-hosted media frame follows decoded video aspect on desktop and mobile", async ({ browser }) => {
+    const aspectSlug = (process.env.JALWA_ASPECT_TEST_SLUG ?? "").trim();
+    test.skip(!aspectSlug, "Set JALWA_ASPECT_TEST_SLUG to a rights-approved, playable staging video.");
+    expect(aspectSlug).toMatch(/^[a-z0-9][a-z0-9-]*$/i);
+
+    for (const viewport of [{ width: 1440, height: 900 }, { width: 390, height: 844 }]) {
+      const context = await browser.newContext({ baseURL, viewport });
+      try {
+        const page = await context.newPage();
+        const response = await page.goto(`/watch/${aspectSlug}`, { waitUntil: "domcontentloaded" });
+        expect(response?.status()).toBe(200);
+        const frame = page.getByTestId("self-hosted-media-frame");
+        await expect(frame).toBeVisible();
+        await expect.poll(async () => frame.locator("video").evaluate((video) => video.videoWidth > 0 && video.videoHeight > 0)).toBe(true);
+        const measurement = await frame.evaluate((element) => {
+          const video = element.querySelector("video");
+          const rectangle = element.getBoundingClientRect();
+          return {
+            renderedAspect: rectangle.width / rectangle.height,
+            decodedAspect: video.videoWidth / video.videoHeight,
+            frameHeight: rectangle.height,
+            viewportHeight: window.innerHeight,
+            videoWidth: video.videoWidth,
+            videoHeight: video.videoHeight,
+          };
+        });
+        expect(Math.abs(measurement.renderedAspect - measurement.decodedAspect)).toBeLessThan(0.03);
+        expect(measurement.frameHeight).toBeLessThanOrEqual(measurement.viewportHeight * 0.72 + 4);
+        await expectNoHorizontalOverflow(page, `self-hosted media ${aspectSlug}`);
+      } finally {
+        await context.close();
+      }
+    }
+  });
+
   test("enabled live catalogue is complete, public and mobile-safe", async ({ browser }) => {
     test.skip(!liveExpected, "Governed live sources are not enabled for this staging run.");
     const context = await browser.newContext({
