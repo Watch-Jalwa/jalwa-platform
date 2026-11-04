@@ -43,7 +43,6 @@ test("first wallet success is recovered through status instead of duplicate subs
   assert.match(component, /statusPayload\.alreadySubscribed/);
   assert.match(component, /linkResponse\.status === 409 && linkPayload\.error === "already_linked"/);
   assert.match(component, /router\.push\("\/billing\/wallet-return\?wallet=linked"\)/);
-  assert.match(component, /linkResponse\.status === 409 && linkPayload\.error === "already_linked"/);
 });
 
 test("subscription cancel and payment detail verify resource ownership for the signed-in user", async () => {
