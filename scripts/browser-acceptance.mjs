@@ -68,23 +68,19 @@ try {
   await page.waitForURL(/\/explore\?q=skills/);
 
   await page.goto("/login", { waitUntil: "networkidle" });
-  await page.getByRole("heading", { level: 1 }).waitFor();
-  const loginEmail = page.getByRole("textbox", { name: /Email/i });
-  assert.equal(await loginEmail.getAttribute("type"), "email");
-  assert.equal(await loginEmail.getAttribute("required"), "");
-  assert.equal(await loginEmail.evaluate((element) => element.checkValidity()), false);
-  await page.getByRole("button", { name: /Send sign-in link/i }).waitFor();
+  await page.getByRole("heading", { name: /Sign in or create account/i }).waitFor();
+  const identity = page.getByLabel(/Email or mobile number/i);
+  assert.equal(await identity.getAttribute("required"), "");
+  assert.equal(await identity.evaluate((element) => element.checkValidity()), false);
+  await page.getByLabel(/Full name/i).waitFor();
+  await page.getByRole("button", { name: /^Continue$/i }).waitFor();
   await assertNoHorizontalOverflow(page, "desktop login");
 
   await page.goto("/signup", { waitUntil: "networkidle" });
-  await page.getByRole("heading", { level: 1 }).waitFor();
-  await page.getByRole("textbox", { name: /Your name/i }).fill("Launch Test");
-  await page.getByRole("textbox", { name: /Email/i }).fill("launch@example.com");
-  const terms = page.getByRole("checkbox", { name: /accept the Terms/i });
-  assert.equal(await terms.isChecked(), false);
-  assert.equal(await terms.evaluate((element) => element.checkValidity()), false);
-  await terms.check();
-  assert.equal(await terms.evaluate((element) => element.checkValidity()), true);
+  assert.equal(new URL(page.url()).pathname, "/login");
+  await page.getByLabel(/Full name/i).fill("Launch Test");
+  await page.getByLabel(/Email or mobile number/i).fill("launch@example.com");
+  await page.getByRole("button", { name: /^Continue$/i }).waitFor();
 
   for (const path of ["/legal/privacy", "/legal/terms"]) {
     await page.goto(path, { waitUntil: "networkidle" });

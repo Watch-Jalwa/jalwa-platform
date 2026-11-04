@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { admin, magicLink } from "better-auth/plugins";
+import { admin, emailOTP, magicLink } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import nodemailer from "nodemailer";
 import { databasePool } from "@/lib/database/pool";
@@ -56,6 +56,23 @@ export const auth = betterAuth({
           subject: "Your Jalwa sign-in link",
           text: `Sign in to Jalwa: ${url}\n\nThis link expires in 10 minutes.`,
           html: `<p>Sign in to Jalwa:</p><p><a href="${url.replaceAll('"', '&quot;')}">Continue to Jalwa</a></p><p>This link expires in 10 minutes.</p>`,
+        });
+      },
+    }),
+    emailOTP({
+      otpLength: 4,
+      expiresIn: 5 * 60,
+      allowedAttempts: 5,
+      // Temporary fixed code for staging/dev auth testing. Replace before production.
+      generateOTP: () => "1234",
+      sendVerificationOTP: async ({ email, otp, type }) => {
+        if (type !== "sign-in") return;
+        await smtpTransport().sendMail({
+          from: process.env.SMTP_FROM ?? "Jalwa <no-reply@watch-jalwa.com>",
+          to: email,
+          subject: "Your Jalwa sign-in code",
+          text: `Your Jalwa code is ${otp}.\n\nIt expires in 5 minutes and stops working after five unsuccessful attempts.`,
+          html: `<p>Your Jalwa code is <strong>${otp}</strong>.</p><p>It expires in 5 minutes and stops working after five unsuccessful attempts.</p>`,
         });
       },
     }),

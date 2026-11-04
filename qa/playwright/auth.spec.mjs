@@ -10,12 +10,14 @@ test.describe.serial("authentication", () => {
     customer = await ensureQaUser(config, requiredEnv("STAGING_QA_CUSTOMER_EMAIL"));
   });
 
-  test("email magic-link request reaches the configured staging Auth/SMTP boundary", async ({ page }) => {
+  test("email OTP request reaches the configured staging Auth/SMTP boundary", async ({ page }) => {
     await page.goto("/login?next=/profile", { waitUntil: "networkidle" });
-    await page.getByRole("textbox", { name: /Email/i }).fill(customer.email);
-    await page.getByRole("button", { name: /Send sign-in link/i }).click();
+    await page.getByLabel(/Full name/i).fill("Jalwa QA");
+    await page.getByLabel(/Email or mobile number/i).fill(customer.email);
+    await page.getByRole("button", { name: /^Continue$/i }).click();
     await page.waitForLoadState("networkidle");
-    await expect(page.getByRole("status")).toContainText(/Check your email for the sign-in link|Preview complete/i);
+    await expect(page.getByRole("heading", { name: /Enter your code/i })).toBeVisible();
+    await expect(page.getByRole("status")).toContainText(/four-digit code|Preview complete/i);
     await expect(page.getByRole("status")).not.toContainText(/could not be sent/i);
   });
 
@@ -29,12 +31,13 @@ test.describe.serial("authentication", () => {
     await expect(page.locator(".checkout-button").first()).toBeVisible();
   });
 
-  test("invalid email is rejected before a magic-link request is submitted", async ({ page }) => {
+  test("invalid identity is rejected before an OTP request is submitted", async ({ page }) => {
     await page.goto("/login", { waitUntil: "networkidle" });
-    const email = page.getByRole("textbox", { name: /Email/i });
-    await email.fill("not-an-email");
-    expect(await email.evaluate((element) => element.checkValidity())).toBe(false);
-    await page.getByRole("button", { name: /Send sign-in link/i }).click();
+    await page.getByLabel(/Full name/i).fill("Jalwa QA");
+    const identity = page.getByLabel(/Email or mobile number/i);
+    await identity.fill("not-an-email");
+    await page.getByRole("button", { name: /^Continue$/i }).click();
+    await expect(page.getByRole("status")).toContainText(/valid email|Pakistani mobile/i);
     expect(new URL(page.url()).pathname).toBe("/login");
   });
 });

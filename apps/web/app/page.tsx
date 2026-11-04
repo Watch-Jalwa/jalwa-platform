@@ -11,7 +11,7 @@ export default async function HomePage() {
       <section className="hero" aria-labelledby="hero-title">
         <div className="hero-copy">
           <span className="eyebrow">Jalwa · Pakistan</span>
-          <h1 id="hero-title">Pakistan ki kahaniyan, skills aur entertainment — aik jagah.</h1>
+          <h1 id="hero-title">Pakistan ki kahaniyan, skills aur entertainment aik jagah.</h1>
           <p>Mobile-first discovery for Deen, Kissan, learning, technology, rozgar and family-safe entertainment.</p>
           <div className="hero-actions">
             <Link className="button button-primary" href="/explore">Explore content</Link>

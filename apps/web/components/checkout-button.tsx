@@ -15,7 +15,7 @@ export function CheckoutButton({ priceId, priceCode, preview = false, children }
     const response = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ priceId, idempotencyKey: crypto.randomUUID() }) });
     const data = await response.json();
     if (response.status === 401) {
-      window.location.href = `/signup?next=${encodeURIComponent("/pricing")}&plan=${encodeURIComponent(priceCode ?? "premium-monthly-pkr")}`;
+      window.location.href = `/login?next=${encodeURIComponent("/pricing")}&plan=${encodeURIComponent(priceCode ?? "premium-monthly-pkr")}`;
       return;
     }
     if (!response.ok) { setError(data.error ?? "Checkout failed."); setBusy(false); return; }

@@ -94,7 +94,7 @@ export async function GET(request: Request) {
     publicCatalogue,
     migrations,
     migrationIssues,
-    auth: { provider: "better-auth", ready: authReady, magicLink: true },
+    auth: { provider: "better-auth", ready: authReady, magicLink: true, emailOtp: true },
     storage: { incoming: Boolean(process.env.R2_INCOMING_BUCKET), processed: Boolean(process.env.R2_PROCESSED_BUCKET), backups: Boolean(process.env.R2_BACKUP_BUCKET) },
     lifecycle: { sourceHealth: Boolean(process.env.CRON_SECRET), privacyProcessor: Boolean(process.env.ACCOUNT_REQUEST_PROCESSOR_SECRET), recommendationRefresh: Boolean(process.env.RECOMMENDATION_REFRESH_SECRET) },
     aiProvider: process.env.AI_PROVIDER ?? "unconfigured",

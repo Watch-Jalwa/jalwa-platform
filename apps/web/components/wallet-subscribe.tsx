@@ -14,7 +14,7 @@ async function jsonResponse(response: Response) {
 }
 
 function goToSignIn(planCode: string) {
-  window.location.href = `/signup?next=${encodeURIComponent(`/pricing?selected=${planCode}`)}&plan=${encodeURIComponent(planCode)}`;
+  window.location.href = `/login?next=${encodeURIComponent(`/pricing?selected=${planCode}`)}&plan=${encodeURIComponent(planCode)}`;
 }
 
 export function WalletSubscribe({ planCode, children }: { planCode: string; children: React.ReactNode }) {
