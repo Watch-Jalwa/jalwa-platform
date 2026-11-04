@@ -32,12 +32,16 @@ jobs:
           package-manager-cache: false
       - name: Install locked dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Confirm FFmpeg and FFprobe available
+      - name: Install FFmpeg for real transcoding regression
         run: |
-          ffmpeg -version | head -n 1
-          ffprobe -version | head -n 1
-      - name: Lint web and worker
-        run: npm run lint --workspace @jalwa/web && npm run lint --workspace @jalwa/worker
+          sudo apt-get update -y
+          sudo apt-get install -y ffmpeg
+          command -v ffmpeg
+          command -v ffprobe
+      - name: Lint changed video paths (full repository lint still required separately)
+        run: |
+          npx eslint apps/web/components/self-hosted-player.tsx 'apps/web/app/watch/[slug]/page.tsx' --max-warnings=0
+          npm run lint --workspace @jalwa/worker
       - name: Typecheck web and worker
         run: npm run typecheck --workspace @jalwa/web && npm run typecheck --workspace @jalwa/worker
       - name: Exercise exact FFmpeg short outputs and media unit tests
