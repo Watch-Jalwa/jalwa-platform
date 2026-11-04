@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { admin, emailOTP, magicLink } from "better-auth/plugins";
+import { admin, emailOTP, magicLink, phoneNumber } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import nodemailer from "nodemailer";
 import { databasePool } from "@/lib/database/pool";
@@ -74,6 +74,19 @@ export const auth = betterAuth({
           text: `Your Jalwa code is ${otp}.\n\nIt expires in 5 minutes and stops working after five unsuccessful attempts.`,
           html: `<p>Your Jalwa code is <strong>${otp}</strong>.</p><p>It expires in 5 minutes and stops working after five unsuccessful attempts.</p>`,
         });
+      },
+    }),
+    phoneNumber({
+      otpLength: 4,
+      expiresIn: 5 * 60,
+      allowedAttempts: 5,
+      // Temporary fixed code for JazzCash pay-first → OTP sign-in. Replace with SMS provider before production.
+      sendOTP: async () => {},
+      verifyOTP: async ({ code }) => code === "1234",
+      phoneNumberValidator: async (value) => /^\+923\d{9}$/.test(value) || /^03\d{9}$/.test(value),
+      signUpOnVerification: {
+        getTempEmail: (phone) => `${String(phone).replace(/\D/g, "")}@msisdn.jalwa.local`,
+        getTempName: (phone) => `Jalwa ${phone}`,
       },
     }),
     admin(),

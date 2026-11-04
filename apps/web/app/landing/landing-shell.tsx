@@ -1,0 +1,122 @@
+import Link from "next/link";
+import { LandingSubscribe } from "./landing-subscribe";
+import { LandingAnalyticsBoot } from "./landing-analytics-boot";
+
+type Campaign = {
+  utm: string;
+  package: string;
+  parameter: string;
+  payment: string;
+  planCode: string;
+  landing: string;
+  landingPath: string;
+  queryString: string;
+  utm_source?: string;
+  utm_medium?: string;
+  utm_campaign?: string;
+  utm_content?: string;
+  ref?: string;
+  he?: string;
+};
+
+const categories = [
+  { title: "Entertainment", copy: "Kahaniyan aur family entertainment, aik jagah.", icon: "🎬" },
+  { title: "Deen", copy: "Deeni maloomat aur roohani content dekhein.", icon: "🕌" },
+  { title: "Kissan", copy: "Zaraat aur kisani se mutaliq maloomat.", icon: "🌿" },
+  { title: "Learn & Grow", copy: "Nayi skills aur kaam ki baatein seekhein.", icon: "📖" },
+];
+
+const trust = [
+  { title: "Mobile par dekhein", copy: "Apni screen par Jalwa explore karein", icon: "📱" },
+  { title: "Apna content chunein", copy: "Apni pasand ki categories dekhein", icon: "▶️" },
+  { title: "Aur bhi explore karein", copy: "Jalwa ki duniya discover karein", icon: "🧭" },
+];
+
+export function LandingShell({
+  campaign,
+  h1,
+  webBannerSrc,
+  mobileBannerSrc,
+  offerNotice,
+  ctaHref = "/explore",
+  ctaLabel = "Watch Now",
+  subscribeCta = "Subscribe Now",
+  showJazzcashReward = false,
+}: {
+  campaign: Campaign;
+  h1: string;
+  webBannerSrc: string;
+  mobileBannerSrc: string;
+  offerNotice?: string;
+  ctaHref?: string;
+  ctaLabel?: string;
+  subscribeCta?: string;
+  showJazzcashReward?: boolean;
+}) {
+  return (
+    <div className="campaign-landing">
+      <LandingAnalyticsBoot campaign={campaign} />
+      <h1 className="visually-hidden">{h1}</h1>
+
+      <section className="landing-hero" aria-label="Jalwa campaign">
+        <picture>
+          <source media="(max-width: 720px)" srcSet={mobileBannerSrc} />
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={webBannerSrc}
+            alt="Jalwa — Scroll se aagay. Jalwa dekho."
+            className="landing-hero-image"
+          />
+        </picture>
+        <div className="landing-hero-actions">
+          <Link className="landing-cta landing-cta-secondary" href={ctaHref}>{ctaLabel}</Link>
+        </div>
+      </section>
+
+      <LandingSubscribe
+        campaign={campaign}
+        offerNotice={offerNotice}
+        ctaLabel={subscribeCta}
+        heading={showJazzcashReward ? "Enter Your JazzCash Number" : "Enter Your JazzCash Number"}
+      />
+
+      {showJazzcashReward ? (
+        <aside className="landing-reward-card" aria-label="Monthly JazzCash reward">
+          <p className="eyebrow">Monthly reward</p>
+          <strong>10,000</strong>
+          <span>JazzCash credits</span>
+          <small>Chance to win. Terms &amp; Conditions apply.</small>
+        </aside>
+      ) : null}
+
+      <section className="landing-below" aria-labelledby="landing-offerings">
+        <div className="landing-section-rule">
+          <h2 id="landing-offerings">Jalwa par kya milega?</h2>
+        </div>
+        <div className="landing-category-grid">
+          {categories.map((item) => (
+            <article className="landing-category-card" key={item.title}>
+              <span aria-hidden="true">{item.icon}</span>
+              <h3>{item.title}</h3>
+              <p>{item.copy}</p>
+            </article>
+          ))}
+        </div>
+        <p className="landing-mood">Har mood ka apna Jalwa.</p>
+        <div className="landing-trust-row">
+          {trust.map((item) => (
+            <article key={item.title}>
+              <span aria-hidden="true">{item.icon}</span>
+              <strong>{item.title}</strong>
+              <small>{item.copy}</small>
+            </article>
+          ))}
+        </div>
+        <p className="landing-legal">
+          Jari rakhne se aap Jalwa ki <Link href="/legal/terms">Terms and Conditions</Link> aur{" "}
+          <Link href="/legal/privacy">Privacy Policy</Link> se raazi hain.
+        </p>
+      </section>
+    </div>
+  );
+}

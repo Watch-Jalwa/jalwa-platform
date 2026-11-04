@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { readLandingMsisdn } from "@/lib/utm-attribution.mjs";
 
 type Challenge = {
   challengeId: string;
@@ -22,15 +23,21 @@ const messages: Record<string, string> = {
   "method-disabled": "Phone sign-in is not enabled yet. Use an email address.",
 };
 
-export function SignInForm({ next }: { next: string }) {
+export function SignInForm({ next, prefillIdentity = "" }: { next: string; prefillIdentity?: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [fullName, setFullName] = useState("");
-  const [identity, setIdentity] = useState("");
+  const [identity, setIdentity] = useState(prefillIdentity);
   const [code, setCode] = useState("");
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (prefillIdentity) return;
+    const stored = readLandingMsisdn();
+    if (stored) setIdentity(stored);
+  }, [prefillIdentity]);
 
   async function start(identityValue = identity) {
     setError(null);
@@ -112,12 +119,7 @@ export function SignInForm({ next }: { next: string }) {
         <button className="button button-primary" type="submit" disabled={pending || code.length !== 4}>
           Verify and continue
         </button>
-        <button
-          className="button button-secondary"
-          type="button"
-          disabled={pending}
-          onClick={() => void start(identity)}
-        >
+        <button className="button button-secondary" type="button" disabled={pending} onClick={() => void start(identity)}>
           Resend code
         </button>
         <button
@@ -170,7 +172,7 @@ export function SignInForm({ next }: { next: string }) {
           onChange={(event) => setIdentity(event.target.value)}
         />
       </label>
-      <p className="form-message">Pakistan mobile formats such as 0300 1234567 and +923001234567 are accepted.</p>
+      <p className="form-message">Pakistan mobile formats such as 0300 1234567 and +923001234567 are accepted. After JazzCash, use the same number.</p>
       <p className="form-message" role="status">{error ?? ""}</p>
       <button className="button button-primary" type="submit" disabled={pending}>Continue</button>
     </form>

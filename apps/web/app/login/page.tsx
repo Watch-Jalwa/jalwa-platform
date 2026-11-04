@@ -20,6 +20,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
     ? safeInternalPath(`${nextBase}${nextBase.includes("?") ? "&" : "?"}plan=${encodeURIComponent(plan)}`, "/onboarding")
     : nextBase;
   const enabledSocialProviders = socialProviders.filter((provider) => provider.enabled);
+  const prefillIdentity = typeof params.prefill === "string" ? params.prefill : "";
 
   return (
     <div className="page-shell auth-journey">
@@ -29,7 +30,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
         <p>One passwordless screen for new and returning viewers. First successful code creates your account; next time the same email or number signs you in.</p>
       </section>
       <div className="auth-methods">
-        <SignInForm next={next} />
+        <SignInForm next={next} prefillIdentity={prefillIdentity} />
         {enabledSocialProviders.length ? (
           <section className="form-shell social-auth">
             <h2>Or continue with</h2>

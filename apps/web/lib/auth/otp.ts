@@ -14,17 +14,15 @@ export type OtpVerifyResult =
   | { ok: true; next: string }
   | { ok: false; error: string; status: number };
 
-function phoneAuthEnabled() {
-  return process.env.NEXT_PUBLIC_ENABLE_PHONE_AUTH === "true";
+function toE164(phone: string) {
+  if (phone.startsWith("+92")) return phone;
+  if (phone.startsWith("03") && phone.length === 11) return `+92${phone.slice(1)}`;
+  return phone;
 }
 
 export async function startOtp(identityRaw: string): Promise<OtpStartResult> {
   const parsed = parseIdentity(identityRaw);
   if (!parsed.ok) return { ok: false, error: parsed.error, status: 400 };
-
-  if (parsed.channel === "phone" && !phoneAuthEnabled()) {
-    return { ok: false, error: "method-disabled", status: 503 };
-  }
 
   const { challengeId, expiresAt } = createOtpChallengeId(parsed.channel, parsed.normalized);
   const maskedDestination = maskIdentity(parsed.channel, parsed.normalized);
@@ -45,7 +43,15 @@ export async function startOtp(identityRaw: string): Promise<OtpStartResult> {
     return { ok: true, challengeId, channel: "email", maskedDestination, expiresAt };
   }
 
-  return { ok: false, error: "method-disabled", status: 503 };
+  try {
+    await auth.api.sendPhoneNumberOTP({
+      body: { phoneNumber: toE164(parsed.normalized) },
+      headers: await headers(),
+    });
+  } catch {
+    return { ok: false, error: "send-failed", status: 502 };
+  }
+  return { ok: true, challengeId, channel: "phone", maskedDestination, expiresAt };
 }
 
 export async function verifyOtp(input: {
@@ -65,15 +71,22 @@ export async function verifyOtp(input: {
 
   if (isFrontendPreview()) return { ok: true, next: input.next ?? "/onboarding" };
 
-  if (challenge.channel === "phone") {
-    return { ok: false, error: "method-disabled", status: 503 };
-  }
-
   try {
-    await auth.api.signInEmailOTP({
-      body: { email: challenge.identity, otp: code, name: displayName },
-      headers: await headers(),
-    });
+    if (challenge.channel === "phone") {
+      await auth.api.verifyPhoneNumber({
+        body: {
+          phoneNumber: toE164(challenge.identity),
+          code,
+          name: displayName,
+        },
+        headers: await headers(),
+      });
+    } else {
+      await auth.api.signInEmailOTP({
+        body: { email: challenge.identity, otp: code, name: displayName },
+        headers: await headers(),
+      });
+    }
   } catch {
     return { ok: false, error: "invalid-code", status: 401 };
   }
