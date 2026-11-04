@@ -18,7 +18,9 @@ jobs:
           node-version: 22
           package-manager-cache: false
       - name: Resolve patched dependency lock without install scripts
-        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm audit fix --package-lock-only --omit=dev --ignore-scripts --no-fund
       - name: Emit deterministic lockfile chunks for reviewed GitHub connector commit
         run: |
           node <<'NODE'
