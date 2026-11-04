@@ -57,7 +57,6 @@ with upserted as (
   on conflict (provider, provider_content_id) do update set
     content_id=excluded.content_id,
     external_url=excluded.external_url,
-    is_primary=true,
     status='active'
   returning content_id
 )

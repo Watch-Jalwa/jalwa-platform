@@ -6,6 +6,7 @@ on:
     branches: ["fix/staging-certification-blockers"]
     paths:
       - "scripts/staging-approve-live-test-50-rights.sql"
+      - "scripts/staging-fix-live-test-playback-primaries.sql"
       - "scripts/staging-ingest-live-test-wave1.mjs"
       - "scripts/staging-ingest-live-test-wave2.mjs"
       - ".github/workflows/staging-live-test-50-rights-publish.yml"
@@ -40,6 +41,14 @@ jobs:
           chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
           ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Fix live-test playback primary rows after draft re-import
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i jalwa-postgres-staging sh -lc 'psql -X -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\"'" \
+            < scripts/staging-fix-live-test-playback-primaries.sql | tee /tmp/playback-primary-fix.out
+          grep -E '"multi_primary_remaining"[[:space:]]*:[[:space:]]*0' /tmp/playback-primary-fix.out
 
       - name: Approve clear open-licence rights on staging
         run: |

@@ -91,7 +91,9 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
         ? database.from("categories").select("slug,name_en").eq("id", data.primary_category_id).maybeSingle()
         : Promise.resolve({ data: null, error: null }),
       database.from("playback_sources").select("id,provider,provider_content_id,embed_url,media_url,external_url,media_asset_id,drm_asset_id,format")
-        .eq("content_id", data.id).eq("is_primary", true).maybeSingle(),
+        .eq("content_id", data.id).eq("is_primary", true)
+        .order("media_asset_id", { ascending: false, nullsFirst: false })
+        .limit(1).maybeSingle(),
       database.from("rights_records").select("source_url,attribution_text")
         .eq("content_id", data.id).eq("status", "approved").maybeSingle(),
     ]);
