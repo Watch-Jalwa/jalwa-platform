@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 async function handle(request: Request) {
   const url = new URL(request.url);
-  let fields: Record<string, string> = {};
+  const fields: Record<string, string> = {};
 
   if (request.method === "POST") {
     const contentType = request.headers.get("content-type") ?? "";
