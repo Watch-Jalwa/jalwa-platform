@@ -12,9 +12,9 @@ test("short transcode preserves source aspect instead of burning portrait black 
   assert.ok(args.includes("+faststart"));
   assert.match(filter, /force_original_aspect_ratio=decrease/);
   assert.match(filter, /force_divisible_by=2/);
-  assert.match(filter, /min\\(iw,1280\\)/);
-  assert.match(filter, /min\\(ih,1280\\)/);
-  assert.doesNotMatch(filter, /\\bpad=/);
+  assert.match(filter, /min\(iw,1280\)/);
+  assert.match(filter, /min\(ih,1280\)/);
+  assert.doesNotMatch(filter, /\bpad=/);
   assert.ok(args.includes("-nostdin"));
   assert.ok(args.includes("-protocol_whitelist"));
   assert.ok(args.includes("file,pipe,crypto,data"));
