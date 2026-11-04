@@ -33,11 +33,24 @@ jobs:
           const versions = (name) => [...new Set(Object.entries(lock.packages)
             .filter(([path, value]) => value && (path === `node_modules/${name}` || path.endsWith(`/node_modules/${name}`)))
             .map(([, value]) => value.version))];
-          const resolved = { next: versions('next'), postcss: versions('postcss'), sharp: versions('sharp') };
-          console.log(resolved);
-          if (resolved.next.length !== 1 || resolved.next[0] !== '16.2.12') process.exit(1);
-          if (resolved.postcss.some((version) => version !== '8.5.22')) process.exit(1);
-          if (resolved.sharp.some((version) => version !== '0.35.3')) process.exit(1);
+          const app = require('./apps/web/package.json');
+          const root = require('./package.json');
+          const requirements = {
+            next: app.dependencies.next,
+            postcss: root.overrides.postcss,
+            sharp: root.overrides.next.sharp,
+            'source-map-js': root.devDependencies['source-map-js'],
+            zod: root.overrides.zod,
+          };
+          const actual = Object.fromEntries(Object.keys(requirements).map((name) => [name, versions(name)]));
+          console.log({ expected: requirements, actual });
+          for (const [name, expected] of Object.entries(requirements)) {
+            const found = actual[name];
+            if (found.length !== 1 || found[0] !== expected) {
+              console.error(`Unexpected locked ${name}: required ${expected}, found ${found.join(', ')}`);
+              process.exitCode = 1;
+            }
+          }
           NODE
       - name: Verify production dependency audit
         run: npm audit --omit=dev --audit-level=high
