@@ -30,9 +30,40 @@ function cookieOptions(expires: Date) {
   };
 }
 
+function isPublicHttpOrigin(origin: string) {
+  try {
+    const url = new URL(origin);
+    if (!/^https?:$/.test(url.protocol)) return false;
+    const host = url.hostname.toLowerCase();
+    return host !== "0.0.0.0" && host !== "127.0.0.1" && host !== "localhost";
+  } catch {
+    return false;
+  }
+}
+
+function publicRequestOrigin(request: Request) {
+  const configured = process.env.APP_URL?.trim() || process.env.NEXT_PUBLIC_APP_URL?.trim();
+  if (configured) {
+    const origin = new URL(configured).origin;
+    if (isPublicHttpOrigin(origin)) return origin;
+  }
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() || "https";
+  if (forwardedHost) {
+    const origin = `${forwardedProto}://${forwardedHost}`;
+    if (isPublicHttpOrigin(origin)) return origin;
+  }
+  const origin = new URL(request.url).origin;
+  // Docker/compose often binds Next to 0.0.0.0; never emit that as a browser media URL.
+  if (!isPublicHttpOrigin(origin)) {
+    throw new Error("Public app URL is required for same-origin media playback.");
+  }
+  return origin;
+}
+
 function r2Gateway(request: Request) {
   const mode = (process.env.MEDIA_GATEWAY_MODE ?? "same-origin").trim().toLowerCase();
-  if (mode === "same-origin") return `${new URL(request.url).origin}/api/media`;
+  if (mode === "same-origin") return `${publicRequestOrigin(request)}/api/media`;
   if (mode === "external") {
     const configured = process.env.MEDIA_GATEWAY_URL ?? process.env.NEXT_PUBLIC_MEDIA_GATEWAY_URL;
     if (!configured) throw new Error("External playback gateway is not configured.");

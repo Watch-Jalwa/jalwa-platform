@@ -53,6 +53,18 @@ test("Premium playback checks entitlement before device registration", async () 
   assert.ok(deviceIndex > entitlementIndex, "Premium entitlement must be denied before protected-device registration");
 });
 
+test("same-origin media gateway prefers public APP_URL over container bind origin", async () => {
+  const playback = await readFile(playbackUrl, "utf8");
+  assert.ok(playback.includes("publicRequestOrigin"), "playback token route must resolve a public origin helper");
+  assert.ok(playback.includes("APP_URL"), "same-origin gateway must prefer APP_URL");
+  assert.ok(playback.includes("0.0.0.0"), "same-origin gateway must reject Docker bind addresses");
+  assert.doesNotMatch(
+    playback,
+    /same-origin"\) return `\$\{new URL\(request\.url\)\.origin\}\/api\/media`/,
+    "must not use raw request.url origin for same-origin media URLs",
+  );
+});
+
 test("frontend consumes ad-free, quality, AI and Premium hub state", async () => {
   const [layout, adSlot, premiumPage, playback, ai] = await Promise.all([layoutUrl,adSlotUrl,premiumPageUrl,playbackUrl,aiUrl].map((url) => readFile(url, "utf8")));
   assert.ok(layout.includes("JalwaAdSlot"));
