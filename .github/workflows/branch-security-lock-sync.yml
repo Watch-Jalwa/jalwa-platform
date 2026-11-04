@@ -20,7 +20,7 @@ jobs:
       - name: Resolve patched dependency lock without install scripts
         run: |
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-          npm update source-map-js --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm install --save-exact --save-dev source-map-js@1.2.2 --package-lock-only --ignore-scripts --no-audit --no-fund
       - name: Emit deterministic lockfile chunks for reviewed GitHub connector commit
         run: |
           node <<'NODE'
