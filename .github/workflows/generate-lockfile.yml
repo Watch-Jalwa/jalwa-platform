@@ -37,7 +37,9 @@ jobs:
           const root = require('./package.json');
           const requirements = {
             next: app.dependencies.next,
-            postcss: root.overrides.postcss,
+            // Next pins its internal PostCSS version independently; verify that exact lock.
+            postcss: Object.entries(lock.packages)
+              .find(([path]) => path.endsWith('/node_modules/next'))?.[1]?.dependencies?.postcss,
             sharp: root.overrides.next.sharp,
             'source-map-js': root.devDependencies['source-map-js'],
             zod: root.overrides.zod,
