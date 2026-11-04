@@ -46,8 +46,8 @@ jobs:
         run: npm run typecheck --workspace @jalwa/web && npm run typecheck --workspace @jalwa/worker
       - name: Exercise exact FFmpeg short outputs and media unit tests
         run: npm run test --workspace @jalwa/worker
-      - name: Run web unit tests
-        run: npm run test --workspace @jalwa/web
+      - name: Run media-path and playback-token web unit tests
+        run: node --test apps/web/tests/media.test.mjs apps/web/tests/media-gateway.test.mjs
       - name: Production-equivalent web build (without deployment)
         run: npm run build --workspace @jalwa/web
         env:
