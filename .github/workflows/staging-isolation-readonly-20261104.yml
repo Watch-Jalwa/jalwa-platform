@@ -1,0 +1,43 @@
+name: Jalwa read-only staging isolation and rights audit
+
+on:
+  push:
+    branches:
+      - diagnostic/jalwa-staging-isolation-readonly-20261104
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Prove pinned staging SSH identity only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          for name in HOST USER APP_DIR KNOWN_HOSTS SSH_KEY; do
+            test -n "${!name:-}" || { echo "Missing staging access: $name" >&2; exit 1; }
+          done
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+      - name: Inspect staging containers, origin rights and local routes read-only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" 'bash -s' < scripts/staging-boundary-readonly-20261104.sh
