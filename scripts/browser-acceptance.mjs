@@ -68,7 +68,7 @@ try {
   await page.waitForURL(/\/explore\?q=skills/);
 
   await page.goto("/login", { waitUntil: "networkidle" });
-  await page.getByRole("heading", { name: /Sign in or create account/i }).waitFor();
+  await page.getByRole("heading", { level: 1, name: /Sign in or create account/i }).waitFor();
   const identity = page.getByLabel(/Email or mobile number/i);
   assert.equal(await identity.getAttribute("required"), "");
   assert.equal(await identity.evaluate((element) => element.checkValidity()), false);
