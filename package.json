@@ -37,5 +37,8 @@
     "test:staging:playwright:visual": "playwright test --config=playwright.staging.config.mjs qa/playwright/visual.spec.mjs",
     "harvest:alpha": "node scripts/harvest-alpha-open-content.mjs",
     "ci": "npm run lint && npm run typecheck && npm run test && npm run test:ai && npm run test:release && npm run test:backup-encryption && npm run build"
+  },
+  "devDependencies": {
+    "source-map-js": "1.2.2"
   }
 }
