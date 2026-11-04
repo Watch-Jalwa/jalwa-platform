@@ -221,7 +221,7 @@ jobs:
         run: |
           set -euo pipefail
           remote_dir="$APP_DIR/candidate-db/$GITHUB_SHA/live-test-wave2"
-          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+          ssh -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=120 -i ~/.ssh/jalwa "$USER@$HOST" \
             "REMOTE_DIR='$remote_dir' APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
           set -euo pipefail
           media_dir="$REMOTE_DIR/media"
