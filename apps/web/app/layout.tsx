@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { BottomNav } from "@/components/bottom-nav";
 import { DeviceHeartbeat } from "@/components/device-heartbeat";
@@ -38,6 +38,24 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, them
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const cookieStore = await cookies();
+  const headerStore = await headers();
   const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE)?.value);
-  return <html lang={documentLanguage(locale)} dir={documentDirection(locale)} data-release={releaseSha} suppressHydrationWarning><body><PreviewBanner /><SiteHeader /><JalwaAdSlot /><main className="site-main">{children}</main><SiteFooter /><BottomNav /><ServiceWorkerRegister /><ErrorMonitor />{isFrontendPreview ? null : <DeviceHeartbeat />}{isFrontendPreview || isStaging ? null : <AnalyticsBeacon />}</body></html>;
+  const campaignShell = headerStore.get("x-jalwa-campaign") === "1";
+
+  return (
+    <html lang={documentLanguage(locale)} dir={documentDirection(locale)} data-release={releaseSha} suppressHydrationWarning>
+      <body className={campaignShell ? "campaign-shell" : undefined} suppressHydrationWarning>
+        {campaignShell ? null : <PreviewBanner />}
+        {campaignShell ? null : <SiteHeader />}
+        {campaignShell ? null : <JalwaAdSlot />}
+        <main className={campaignShell ? "site-main site-main-campaign" : "site-main"}>{children}</main>
+        {campaignShell ? null : <SiteFooter />}
+        {campaignShell ? null : <BottomNav />}
+        <ServiceWorkerRegister />
+        <ErrorMonitor />
+        {campaignShell || isFrontendPreview ? null : <DeviceHeartbeat />}
+        {campaignShell || isFrontendPreview || isStaging ? null : <AnalyticsBeacon />}
+      </body>
+    </html>
+  );
 }

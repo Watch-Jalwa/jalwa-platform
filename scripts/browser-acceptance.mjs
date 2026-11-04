@@ -52,12 +52,12 @@ try {
   await page.goto("/", { waitUntil: "networkidle" });
   await page.getByRole("heading", { level: 1 }).waitFor();
   assert.match(await page.title(), /Jalwa/i);
-  await page.getByRole("link", { name: /Watch Now/i }).waitFor();
+  await page.getByRole("link", { name: /Explore content/i }).waitFor();
   await assertNoHorizontalOverflow(page, "desktop home");
   const robots = await page.locator('meta[name="robots"]').getAttribute("content");
   if (expectedNoindex) assert.match(robots ?? "", /noindex/i);
 
-  await page.getByRole("link", { name: /Watch Now/i }).click();
+  await page.getByRole("link", { name: /Explore content/i }).click();
   await page.getByRole("heading", { level: 1, name: /Explore Jalwa/i }).waitFor();
   assert.equal(new URL(page.url()).pathname, "/explore");
   await assertNoHorizontalOverflow(page, "desktop explore");
@@ -127,7 +127,7 @@ try {
   trackRuntimeFailures(mobilePage, "mobile");
 
   await mobilePage.goto("/", { waitUntil: "networkidle" });
-  await mobilePage.getByRole("link", { name: /Watch Now/i }).waitFor();
+  await mobilePage.getByRole("link", { name: /Explore content/i }).waitFor();
   await assertNoHorizontalOverflow(mobilePage, "mobile home");
   const mobileNavigation = mobilePage.getByRole("navigation", { name: /Mobile navigation/i });
   await mobileNavigation.waitFor();

@@ -71,7 +71,7 @@ export function normalizeDefaultLandingCampaign(searchParams) {
     parameter: "default",
     payment: "jazzcash",
     landing: "mainLanding",
-    landingPath: "/",
+    landingPath: "/mainLanding",
   });
 }
 

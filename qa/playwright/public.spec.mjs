@@ -8,10 +8,9 @@ test.describe("public customer web", () => {
     const failures = watchRuntimeFailures(page, "home");
     const response = await page.goto("/", { waitUntil: "networkidle" });
     expect(response?.status()).toBe(200);
-    await expect(page.locator("h1.visually-hidden")).toHaveCount(1);
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
     await expect(page).toHaveTitle(/Jalwa/i);
-    await expect(page.getByRole("link", { name: /Watch Now/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Subscribe Now/i })).toBeVisible();
+    await expect(page.getByRole("link", { name: /Explore content/i })).toBeVisible();
     await expectNoHorizontalOverflow(page, "desktop home");
 
     const robots = await page.locator('meta[name="robots"]').getAttribute("content");
@@ -28,7 +27,7 @@ test.describe("public customer web", () => {
 
   test("explore navigation and search", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
-    await page.getByRole("link", { name: /Watch Now/i }).click();
+    await page.getByRole("link", { name: /Explore content/i }).click();
     await expect(page).toHaveURL(/\/explore$/);
     await expect(page.getByRole("heading", { level: 1, name: /Explore Jalwa/i })).toBeVisible();
     await expectNoHorizontalOverflow(page, "desktop explore");

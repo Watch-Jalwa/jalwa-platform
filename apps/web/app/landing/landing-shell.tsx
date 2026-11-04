@@ -39,7 +39,6 @@ export function LandingShell({
   mobileBannerSrc,
   offerNotice,
   ctaHref = "/explore",
-  ctaLabel = "Watch Now",
   subscribeCta = "Subscribe Now",
   showJazzcashReward = false,
 }: {
@@ -55,39 +54,60 @@ export function LandingShell({
 }) {
   return (
     <div className="campaign-landing">
-      <LandingAnalyticsBoot campaign={campaign} />
+      <LandingAnalyticsBoot
+        landing={campaign.landing}
+        landingPath={campaign.landingPath}
+        planCode={campaign.planCode}
+        utm={campaign.utm}
+        packageCode={campaign.package}
+        parameter={campaign.parameter}
+        payment={campaign.payment}
+        utmSource={campaign.utm_source}
+        utmMedium={campaign.utm_medium}
+        utmCampaign={campaign.utm_campaign}
+        utmContent={campaign.utm_content}
+        refCode={campaign.ref}
+        he={campaign.he}
+      />
+
       <h1 className="visually-hidden">{h1}</h1>
 
       <section className="landing-hero" aria-label="Jalwa campaign">
-        <picture>
-          <source media="(max-width: 720px)" srcSet={mobileBannerSrc} />
+        <Link className="landing-hero-link" href={ctaHref} aria-label="Watch Now — explore Jalwa">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
+            className="landing-hero-image landing-hero-image-desktop"
             src={webBannerSrc}
             alt="Jalwa — Scroll se aagay. Jalwa dekho."
-            className="landing-hero-image"
           />
-        </picture>
-        <div className="landing-hero-actions">
-          <Link className="landing-cta landing-cta-secondary" href={ctaHref}>{ctaLabel}</Link>
-        </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            className="landing-hero-image landing-hero-image-mobile"
+            src={mobileBannerSrc}
+            alt="Jalwa — Scroll se aagay. Jalwa dekho."
+          />
+        </Link>
       </section>
 
-      <LandingSubscribe
-        campaign={campaign}
-        offerNotice={offerNotice}
-        ctaLabel={subscribeCta}
-        heading={showJazzcashReward ? "Enter Your JazzCash Number" : "Enter Your JazzCash Number"}
-      />
+      <section className="landing-middle" aria-label="JazzCash subscribe">
+        {showJazzcashReward ? (
+          <aside className="landing-reward-card" aria-label="Monthly JazzCash reward">
+            <div>
+              <p className="eyebrow">Monthly reward</p>
+              <strong>10,000</strong>
+              <span>JazzCash credits</span>
+            </div>
+            <small>Chance to win. Terms and Conditions apply.</small>
+          </aside>
+        ) : null}
 
-      {showJazzcashReward ? (
-        <aside className="landing-reward-card" aria-label="Monthly JazzCash reward">
-          <p className="eyebrow">Monthly reward</p>
-          <strong>10,000</strong>
-          <span>JazzCash credits</span>
-          <small>Chance to win. Terms &amp; Conditions apply.</small>
-        </aside>
-      ) : null}
+        <LandingSubscribe
+          campaign={campaign}
+          offerNotice={offerNotice}
+          ctaLabel={subscribeCta}
+          heading="Enter Your JazzCash Number"
+        />
+      </section>
 
       <section className="landing-below" aria-labelledby="landing-offerings">
         <div className="landing-section-rule">

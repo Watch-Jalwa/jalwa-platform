@@ -30,9 +30,8 @@ export default async function Landing1Page({ searchParams }: { searchParams: Sea
       h1="Jalwa × JazzCash — 10,000 credits every month. Jalwa dekho. Jeetne ka mauqa pao."
       webBannerSrc="/landing/tiktok-web-banner.jpeg"
       mobileBannerSrc="/landing/tiktok-mobile-banner.jpeg"
-      offerNotice="Monthly 10,000 JazzCash credits chance with Premium. Terms apply."
+      offerNotice="Jalwa dekho. Jeetne ka mauqa pao — 10,000 JazzCash credits monthly."
       ctaHref={`/explore?${campaign.queryString}`}
-      ctaLabel="Explore Jalwa"
       subscribeCta="Explore Jalwa"
       showJazzcashReward
     />
