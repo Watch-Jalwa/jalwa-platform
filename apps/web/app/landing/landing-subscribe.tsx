@@ -103,29 +103,70 @@ export function LandingSubscribe({
 
   return (
     <section className="landing-subscribe" aria-labelledby="landing-subscribe-title">
-      <h2 id="landing-subscribe-title">{heading}</h2>
-      {offerNotice ? <p className="landing-offer-notice">{offerNotice}</p> : null}
-      <label className="form-field">
-        <span>JazzCash mobile number</span>
-        <input
-          autoComplete="tel"
-          inputMode="numeric"
-          maxLength={11}
-          placeholder="03XXXXXXXXX"
-          value={msisdn}
-          onChange={(event) => setMsisdn(event.target.value.replace(/\D/g, "").slice(0, 11))}
-        />
-      </label>
-      <label className="landing-consent">
-        <input checked={consent} onChange={(event) => setConsent(event.target.checked)} type="checkbox" />
-        <span>
-          I agree to the <Link href="/legal/terms">Terms and Conditions</Link> and{" "}
-          <Link href="/legal/privacy">Privacy Policy</Link>. MPIN is entered only on JazzCash.
+      <div className="landing-subscribe-head">
+        <span className="landing-subscribe-phone" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z" />
+          </svg>
         </span>
-      </label>
-      <button className="landing-cta" disabled={busy} onClick={() => void subscribe()} type="button">
-        {busy ? "Connecting…" : ctaLabel}
-      </button>
+        <h2 id="landing-subscribe-title">{heading}</h2>
+      </div>
+
+      <div className="landing-subscribe-landscape">
+        <label className="landing-msisdn-field">
+          <span className="visually-hidden">JazzCash mobile number</span>
+          <span className="landing-msisdn-brand" aria-hidden="true">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              className="landing-msisdn-mark"
+              src="/landing/jazzcash-logo-h.png"
+              alt=""
+              width={36}
+              height={36}
+            />
+            <span className="landing-msisdn-wordmark">JazzCash</span>
+          </span>
+          <input
+            autoComplete="tel"
+            inputMode="numeric"
+            maxLength={11}
+            placeholder="03XX XXXXXXX"
+            value={msisdn}
+            onChange={(event) => setMsisdn(event.target.value.replace(/\D/g, "").slice(0, 11))}
+          />
+        </label>
+
+        <div className="landing-subscribe-actions">
+          <label className="landing-consent">
+            <input checked={consent} onChange={(event) => setConsent(event.target.checked)} type="checkbox" />
+            <span>
+              I agree to Jalwa <Link href="/legal/terms">Terms and Conditions</Link>
+            </span>
+          </label>
+
+          <button className="landing-cta" disabled={busy} onClick={() => void subscribe()} type="button">
+            <span className="landing-cta-lock" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <path d="M17 8h-1V6a4 4 0 0 0-8 0v2H7a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8a2 2 0 0 0-2-2zm-7-2a2 2 0 1 1 4 0v2h-4V6zm3 10a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3z" />
+              </svg>
+            </span>
+            <span>{busy ? "Connecting…" : ctaLabel}</span>
+            <span className="landing-cta-arrow" aria-hidden="true">→</span>
+          </button>
+        </div>
+      </div>
+
+      {offerNotice ? (
+        <aside className="landing-offer-banner" aria-label="Offer notice">
+          <span className="landing-offer-megaphone" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+              <path d="M3 10v4a1 1 0 0 0 1 1h2.2l4.3 3.4A1 1 0 0 0 12 18V6a1 1 0 0 0-1.5-.8L6.2 8.6H4a1 1 0 0 0-1 1zm14.1-2.5a1 1 0 0 0-.7 1.7 4 4 0 0 1 0 5.6 1 1 0 1 0 1.4 1.4 6 6 0 0 0 0-8.4 1 1 0 0 0-.7-.3zm.2 3.1a1 1 0 0 0-.6 1.2 1.5 1.5 0 0 1 0 1.4 1 1 0 1 0 1.8.8 3.5 3.5 0 0 0 0-3 1 1 0 0 0-1.2-.4z" />
+            </svg>
+          </span>
+          <p>{offerNotice}</p>
+        </aside>
+      ) : null}
+
       {error ? <p className="form-error" role="alert">{error}</p> : null}
     </section>
   );

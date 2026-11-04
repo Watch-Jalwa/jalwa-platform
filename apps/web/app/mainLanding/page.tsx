@@ -30,7 +30,7 @@ export default async function MainLandingPage({ searchParams }: { searchParams: 
       h1="Jalwa — Scroll se aagay. Jalwa dekho. Kahaniyan aur entertainment, aik jagah."
       webBannerSrc="/landing/default-web-banner.jpeg"
       mobileBannerSrc="/landing/default-mobile-banner.jpeg"
-      offerNotice="Subscribe with JazzCash — sign in later with the same number."
+      offerNotice="Subscribe Now click kertay he Rs.1 kat lia jae ga. Ye limited offer sirf aj k din k liye valid hai. Us k bad PKR 599/m lago hun gay."
       ctaHref="/explore"
       subscribeCta="Subscribe Now"
     />

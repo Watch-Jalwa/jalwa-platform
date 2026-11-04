@@ -5,6 +5,11 @@
   --landing-ink: #ffffff;
   --landing-muted: rgba(255, 255, 255, 0.78);
   --landing-card: rgba(14, 14, 14, 0.94);
+  /* One visual column: banner widest, JazzCash slightly inset, footer matches banner */
+  --landing-banner-max: 1060px;
+  --landing-form-max: 980px;
+  --landing-gutter: clamp(0.75rem, 2.4vw, 1.35rem);
+  --landing-stack-gap: clamp(0.85rem, 2vw, 1.2rem);
   background: var(--landing-bg);
   color: var(--landing-ink);
   min-height: 100vh;
@@ -30,24 +35,30 @@ body.campaign-shell .site-main-campaign,
   border: 0;
 }
 
-/* Banner on top — full graphic, slightly scaled down, never cropped */
+/* Banner on top — full graphic, never cropped.
+   Native web creatives are 1600×639; display capped for a balanced column. */
 .landing-hero {
   display: flex;
   justify-content: center;
   background: #000;
-  padding: 0.5rem 0.75rem 0;
+  padding: var(--landing-stack-gap) var(--landing-gutter) 0;
 }
 
 .landing-hero-link {
   display: block;
-  width: min(100%, 760px);
+  width: min(100%, var(--landing-banner-max));
+  max-width: 1600px;
   cursor: pointer;
+  border-radius: clamp(0.55rem, 1.4vw, 0.9rem);
+  overflow: hidden;
 }
 
 .landing-hero-image {
   width: 100%;
   height: auto;
   display: block;
+  aspect-ratio: auto;
+  object-fit: contain;
 }
 
 .landing-hero-image-mobile {
@@ -58,28 +69,30 @@ body.campaign-shell .site-main-campaign,
   display: block;
 }
 
-/* JazzCash in the middle */
+/* JazzCash in the middle — stacked form, a little narrower than banner */
 .landing-middle {
-  width: min(100% - 1.5rem, 28rem);
-  margin: 1.15rem auto 0;
+  width: min(100% - (var(--landing-gutter) * 2), var(--landing-banner-max));
+  margin: var(--landing-stack-gap) auto 0;
   display: grid;
   gap: 0.75rem;
+  justify-items: center;
 }
 
 .landing-cta {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 0.55rem;
   min-height: 2.85rem;
-  padding: 0.75rem 1.4rem;
+  padding: 0.75rem 1.25rem;
   border: 0;
-  border-radius: 999px;
-  background: linear-gradient(180deg, #ff9a2e, var(--landing-orange-deep));
+  border-radius: 0.85rem;
+  background: linear-gradient(180deg, #ffcf33, #f5b400);
   color: #111;
   font-weight: 800;
   text-decoration: none;
   cursor: pointer;
-  width: 100%;
+  white-space: nowrap;
 }
 
 .landing-cta:disabled {
@@ -88,79 +101,192 @@ body.campaign-shell .site-main-campaign,
 }
 
 .landing-subscribe {
-  width: 100%;
-  margin: 0;
-  padding: 1.15rem 1.2rem 1.25rem;
-  border: 1px solid rgba(255, 122, 0, 0.65);
-  border-radius: 1rem;
-  background: var(--landing-card);
+  width: min(100%, var(--landing-form-max));
+  margin: 0 auto;
+  padding: clamp(0.9rem, 2.4vw, 1.35rem) clamp(0.95rem, 2.6vw, 1.5rem);
+  border: 1px solid rgba(255, 198, 10, 0.35);
+  border-radius: clamp(0.85rem, 2vw, 1.15rem);
+  background: #000;
+  color: #fff;
+  box-sizing: border-box;
+}
+
+.landing-subscribe-head {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.5rem, 1.5vw, 0.75rem);
+  margin-bottom: clamp(0.65rem, 1.8vw, 0.95rem);
+}
+
+.landing-subscribe-phone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(2rem, 5vw, 2.45rem);
+  height: clamp(2rem, 5vw, 2.45rem);
+  border-radius: 999px;
+  background: #ffc60a;
+  color: #111;
+  flex: 0 0 auto;
+}
+
+.landing-subscribe-phone svg {
+  width: clamp(1rem, 2.8vw, 1.35rem);
+  height: clamp(1rem, 2.8vw, 1.35rem);
 }
 
 .landing-subscribe h2 {
-  margin: 0 0 0.4rem;
-  font-size: 1.2rem;
+  margin: 0;
+  font-size: clamp(1rem, 2.6vw, 1.4rem);
   font-weight: 800;
-  text-align: center;
-}
-
-.landing-offer-notice {
-  margin: 0 0 0.9rem;
-  color: #ffb25c;
-  font-weight: 600;
-  font-size: 0.9rem;
-  line-height: 1.35;
-  text-align: center;
-}
-
-.landing-subscribe .form-field {
-  display: grid;
-  gap: 0.3rem;
-}
-
-.landing-subscribe .form-field span,
-.landing-consent {
-  color: var(--landing-muted);
-  font-size: 0.88rem;
-}
-
-.landing-subscribe input[type="text"],
-.landing-subscribe input:not([type]),
-.landing-subscribe input[inputmode="numeric"] {
-  width: 100%;
-  margin-top: 0;
-  padding: 0.8rem 0.9rem;
-  border-radius: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: #0a0a0a;
   color: #fff;
-  font-size: 1rem;
+  line-height: 1.2;
 }
 
-.landing-subscribe input:focus {
-  outline: 2px solid rgba(255, 122, 0, 0.55);
-  outline-offset: 1px;
-  border-color: rgba(255, 122, 0, 0.8);
+.landing-subscribe-landscape {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem;
+}
+
+.landing-msisdn-field {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.45rem, 1.5vw, 0.75rem);
+  min-height: clamp(2.85rem, 7vw, 3.25rem);
+  padding: 0.3rem clamp(0.65rem, 2vw, 0.9rem);
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: #0b0b0b;
+}
+
+.landing-msisdn-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-right: clamp(0.55rem, 1.6vw, 0.85rem);
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+  flex: 0 0 auto;
+}
+
+.landing-msisdn-mark {
+  display: block;
+  width: clamp(1.65rem, 4.5vw, 2.05rem);
+  height: clamp(1.65rem, 4.5vw, 2.05rem);
+  object-fit: contain;
+  background: #000;
+  border-radius: 0.25rem;
+}
+
+.landing-msisdn-wordmark {
+  color: #fff;
+  font-size: clamp(0.86rem, 2.2vw, 1rem);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.landing-msisdn-field input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0.5rem 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: clamp(0.95rem, 2.4vw, 1.08rem);
+  letter-spacing: 0.02em;
+}
+
+.landing-msisdn-field input::placeholder {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.landing-msisdn-field input:focus {
+  outline: none;
+}
+
+.landing-msisdn-field:focus-within {
+  border-color: rgba(255, 198, 10, 0.85);
+  box-shadow: 0 0 0 2px rgba(255, 198, 10, 0.22);
+}
+
+.landing-subscribe-actions {
+  display: grid;
+  gap: 0.75rem;
 }
 
 .landing-consent {
   display: flex;
-  gap: 0.6rem;
+  gap: 0.55rem;
   align-items: flex-start;
-  margin: 0.8rem 0 0.95rem;
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: clamp(0.8rem, 2.1vw, 0.92rem);
   line-height: 1.35;
 }
 
 .landing-consent input {
-  margin-top: 0.15rem;
-  accent-color: var(--landing-orange);
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  accent-color: #ffc60a;
+  flex: 0 0 auto;
 }
 
 .landing-consent a {
-  color: var(--landing-orange);
+  color: #ffc60a;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .landing-subscribe .landing-cta {
   width: 100%;
+}
+
+.landing-cta-lock,
+.landing-cta-arrow {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.landing-cta-arrow {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.landing-offer-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: clamp(0.55rem, 1.6vw, 0.8rem);
+  margin-top: clamp(0.75rem, 2vw, 1rem);
+  padding: clamp(0.65rem, 1.8vw, 0.85rem) clamp(0.7rem, 2vw, 0.95rem);
+  border-radius: 0.75rem;
+  background: linear-gradient(90deg, rgba(255, 198, 10, 0.16), rgba(255, 198, 10, 0.05) 55%, rgba(255, 255, 255, 0.04));
+  border: 1px solid rgba(255, 198, 10, 0.28);
+}
+
+.landing-offer-megaphone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(1.85rem, 4.8vw, 2.2rem);
+  height: clamp(1.85rem, 4.8vw, 2.2rem);
+  border-radius: 999px;
+  background: #ffc60a;
+  color: #111;
+  flex: 0 0 auto;
+  margin-top: 0.05rem;
+}
+
+.landing-offer-banner p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: clamp(0.78rem, 2.1vw, 0.92rem);
+  line-height: 1.45;
+  font-weight: 600;
 }
 
 .landing-subscribe .form-error {
@@ -168,6 +294,8 @@ body.campaign-shell .site-main-campaign,
   color: #ff8f8f;
   font-size: 0.88rem;
 }
+
+/* Keep JazzCash form stacked: number → consent → Subscribe Now (matches client SS) */
 
 .landing-reward-card {
   width: 100%;
@@ -212,11 +340,11 @@ body.campaign-shell .site-main-campaign,
   text-align: right;
 }
 
-/* Footer content below */
+/* Footer content — same column width as banner */
 .landing-below {
-  width: min(100% - 1.5rem, 64rem);
-  margin: 2rem auto 0;
-  padding-bottom: 3rem;
+  width: min(100% - (var(--landing-gutter) * 2), var(--landing-banner-max));
+  margin: clamp(1.35rem, 3vw, 2rem) auto 0;
+  padding-bottom: clamp(2.25rem, 5vw, 3.25rem);
 }
 
 .landing-section-rule {
@@ -329,14 +457,6 @@ body.campaign-shell .site-main-campaign,
 }
 
 @media (min-width: 720px) {
-  .landing-hero {
-    padding: 0.75rem 1rem 0;
-  }
-
-  .landing-hero-link {
-    width: min(100%, 820px);
-  }
-
   .landing-category-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -353,9 +473,40 @@ body.campaign-shell .site-main-campaign,
   .landing-trust-row article:first-child {
     border-left: 0;
   }
+
+  .landing-subscribe .landing-cta {
+    min-height: 3rem;
+    font-size: 1.02rem;
+  }
+}
+
+@media (max-width: 759px) {
+  .landing-subscribe-landscape {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-subscribe-actions {
+    gap: 0.65rem;
+  }
+
+  .landing-cta {
+    min-height: 2.7rem;
+    font-size: 0.95rem;
+  }
 }
 
 @media (max-width: 720px) {
+  .campaign-landing {
+    --landing-banner-max: 400px;
+    --landing-form-max: 378px; /* ~5% narrower than banner */
+    --landing-gutter: 0.55rem;
+    --landing-stack-gap: 0.75rem;
+  }
+
+  .landing-hero {
+    padding-top: 0.45rem;
+  }
+
   .landing-hero-image-desktop {
     display: none;
   }
@@ -364,12 +515,38 @@ body.campaign-shell .site-main-campaign,
     display: block;
   }
 
+  /* Mobile creative ~1091×1441 — full width, no crop */
   .landing-hero-link {
-    width: min(100%, 430px);
+    width: min(100%, var(--landing-banner-max));
+  }
+
+  .landing-middle {
+    width: min(100% - (var(--landing-gutter) * 2), var(--landing-banner-max));
+  }
+
+  .landing-subscribe {
+    width: min(100%, var(--landing-form-max));
+  }
+
+  .landing-below {
+    width: min(100% - (var(--landing-gutter) * 2), var(--landing-banner-max));
+  }
+
+  .landing-msisdn-wordmark {
+    display: none;
+  }
+
+  .landing-msisdn-brand {
+    padding-right: 0.55rem;
   }
 }
 
 @media (max-width: 419px) {
+  .campaign-landing {
+    --landing-banner-max: 360px;
+    --landing-form-max: 340px;
+  }
+
   .landing-reward-card {
     flex-direction: column;
     text-align: center;
@@ -378,5 +555,9 @@ body.campaign-shell .site-main-campaign,
   .landing-reward-card small {
     max-width: none;
     text-align: center;
+  }
+
+  .landing-offer-banner {
+    align-items: flex-start;
   }
 }
