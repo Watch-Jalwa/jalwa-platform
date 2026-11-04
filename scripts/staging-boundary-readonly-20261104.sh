@@ -61,8 +61,8 @@ assets AS (
     count(*) FILTER (WHERE status='ready') AS ready_assets
   FROM public.media_assets GROUP BY content_id
 )
-SELECT 'CONTENT|' || w.slug || '|' || coalesce(c.status,'missing') || '|' ||
-  coalesce(c.hosting_mode,'none') || '|approved=' || coalesce(r.approved_rights,0) ||
+SELECT 'CONTENT|' || w.slug || '|' || coalesce(c.status::text,'missing') || '|' ||
+  coalesce(c.hosting_mode::text,'none') || '|approved=' || coalesce(r.approved_rights,0) ||
   '|approved_host_modify=' || coalesce(r.approved_modification_and_hosting,0) ||
   '|rights_records=' || coalesce(r.rights_count,0) ||
   '|source_assets=' || coalesce(a.incoming_storage_key_registered,0) ||
