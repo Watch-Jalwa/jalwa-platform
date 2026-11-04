@@ -45,8 +45,22 @@ select count(*) as visible_catalogue_items from public.search_catalogue(null,nul
 reset role;
 SQL
 
-section "Approved live-source delivery split (read-only)"
+section "Published media resolutions (read-only)"
 db_name="$("${compose[@]}" exec -T postgres sh -lc 'printf %s "${POSTGRES_DB:-postgres}"')"
+"${compose[@]}" exec -T postgres psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db_name" <<'SQL' || true
+select ci.slug,
+       ma.width,
+       ma.height,
+       least(coalesce(ma.width, 0), coalesce(ma.height, 0)) as min_edge,
+       ma.storage_path
+from public.content_items ci
+join public.media_assets ma on ma.content_id = ci.id
+where ci.status = 'published'
+  and ma.status = 'ready'
+order by min_edge asc, ci.slug;
+SQL
+
+section "Approved live-source delivery split (read-only)"
 "${compose[@]}" exec -T postgres psql -X -v ON_ERROR_STOP=1 -U postgres -d "$db_name" <<'SQL' || true
 select
   l.delivery_adapter,
