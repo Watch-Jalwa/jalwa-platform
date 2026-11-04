@@ -26,8 +26,10 @@ with stuck as (
 )
 update public.media_jobs j
 set status = 'failed',
-    finished_at = coalesce(j.finished_at, now()),
-    error = coalesce(j.error, 'reset by staging-reset-stuck-live-test-media.sql')
+    completed_at = coalesce(j.completed_at, now()),
+    locked_at = null,
+    locked_by = null,
+    error_message = coalesce(j.error_message, 'reset by staging-reset-stuck-live-test-media.sql')
 where j.media_asset_id in (select id from stuck)
   and j.status in ('queued', 'processing');
 
