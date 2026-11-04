@@ -233,8 +233,11 @@ jobs:
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
             "docker exec -i jalwa-postgres-staging sh -lc 'psql -X -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\"'" \
             < scripts/import-live-test-50-drafts-staging.sql | tee /tmp/live-test-50-import.out
-          grep -E '"draft_count"[[:space:]]*:[[:space:]]*50' /tmp/live-test-50-import.out
-          grep -E '"pending_rights"[[:space:]]*:[[:space:]]*50' /tmp/live-test-50-import.out
+          # Idempotent import: after rights/publish progression, draft/pending counts drop.
+          # Require all 50 live-test slugs still present.
+          grep -E '"slug_count"[[:space:]]*:[[:space:]]*50' /tmp/live-test-50-import.out
+          grep -E '"draft_count"' /tmp/live-test-50-import.out
+          grep -E '"pending_rights"' /tmp/live-test-50-import.out
 
       - name: Verify exact candidate is publicly ready
         run: |

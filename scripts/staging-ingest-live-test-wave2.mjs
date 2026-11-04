@@ -12,7 +12,7 @@ import pg from "pg";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
 const WAVE2 = [
-  { slug: "vhs-static-cc0-clip", file: "FREE_real_VHS_static.webm", mime: "video/webm", kind: "source_video", source: "commons" },
+  // Skip FREE_real_VHS_static.webm (~1GB source); needs an editorial trim before ingest.
   { slug: "how-fossils-form-cc-by", file: "Wie_entstehen_Fossilien_(CC_by_4.0).webm", mime: "video/webm", kind: "source_video", source: "commons" },
   { slug: "proxima-centauri-flythrough-cc-by", file: "A_fly-through_of_the_Proxima_Centauri_system_(video).webm", mime: "video/webm", kind: "source_video", source: "commons" },
   { slug: "huamei-bird-calling-cc0", file: "Upbeat_huamei_bird_calling.oga", mime: "audio/ogg", kind: "source_audio", source: "commons" },
@@ -20,14 +20,6 @@ const WAVE2 = [
   { slug: "abrasive-bird-debate-cc0", file: "Abrasive_sounding_bird_debate.oga", mime: "audio/ogg", kind: "source_audio", source: "commons" },
   { slug: "eso-cast-254-light", file: "ESOcast_254_Light.webm", mime: "video/webm", kind: "source_video", source: "commons" },
   { slug: "eso-cast-265-light", file: "ESOcast_265_Light.webm", mime: "video/webm", kind: "source_video", source: "commons" },
-  {
-    slug: "big-buck-bunny",
-    file: "bbb_sunflower_720p_30fps_normal.mp4",
-    mime: "video/mp4",
-    kind: "source_video",
-    source: "url",
-    url: "https://download.blender.org/demo/movies/BBB/bbb_sunflower_720p_30fps_normal.mp4",
-  },
 ];
 
 function required(name) {
