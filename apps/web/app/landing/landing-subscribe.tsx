@@ -66,7 +66,8 @@ export function LandingSubscribe({
           planCode: campaign.planCode,
           msisdn,
           consentToAutoPay: true,
-          idempotencyKey: `land-${campaign.landing}-${msisdn}-${Date.now()}`.slice(0, 40),
+          // JazzCash pp_TxnRefNo: keep alphanumeric (no hyphens).
+          idempotencyKey: `JL${campaign.landing}${msisdn}${Date.now()}`.replace(/[^A-Za-z0-9]/g, "").slice(0, 20),
           attribution,
         }),
       });
