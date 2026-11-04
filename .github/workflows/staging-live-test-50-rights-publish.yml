@@ -150,7 +150,7 @@ jobs:
               where rr.status='approved' and ci.slug like '%'
                 and exists (
                   select 1 from audit_logs a
-                  where a.entity_id=ci.id and a.action='rights_approved'
+                  where a.entity_id=ci.id::text and a.action='rights_approved'
                     and a.metadata->>'importer'='staging-approve-live-test-50-rights.sql'
                 )
             ),
