@@ -1,0 +1,65 @@
+name: Video aspect regression QA
+
+on:
+  push:
+    branches: ["fix/video-aspect-watch-preservation-20261104"]
+  pull_request:
+    paths:
+      - "apps/worker/src/media.mjs"
+      - "apps/worker/tests/media.test.mjs"
+      - "apps/web/components/self-hosted-player.tsx"
+      - "apps/web/app/watch/**"
+      - "apps/web/app/phase10.css"
+      - "qa/playwright/media.spec.mjs"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: video-aspect-qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  media-aspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Confirm FFmpeg and FFprobe available
+        run: |
+          ffmpeg -version | head -n 1
+          ffprobe -version | head -n 1
+      - name: Lint web and worker
+        run: npm run lint --workspace @jalwa/web && npm run lint --workspace @jalwa/worker
+      - name: Typecheck web and worker
+        run: npm run typecheck --workspace @jalwa/web && npm run typecheck --workspace @jalwa/worker
+      - name: Exercise exact FFmpeg short outputs and media unit tests
+        run: npm run test --workspace @jalwa/worker
+      - name: Run web unit tests
+        run: npm run test --workspace @jalwa/web
+      - name: Production-equivalent web build (without deployment)
+        run: npm run build --workspace @jalwa/web
+        env:
+          NEXT_PUBLIC_APP_URL: http://localhost:3000
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/postgres
+          BETTER_AUTH_URL: http://localhost:3000
+          BETTER_AUTH_SECRET: ci_better_auth_secret_that_is_long_enough_for_builds
+          SMTP_HOST: localhost
+          SMTP_FROM: no-reply@example.com
+          NEXT_PUBLIC_ENABLE_PHONE_AUTH: "false"
+          NEXT_PUBLIC_ENABLE_GOOGLE_AUTH: "false"
+          NEXT_PUBLIC_ENABLE_APPLE_AUTH: "false"
+          NEXT_PUBLIC_ENABLE_FACEBOOK_AUTH: "false"
+          NEXT_PUBLIC_ENABLE_LIVE_STREAMING: "false"
+          NEXT_PUBLIC_ENABLE_WEB_DRM: "false"
+
+# This supplemental workflow provides focused functional evidence.
+# It does not replace the required repository CI, vulnerability audit,
+# security scanning or exact-SHA staging certification.
