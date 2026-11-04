@@ -17,7 +17,7 @@ permissions:
 jobs:
   rights-and-wave1:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     environment: staging
     env:
       HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
@@ -265,6 +265,138 @@ jobs:
           test -s /tmp/wave2-ingest.out
           grep -E '"published"|"ingest_failed"|"already_ready"' /tmp/wave2-ingest.out || true
 
+      - name: Stage wave3 ingest script and media on host
+        run: |
+          set -euo pipefail
+          remote_dir="$APP_DIR/candidate-db/$GITHUB_SHA/live-test-wave3"
+          media_local="/tmp/wave3-media"
+          install -d -m 700 "$media_local"
+          python3 - <<'PY'
+          import pathlib, time, urllib.parse, urllib.request, zipfile
+          out = pathlib.Path("/tmp/wave3-media")
+          ua = "JalwaStagingIngest/1.0 (GitHub Actions; staging live-test wave3)"
+          commons = [
+            "Invitation_to_Pakistan.ogv",
+            "Pakistan.ogv",
+            "Harnessing_Wikipedia_for_Science_Communication_and_Collaboration.webm",
+          ]
+          failed = []
+          for name in commons:
+            dest = out / name
+            if dest.exists() and dest.stat().st_size > 0:
+              print(f"skip existing {name}")
+              continue
+            url = "https://commons.wikimedia.org/wiki/Special:FilePath/" + urllib.parse.quote(name)
+            ok = False
+            for attempt in range(1, 5):
+              print(f"fetch {name} attempt={attempt}")
+              try:
+                req = urllib.request.Request(url, headers={"User-Agent": ua})
+                with urllib.request.urlopen(req, timeout=1200) as resp, open(dest, "wb") as fh:
+                  while True:
+                    chunk = resp.read(1024 * 1024)
+                    if not chunk:
+                      break
+                    fh.write(chunk)
+                assert dest.stat().st_size > 0, name
+                print(f"ok {name} {dest.stat().st_size}")
+                ok = True
+                break
+              except Exception as exc:
+                if dest.exists():
+                  dest.unlink()
+                print(f"WARN {name}: {exc}")
+                time.sleep(10 * attempt)
+            if not ok:
+              failed.append(name)
+            time.sleep(4)
+          bbb_zip = out / "BigBuckBunny_320x180.mp4.zip"
+          bbb_mp4 = out / "BigBuckBunny_320x180.mp4"
+          if not bbb_mp4.exists() or bbb_mp4.stat().st_size == 0:
+            url = "https://download.blender.org/peach/bigbuckbunny_movies/BigBuckBunny_320x180.mp4.zip"
+            print(f"fetch {url}")
+            req = urllib.request.Request(url, headers={"User-Agent": ua})
+            with urllib.request.urlopen(req, timeout=1200) as resp, open(bbb_zip, "wb") as fh:
+              while True:
+                chunk = resp.read(1024 * 1024)
+                if not chunk:
+                  break
+                fh.write(chunk)
+            with zipfile.ZipFile(bbb_zip) as zf:
+              member = next((n for n in zf.namelist() if n.endswith("BigBuckBunny_320x180.mp4") or n.endswith(".mp4")), None)
+              if not member:
+                raise SystemExit(f"BBB mp4 not found in zip: {zf.namelist()}")
+              with zf.open(member) as src, open(bbb_mp4, "wb") as dst:
+                while True:
+                  chunk = src.read(1024 * 1024)
+                  if not chunk:
+                    break
+                  dst.write(chunk)
+            print(f"ok {bbb_mp4.name} {bbb_mp4.stat().st_size}")
+          required = ["BigBuckBunny_320x180.mp4"]
+          # Prefer at least one Commons title; BBB alone is still useful demo progress.
+          missing = [n for n in required if not (out / n).exists() or (out / n).stat().st_size == 0]
+          if missing:
+            raise SystemExit(f"required wave3 media missing: {missing}; commons_failed={failed}")
+          print(f"commons_failed={failed}")
+          PY
+          ls -lh "$media_local"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "install -d -m 700 '$remote_dir' '$remote_dir/media'"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            scripts/staging-ingest-live-test-wave3.mjs \
+            "$USER@$HOST:$remote_dir/staging-ingest-live-test-wave3.mjs"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            "$media_local"/* \
+            "$USER@$HOST:$remote_dir/media/"
+
+      - name: Ingest and publish wave3 self-host items
+        run: |
+          set -euo pipefail
+          remote_dir="$APP_DIR/candidate-db/$GITHUB_SHA/live-test-wave3"
+          ssh -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -o ServerAliveCountMax=180 -i ~/.ssh/jalwa "$USER@$HOST" \
+            "REMOTE_DIR='$remote_dir' APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          media_dir="$REMOTE_DIR/media"
+          test -s "$media_dir/BigBuckBunny_320x180.mp4"
+          set -a
+          while IFS= read -r line; do
+            case "$line" in
+              DATABASE_URL=*|R2_ACCOUNT_ID=*|R2_ACCESS_KEY_ID=*|R2_SECRET_ACCESS_KEY=*|R2_BUCKET=*|R2_INCOMING_BUCKET=*|R2_PROCESSED_BUCKET=*|R2_ENDPOINT=*)
+                export "$line"
+                ;;
+            esac
+          done < "$APP_DIR/.env.staging"
+          set +a
+          test -n "${DATABASE_URL:-}"
+          test -n "${R2_ACCOUNT_ID:-}"
+          pg_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' jalwa-postgres-staging | awk 'NF{print; exit}')"
+          test -n "$pg_ip"
+          DATABASE_URL="$(printf '%s' "$DATABASE_URL" | sed -E "s#(@)([^/@]+)(:[0-9]+/)#@${pg_ip}\\3#")"
+          export DATABASE_URL
+          docker run --rm \
+            --network host \
+            -e DATABASE_URL \
+            -e R2_ACCOUNT_ID \
+            -e R2_ACCESS_KEY_ID \
+            -e R2_SECRET_ACCESS_KEY \
+            -e R2_BUCKET \
+            -e R2_INCOMING_BUCKET \
+            -e R2_PROCESSED_BUCKET \
+            -e R2_ENDPOINT \
+            -e WAVE3_MEDIA_DIR=/media \
+            -e WAVE3_WAIT_MS=3600000 \
+            -v "$REMOTE_DIR/staging-ingest-live-test-wave3.mjs:/opt/jalwa-ingest/staging-ingest-live-test-wave3.mjs:ro" \
+            -v "$media_dir:/media:ro" \
+            -w /tmp/jalwa-ingest \
+            node:22-bookworm-slim \
+            bash -lc 'mkdir -p /tmp/jalwa-ingest && cd /tmp/jalwa-ingest && cp /opt/jalwa-ingest/staging-ingest-live-test-wave3.mjs . && printf "%s\n" "{\"name\":\"jalwa-wave3\",\"type\":\"module\"}" > package.json && npm install --no-audit --no-fund pg@8.16.3 @aws-sdk/client-s3@3.758.0 >/tmp/npm.log 2>&1 && node ./staging-ingest-live-test-wave3.mjs' \
+            | tee /tmp/wave3-ingest.out
+          REMOTE
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST:/tmp/wave3-ingest.out" /tmp/wave3-ingest.out || true
+          test -s /tmp/wave3-ingest.out
+          grep -E '"published"|"ingest_failed"|"already_ready"' /tmp/wave3-ingest.out || true
+
       - name: Summarize inventory after rights and waves
         run: |
           set -euo pipefail
@@ -289,6 +421,8 @@ jobs:
                   'how-fossils-form-cc-by','proxima-centauri-flythrough-cc-by',
                   'huamei-bird-calling-cc0','house-sparrow-tschilp-cc0','abrasive-bird-debate-cc0',
                   'eso-cast-254-light','eso-cast-265-light',
+                  'invitation-to-pakistan-nara','promise-of-pakistan-geography','wikipedia-science-comms-cc-by',
+                  'big-buck-bunny',
                   'nasa-images-library-home-link','eso-public-videos-link'
                 )
             ),
@@ -300,7 +434,9 @@ jobs:
                 'tree-trimmer-cc0','counting-chisenbop-cc0','vanellus-vanellus-cc0',
                 'how-fossils-form-cc-by','proxima-centauri-flythrough-cc-by',
                 'huamei-bird-calling-cc0','house-sparrow-tschilp-cc0','abrasive-bird-debate-cc0',
-                'eso-cast-254-light','eso-cast-265-light'
+                'eso-cast-254-light','eso-cast-265-light',
+                'invitation-to-pakistan-nara','promise-of-pakistan-geography','wikipedia-science-comms-cc-by',
+                'big-buck-bunny'
               )
             ),
             'held_pending', (
@@ -315,16 +451,16 @@ jobs:
             ),
             'published_slugs', (
               select coalesce(json_agg(slug order by slug), '[]'::json) from content_items
-              where status='published' and slug like '%'
-                and (
-                  slug in (
-                    'mossy-tree-cc0','baking-cookies-cc0','ocean-surface-waves-cc0','tiny-waterfall-cc0',
-                    'tree-trimmer-cc0','counting-chisenbop-cc0','vanellus-vanellus-cc0',
-                    'how-fossils-form-cc-by','proxima-centauri-flythrough-cc-by',
-                    'huamei-bird-calling-cc0','house-sparrow-tschilp-cc0','abrasive-bird-debate-cc0',
-                    'eso-cast-254-light','eso-cast-265-light',
-                    'nasa-images-library-home-link','eso-public-videos-link'
-                  )
+              where status='published'
+                and slug in (
+                  'mossy-tree-cc0','baking-cookies-cc0','ocean-surface-waves-cc0','tiny-waterfall-cc0',
+                  'tree-trimmer-cc0','counting-chisenbop-cc0','vanellus-vanellus-cc0',
+                  'how-fossils-form-cc-by','proxima-centauri-flythrough-cc-by',
+                  'huamei-bird-calling-cc0','house-sparrow-tschilp-cc0','abrasive-bird-debate-cc0',
+                  'eso-cast-254-light','eso-cast-265-light',
+                  'invitation-to-pakistan-nara','promise-of-pakistan-geography','wikipedia-science-comms-cc-by',
+                  'big-buck-bunny',
+                  'nasa-images-library-home-link','eso-public-videos-link'
                 )
             )
           );
@@ -333,7 +469,7 @@ jobs:
       - name: Write summary
         run: |
           {
-            echo '### Staging live-test rights + wave1/wave2 publish'
+            echo '### Staging live-test rights + wave1/wave2/wave3 publish'
             echo "- Exact SHA: \`$GITHUB_SHA\`"
             echo "- Domain: https://$DOMAIN"
             echo '- Scope: staging only; production unchanged'
@@ -342,6 +478,6 @@ jobs:
             echo
             cat /tmp/live-test-summary.out || true
             echo
-            cat /tmp/wave2-ingest.out || true
+            cat /tmp/wave3-ingest.out || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
