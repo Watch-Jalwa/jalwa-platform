@@ -1,0 +1,124 @@
+name: Jalwa demo - serial safe repairs for five small source clips
+
+on:
+  push:
+    branches:
+      - ops/jalwa-demo-source-reencode-pilot-20261105
+    paths:
+      - .github/workflows/demo-serial-small-20261105.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-demo-one-media-repair
+  cancel-in-progress: false
+
+jobs:
+  repair:
+    name: Repair ${{ matrix.slug }}
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        slug:
+          - counting-chisenbop-cc0
+          - vanellus-vanellus-cc0
+          - tiny-waterfall-cc0
+          - tree-trimmer-cc0
+          - ocean-surface-waves-cc0
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: staging
+    env:
+      DEMO_REPAIR_SLUG: ${{ matrix.slug }}
+      EXPECTED_SHA: ec0a76f8efd3d9cf0a64e864d264be6d274deb34
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Validate both demo domains are ready and exact code is deployed
+        run: |
+          set -Eeuo pipefail
+          for domain in watch-jalwa.com jalwa-platform.codistan.org; do
+            curl -fsS --max-time 12 "https://$domain/api/health" |
+              jq -e --arg sha "$EXPECTED_SHA" '.status=="ready" and .version==$sha' > /dev/null
+            echo "PREFLIGHT_READY $domain"
+          done
+      - name: Configure pinned SSH and require host capacity
+        id: preflight
+        run: |
+          set -Eeuo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          for k in HOST USER APP_DIR KNOWN_HOSTS SSH_KEY; do test -n "${!k:-}"; done
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -i ~/.ssh/jalwa "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          available_kb="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)"
+          disk_avail_kb="$(df -P / | awk 'NR==2 {print $4}')"
+          disk_pct="$(df -P / | awk 'NR==2 {gsub(/%/,"",$5); print $5}')"
+          echo "PREFLIGHT_RESOURCES memory_available_kb=$available_kb disk_available_kb=$disk_avail_kb disk_percent=$disk_pct"
+          test "$available_kb" -ge 3145728
+          test "$disk_avail_kb" -ge 4194304
+          test "$disk_pct" -le 89
+          for container in jalwa-web-staging jalwa-worker-staging; do
+            test "$(docker inspect -f '{{.State.Running}}' "$container")" = true
+            test "$(docker inspect -f '{{.State.Health.Status}}' "$container")" = healthy
+          done
+          REMOTE
+      - name: Re-encode ONE original with bounded FFmpeg threads and versioned R2 output
+        id: apply
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i -e DEMO_BATCH_MODE=apply -e DEMO_REPAIR_SLUG=$DEMO_REPAIR_SLUG jalwa-worker-staging node --input-type=module -" \
+            < scripts/demo-single-repair-20261105.mjs | tee demo-single-reencode.log
+          grep -Eq 'BATCH_SUCCESS ' demo-single-reencode.log
+      - name: Install pinned Chromium QA runner
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/jalwa-single-qa"
+          npm install --prefix "$RUNNER_TEMP/jalwa-single-qa" --no-save --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          "$RUNNER_TEMP/jalwa-single-qa/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify video playback on both demo domains and responsive viewports
+        id: browser
+        env:
+          JALWA_PLAYWRIGHT_PATH: ${{ runner.temp }}/jalwa-single-qa/node_modules/@playwright/test
+        run: node qa/demo-single-playback-20261105.cjs
+      - name: Restore only the video's previous playback pointer on failure
+        if: failure() && (steps.apply.outcome == 'success' || steps.apply.outcome == 'failure')
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "QA or encoder failed; restore only $DEMO_REPAIR_SLUG"
+          for i in 1 2 3; do
+            if ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -i ~/.ssh/jalwa "$USER@$HOST" \
+              "docker exec -i -e DEMO_BATCH_MODE=rollback -e DEMO_REPAIR_SLUG=$DEMO_REPAIR_SLUG jalwa-worker-staging node --input-type=module -" \
+              < scripts/demo-single-repair-20261105.mjs | tee demo-single-rollback.log; then
+              grep -q 'BATCH_ROLLBACK_SUMMARY ' demo-single-rollback.log
+              exit 0
+            fi
+            sleep 6
+          done
+          echo "ROLLBACK_UNVERIFIED: intervention required" >&2
+          exit 1
+      - name: Retain one-video media and browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jalwa-single-video-${{ env.DEMO_REPAIR_SLUG }}-${{ github.sha }}
+          path: |
+            demo-single-reencode.log
+            demo-single-rollback.log
+            demo-single-playback-evidence/
+          retention-days: 30
+          if-no-files-found: warn
