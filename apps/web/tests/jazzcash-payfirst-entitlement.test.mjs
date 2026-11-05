@@ -13,10 +13,12 @@ test("pay-first complete path charges via token then grants local Premium", asyn
   assert.match(billing, /chargeAndGrantJazzcashIntent/);
   assert.match(billing, /reconcileJazzcashPremiumForUser/);
   assert.match(billing, /mockJazzcashChargeAllowed/);
+  assert.match(billing, /DEPLOYMENT_ENVIRONMENT === "staging"/);
   assert.match(billing, /transferJazzcashSubscriptionToUser/);
   assert.match(billing, /same-number sign-in/);
   assert.match(billing, /72 hours/);
   assert.match(billing, /subscription_id is not null and user_id is distinct from/);
+  assert.match(billing, /premium_catalogue/);
   assert.match(billing, /insert into public\.subscriptions/);
   assert.match(billing, /insert into public\.entitlements/);
   assert.match(billing, /Premium activated for this JazzCash number/);

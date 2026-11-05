@@ -24,8 +24,11 @@ function sanitizeAttribution(raw) {
 }
 
 function mockJazzcashChargeAllowed() {
+  // Staging wallet-link callbacks are often dropped by JazzCash allowlisting; keep a local
+  // mock charge path so same-MSISDN sign-in can still attach Monthly/Premium.
   return process.env.ALLOW_MOCK_PAYMENTS === "true"
-    || process.env.JAZZCASH_MOCK_CHARGE === "true";
+    || process.env.JAZZCASH_MOCK_CHARGE === "true"
+    || process.env.DEPLOYMENT_ENVIRONMENT === "staging";
 }
 
 function extractJazzcashPaymentToken(fields) {
@@ -316,6 +319,7 @@ export async function reconcileJazzcashPremiumForUser(userId) {
   );
 
   let granted = 0;
+  const errors = [];
   for (const intent of pending.rows) {
     try {
       if (intent.subscription_id && String(intent.user_id) !== String(userId)) {
@@ -329,12 +333,34 @@ export async function reconcileJazzcashPremiumForUser(userId) {
       }
       const result = await chargeAndGrantJazzcashIntent(intent, intent.payment_token, { userId });
       if (result.ok) granted += 1;
-    } catch {
+      else {
+        errors.push({ requestId: intent.request_id, message: result.message || result.status || "charge_failed" });
+        console.warn("jazzcash_premium_reconcile_charge_failed", {
+          requestId: intent.request_id,
+          status: intent.status,
+          message: result.message || result.status,
+        });
+      }
+    } catch (error) {
       // Keep login/profile available; charge can be retried on the next visit.
+      errors.push({
+        requestId: intent.request_id,
+        message: error instanceof Error ? error.message : "reconcile_error",
+      });
+      console.warn("jazzcash_premium_reconcile_failed", {
+        requestId: intent.request_id,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
-  return { attempted: pending.rows.length, granted };
+  return {
+    attempted: pending.rows.length,
+    granted,
+    mockChargeAllowed: allowMockClaim,
+    phoneMatched: Boolean(nationalDigits),
+    errors: errors.slice(0, 3),
+  };
 }
 
 /**
@@ -400,6 +426,13 @@ export async function grantPremiumForJazzcashIntent(intent, { chargeTxnRef, prov
     const subscriptionId = inserted.rows[0]?.id;
     if (!subscriptionId) throw new Error("subscription_insert_failed");
 
+    const benefits = Array.isArray(price.benefits)
+      ? price.benefits.map((value) => String(value))
+      : typeof price.benefits === "string"
+        ? price.benefits.replace(/[{}]/g, "").split(",").map((value) => value.trim()).filter(Boolean)
+        : ["premium_catalogue"];
+    if (!benefits.includes("premium_catalogue")) benefits.push("premium_catalogue");
+
     await client.query(
       `insert into public.entitlements(user_id, benefit_code, starts_at, ends_at, source_type, source_id, status)
        select $1, benefit, now(), $3::timestamptz, 'subscription', $2::uuid, 'active'::public.entitlement_status
@@ -410,7 +443,7 @@ export async function grantPremiumForJazzcashIntent(intent, { chargeTxnRef, prov
          ends_at = greatest(public.entitlements.ends_at, excluded.ends_at),
          status = 'active',
          updated_at = now()`,
-      [intent.user_id, subscriptionId, endsAt, price.benefits],
+      [intent.user_id, subscriptionId, endsAt, benefits],
     );
 
     await client.query(

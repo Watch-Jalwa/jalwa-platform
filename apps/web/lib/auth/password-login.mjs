@@ -118,7 +118,18 @@ export async function passwordLogin({ displayName, phone, password }) {
       // Ensure credential row uses accountId = user.id for future sign-ins.
       const hash = await hashPassword(password);
       await ensureCredentialPassword(userId, hash);
-      await reconcileJazzcashPremiumForUser(userId).catch(() => undefined);
+      const jazzcashClaim = await reconcileJazzcashPremiumForUser(userId).catch((error) => ({
+        attempted: 0,
+        granted: 0,
+        error: error instanceof Error ? error.message : "reconcile_failed",
+      }));
+      return {
+        ok: true,
+        created: true,
+        response: signupResponse,
+        learner: { phone: e164, displayName: name, email },
+        jazzcashClaim,
+      };
     }
 
     // signUpEmail may already have set the session cookie.
@@ -184,7 +195,11 @@ export async function passwordLogin({ displayName, phone, password }) {
     };
   }
 
-  await reconcileJazzcashPremiumForUser(user.id).catch(() => undefined);
+  const jazzcashClaim = await reconcileJazzcashPremiumForUser(user.id).catch((error) => ({
+    attempted: 0,
+    granted: 0,
+    error: error instanceof Error ? error.message : "reconcile_failed",
+  }));
 
   return {
     ok: true,
@@ -195,6 +210,7 @@ export async function passwordLogin({ displayName, phone, password }) {
       displayName: name || user.name,
       email: user.email || email,
     },
+    jazzcashClaim,
   };
 }
 

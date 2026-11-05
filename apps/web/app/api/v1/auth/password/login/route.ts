@@ -39,6 +39,7 @@ export async function POST(request: Request) {
       learner: result.learner,
       created: result.created,
       next: nextPath,
+      ...(result.jazzcashClaim ? { jazzcashClaim: result.jazzcashClaim } : {}),
     },
     { status: 200, headers: { "Cache-Control": "no-store" } },
   );
