@@ -1,26 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { readLandingMsisdn } from "@/lib/utm-attribution.mjs";
 
-type Challenge = {
-  challengeId: string;
-  channel: "email" | "phone";
-  maskedDestination: string;
-  expiresAt: string;
-  preview?: boolean;
-};
-
 const messages: Record<string, string> = {
-  "invalid-identity": "Enter a valid email or Pakistani mobile number.",
-  "invalid-email": "Enter a valid email address.",
   "invalid-phone": "Enter a valid Pakistani mobile number.",
-  "invalid-name": "Enter a name between 2 and 60 characters.",
-  "invalid-code": "Enter the four-digit code that was sent to you.",
-  "invalid-challenge": "That code expired. Request a new one.",
-  "send-failed": "The code could not be sent. Try again.",
-  "method-disabled": "Phone sign-in is not enabled yet. Use an email address.",
+  "invalid-password": "Password must be 7–128 characters and include upper, lower, digit and symbol.",
+  "invalid-name": "Enter your full name to create an account.",
+  "invalid-credentials": "Mobile number or password is incorrect.",
+  "password-mismatch": "Passwords do not match.",
 };
 
 function subscribeToLandingIdentity(change: () => void) {
@@ -33,63 +23,47 @@ function serverLandingIdentity() {
   return "";
 }
 
-export function SignInForm({ next, prefillIdentity = "" }: { next: string; prefillIdentity?: string }) {
+export function SignInForm({
+  next,
+  prefillIdentity = "",
+  mode = "signin",
+}: {
+  next: string;
+  prefillIdentity?: string;
+  mode?: "signin" | "signup";
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const isSignup = mode === "signup";
   const [fullName, setFullName] = useState("");
-  // Session storage exists only after hydration; external-store snapshots avoid an effect-driven render loop.
   const storedLandingIdentity = useSyncExternalStore(subscribeToLandingIdentity, readLandingMsisdn, serverLandingIdentity);
-  const [identityOverride, setIdentityOverride] = useState<string | null>(null);
-  const identity = identityOverride ?? (prefillIdentity || storedLandingIdentity);
-  const [code, setCode] = useState("");
-  const [challenge, setChallenge] = useState<Challenge | null>(null);
+  const [phoneOverride, setPhoneOverride] = useState<string | null>(null);
+  const phone = phoneOverride ?? (prefillIdentity || storedLandingIdentity);
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
 
-  async function start(identityValue = identity) {
+  async function submit() {
     setError(null);
-    setStatus(null);
-    const name = fullName.trim();
-    if (name.length < 2 || name.length > 60) {
-      setError(messages["invalid-name"] ?? "Enter a name between 2 and 60 characters.");
+    if (isSignup && password !== confirmPassword) {
+      setError(messages["password-mismatch"]);
       return;
     }
-    const response = await fetch("/api/v1/auth/otp/start", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ identity: identityValue }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setError(messages[String(payload.error ?? "")] ?? "The code could not be sent. Try again.");
-      return;
-    }
-    setChallenge(payload as Challenge);
-    setCode("");
-    setStatus(
-      payload.preview
-        ? "Preview complete: production sends a four-digit code."
-        : `Enter the four-digit code sent to ${payload.maskedDestination}.`,
-    );
-  }
 
-  async function verify() {
-    if (!challenge) return;
-    setError(null);
-    const response = await fetch("/api/v1/auth/otp/verify", {
+    const response = await fetch("/api/v1/auth/password/login", {
       method: "POST",
       headers: { "content-type": "application/json" },
       credentials: "include",
       body: JSON.stringify({
-        challengeId: challenge.challengeId,
-        code,
-        displayName: fullName.trim(),
+        displayName: isSignup ? fullName.trim() : undefined,
+        phone,
+        password,
         next,
       }),
     });
     const payload = await response.json().catch(() => ({}));
     if (!response.ok) {
-      setError(messages[String(payload.error ?? "")] ?? "That code could not be verified.");
+      setError(messages[String(payload.error ?? "")] ?? payload.message ?? "Sign-in failed.");
       return;
     }
     startTransition(() => {
@@ -98,90 +72,107 @@ export function SignInForm({ next, prefillIdentity = "" }: { next: string; prefi
     });
   }
 
-  if (challenge) {
-    return (
-      <form
-        className="form-shell signup-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void verify();
-        }}
-      >
-        <h2>Enter your code</h2>
-        <p className="form-message">Code expires shortly and stops working after five unsuccessful attempts.</p>
-        <label className="form-field">
-          <span>Four-digit code</span>
-          <input
-            name="code"
-            inputMode="numeric"
-            autoComplete="one-time-code"
-            pattern="[0-9]{4}"
-            maxLength={4}
-            required
-            value={code}
-            onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 4))}
-          />
-        </label>
-        <p className={error ? "form-message" : "form-success"} role="status">{error ?? status ?? ""}</p>
-        <button className="button button-primary" type="submit" disabled={pending || code.length !== 4}>
-          Verify and continue
-        </button>
-        <button className="button button-secondary" type="button" disabled={pending} onClick={() => void start(identity)}>
-          Resend code
-        </button>
-        <button
-          className="button button-secondary"
-          type="button"
-          disabled={pending}
-          onClick={() => {
-            setChallenge(null);
-            setCode("");
-            setError(null);
-            setStatus(null);
-          }}
-        >
-          Use a different email or number
-        </button>
-      </form>
-    );
-  }
+  const switchHref = isSignup
+    ? `/login?mode=signin&next=${encodeURIComponent(next)}${phone ? `&prefill=${encodeURIComponent(phone)}` : ""}`
+    : `/signup?next=${encodeURIComponent(next)}${phone ? `&prefill=${encodeURIComponent(phone)}` : ""}`;
 
   return (
     <form
       className="form-shell signup-form"
       onSubmit={(event) => {
         event.preventDefault();
-        void start();
+        void submit();
       }}
     >
-      <h2>Sign in or create account</h2>
+      <h2>{isSignup ? "Create your Jalwa account" : "Sign in"}</h2>
+      <p className="form-message">
+        {isSignup
+          ? "Use your JazzCash mobile number. After pay-first checkout, the same number unlocks Premium."
+          : "Sign in with the same JazzCash mobile number you used at checkout."}
+      </p>
+
+      {isSignup ? (
+        <label className="form-field">
+          <span>Full name</span>
+          <input
+            name="displayName"
+            autoComplete="name"
+            required
+            minLength={2}
+            maxLength={60}
+            value={fullName}
+            onChange={(event) => setFullName(event.target.value)}
+          />
+        </label>
+      ) : null}
+
       <label className="form-field">
-        <span>Full name</span>
+        <span>Mobile number</span>
         <input
-          name="fullName"
-          autoComplete="name"
+          name="phone"
+          autoComplete="tel"
+          inputMode="numeric"
           required
-          minLength={2}
-          maxLength={60}
-          value={fullName}
-          onChange={(event) => setFullName(event.target.value)}
+          maxLength={20}
+          placeholder="03001234567"
+          value={phone}
+          onChange={(event) => setPhoneOverride(event.target.value)}
         />
       </label>
+
       <label className="form-field">
-        <span>Email or mobile number</span>
+        <span>Password</span>
         <input
-          name="identity"
-          autoComplete="username"
+          name="password"
+          type="password"
+          autoComplete={isSignup ? "new-password" : "current-password"}
           required
-          maxLength={254}
-          placeholder="0300 1234567 or you@example.com"
-          value={identity}
-          onChange={(event) => setIdentityOverride(event.target.value)}
+          minLength={7}
+          maxLength={128}
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
         />
       </label>
-      <p className="form-message">Pakistan mobile formats such as 03001234567 and +923001234567 are accepted. After JazzCash wallet link, enter that same number here — staging phone OTP is <strong>1234</strong> until SMS is wired.</p>
-      <p className="form-message" role="status">{error ?? ""}</p>
-      <button className="button button-primary" type="submit" disabled={pending}>Continue</button>
+
+      {isSignup ? (
+        <label className="form-field">
+          <span>Confirm password</span>
+          <input
+            name="confirmPassword"
+            type="password"
+            autoComplete="new-password"
+            required
+            minLength={7}
+            maxLength={128}
+            value={confirmPassword}
+            onChange={(event) => setConfirmPassword(event.target.value)}
+          />
+        </label>
+      ) : null}
+
+      {isSignup ? (
+        <p className="form-message">Password needs upper, lower, digit and symbol (for example Abc@123).</p>
+      ) : null}
+
+      {error ? <p className="form-error" role="alert">{error}</p> : null}
+
+      <button className="button button-primary" type="submit" disabled={pending}>
+        {pending ? "Please wait…" : isSignup ? "Create account" : "Sign in"}
+      </button>
+
+      <p className="auth-switch">
+        {isSignup ? (
+          <>
+            Already have an account?{" "}
+            <Link href={switchHref}>Click here to sign in</Link>
+          </>
+        ) : (
+          <>
+            New to Jalwa?{" "}
+            <Link href={switchHref}>Create an account</Link>
+          </>
+        )}
+      </p>
     </form>
   );
 }

@@ -15,6 +15,7 @@ export default async function HomePage() {
           <p>Mobile-first discovery for Deen, Kissan, learning, technology, rozgar and family-safe entertainment.</p>
           <div className="hero-actions">
             <Link className="button button-primary" href="/explore">Explore content</Link>
+            <Link className="button button-secondary" href="/signup">Signup</Link>
             <Link className="button button-secondary" href="/login">Sign in</Link>
           </div>
         </div>

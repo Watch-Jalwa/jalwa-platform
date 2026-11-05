@@ -2,7 +2,7 @@ import { SignInForm } from "./sign-in-form";
 import { startOAuth } from "./actions";
 import { safeInternalPath } from "@/lib/runtime";
 
-export const metadata = { title: "Sign in or create account" };
+export const metadata = { title: "Sign in — Jalwa" };
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 const socialProviders = [
@@ -21,16 +21,20 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
     : nextBase;
   const enabledSocialProviders = socialProviders.filter((provider) => provider.enabled);
   const prefillIdentity = typeof params.prefill === "string" ? params.prefill : "";
+  const mode = params.mode === "signup" ? "signup" : "signin";
 
   return (
     <div className="page-shell auth-journey">
       <section className="auth-intro">
         <span className="eyebrow">Welcome to Jalwa</span>
-        <h1>Sign in or create account</h1>
-        <p>Use the same JazzCash mobile number you subscribed with (or your email). First successful code creates your account; next time the same identity signs you in. JazzCash PIN/MPIN is never entered on Jalwa.</p>
+        <h1>{mode === "signup" ? "Create account" : "Sign in"}</h1>
+        <p>
+          Use your Pakistani mobile number and password. After JazzCash pay-first checkout, sign in with the same
+          number to open Premium. JazzCash PIN/MPIN is never entered on Jalwa.
+        </p>
       </section>
       <div className="auth-methods">
-        <SignInForm next={next} prefillIdentity={prefillIdentity} />
+        <SignInForm next={next} prefillIdentity={prefillIdentity} mode={mode} />
         {enabledSocialProviders.length ? (
           <section className="form-shell social-auth">
             <h2>Or continue with</h2>

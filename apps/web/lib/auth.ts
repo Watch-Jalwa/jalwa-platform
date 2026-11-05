@@ -34,6 +34,22 @@ export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   database: databasePool,
   advanced: { database: { generateId: "uuid", joins: true } },
+  emailAndPassword: {
+    enabled: true,
+    minPasswordLength: 7,
+    maxPasswordLength: 128,
+    autoSignIn: true,
+    password: {
+      hash: async (password) => {
+        const { hashPassword } = await import("./auth/password-hash.mjs");
+        return hashPassword(password);
+      },
+      verify: async ({ hash, password }) => {
+        const { verifyPassword } = await import("./auth/password-hash.mjs");
+        return verifyPassword({ hash, password });
+      },
+    },
+  },
   socialProviders: socialProviders(),
   plugins: [
     magicLink({

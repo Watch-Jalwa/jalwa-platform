@@ -270,6 +270,40 @@ jobs:
           test "$ready" = true
           printf '%s\n' "$health" | jq .
 
+      - name: Set staging default learner password Abc@123
+        run: |
+          set -euo pipefail
+          remote_dir="$APP_DIR/candidate-db/$GITHUB_SHA/auth-seed"
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "install -d -m 700 '$remote_dir'"
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa \
+            scripts/staging-set-default-learner-passwords.mjs \
+            "$USER@$HOST:$remote_dir/staging-set-default-learner-passwords.mjs"
+          ssh -o StrictHostKeyChecking=yes -o ServerAliveInterval=30 -i ~/.ssh/jalwa "$USER@$HOST" \
+            "REMOTE_DIR='$remote_dir' APP_DIR='$APP_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          set -a
+          while IFS= read -r line; do
+            case "$line" in
+              DATABASE_URL=*) export "$line" ;;
+            esac
+          done < "$APP_DIR/.env.staging"
+          set +a
+          pg_ip="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' jalwa-postgres-staging | awk 'NF{print; exit}')"
+          DATABASE_URL="$(printf '%s' "$DATABASE_URL" | sed -E "s#(@)([^/@]+)(:[0-9]+/)#@${pg_ip}\\3#")"
+          export DATABASE_URL DEPLOYMENT_ENVIRONMENT=staging STAGING_DEFAULT_LEARNER_PASSWORD='Abc@123'
+          docker run --rm --network host \
+            -e DATABASE_URL -e DEPLOYMENT_ENVIRONMENT -e STAGING_DEFAULT_LEARNER_PASSWORD \
+            -v "$REMOTE_DIR/staging-set-default-learner-passwords.mjs:/opt/jalwa/staging-set-default-learner-passwords.mjs:ro" \
+            -w /tmp/jalwa-auth-seed \
+            node:22-bookworm-slim \
+            bash -lc 'mkdir -p /tmp/jalwa-auth-seed && cd /tmp/jalwa-auth-seed && cp /opt/jalwa/staging-set-default-learner-passwords.mjs . && printf "%s\n" "{\"name\":\"jalwa-auth-seed\",\"type\":\"module\"}" > package.json && npm install --no-audit --no-fund pg@8.16.3 >/tmp/npm.log 2>&1 && node ./staging-set-default-learner-passwords.mjs' \
+            | tee /tmp/default-password-seed.out
+          REMOTE
+          scp -q -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST:/tmp/default-password-seed.out" /tmp/default-password-seed.out || true
+          test -s /tmp/default-password-seed.out
+          grep -E '"passwordSet"|"updated"|"users"' /tmp/default-password-seed.out || true
+
       - name: Record candidate deployment
         run: |
           {

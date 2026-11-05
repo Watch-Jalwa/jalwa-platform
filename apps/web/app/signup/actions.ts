@@ -2,7 +2,7 @@
 
 import { redirect } from "next/navigation";
 
-/** @deprecated Signup now uses the unified passwordless `/login` OTP flow. */
+/** Signup uses `/signup` with phone + password fields. */
 export async function requestSignupLink() {
-  redirect("/login?next=/onboarding");
+  redirect("/signup?next=/onboarding");
 }
