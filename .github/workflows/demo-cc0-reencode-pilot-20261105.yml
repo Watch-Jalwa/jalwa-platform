@@ -1,0 +1,64 @@
+name: Jalwa demo CC0 video aspect pilot (versioned, no pointer change)
+
+on:
+  push:
+    branches: ["ops/jalwa-demo-source-reencode-pilot-20261105"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-demo-cc0-reencode-pilot
+  cancel-in-progress: false
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 24
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      EXPECTED_DEMO_SHA: ec0a76f8efd3d9cf0a64e864d264be6d274deb34
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Validate exact running demo versions on both domains
+        run: |
+          set -Eeuo pipefail
+          for domain in watch-jalwa.com jalwa-platform.codistan.org; do
+            curl -fsS --max-time 15 "https://$domain/api/health" |
+              jq -e --arg sha "$EXPECTED_DEMO_SHA" '.status=="ready" and .version==$sha' >/dev/null
+            echo "Exact demo release verified on $domain"
+          done
+      - name: Pinned staging SSH authentication
+        run: |
+          set -Eeuo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          for name in HOST USER APP_DIR KNOWN_HOSTS SSH_KEY; do test -n "${!name:-}"; done
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+      - name: Verify the original, encode naturally, upload NEW versioned R2 object
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" \
+            'docker exec -i jalwa-worker-staging node --input-type=module -' \
+            < scripts/demo-reencode-cc0-pilot-20261105.mjs \
+            | tee demo-cc0-pilot-result.log
+          grep -F 'DEMO_ENCODE_PILOT ' demo-cc0-pilot-result.log
+      - name: Retain immutable candidate proof, no playback DB changes
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: demo-cc0-aspect-pilot-${{ github.sha }}
+          path: demo-cc0-pilot-result.log
+          retention-days: 30
+          if-no-files-found: warn
