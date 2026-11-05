@@ -1,0 +1,89 @@
+name: Jalwa internal-demo batch video aspect repair (11 originals + rollback)
+
+on:
+  push:
+    branches: ["ops/jalwa-demo-source-reencode-pilot-20261105"]
+    paths: [".github/workflows/demo-batch-reencode-20261105.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-demo-aspect-v2-batch
+  cancel-in-progress: false
+
+jobs:
+  reencode-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      EXPECTED_DEMO_SHA: ec0a76f8efd3d9cf0a64e864d264be6d274deb34
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Verify exact deployed demo revision and mock payment boundary
+        run: |
+          set -Eeuo pipefail
+          for domain in watch-jalwa.com jalwa-platform.codistan.org; do
+            curl -fsS --max-time 15 "https://$domain/api/health" |
+              jq -e --arg sha "$EXPECTED_DEMO_SHA" '.status=="ready" and .version==$sha' >/dev/null
+            echo "Jalwa demo release verified on $domain"
+          done
+      - name: Configure pinned Codistan demo SSH identity
+        id: configure
+        run: |
+          set -Eeuo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          for k in HOST USER APP_DIR KNOWN_HOSTS SSH_KEY; do test -n "${!k:-}"; done
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+      - name: Re-encode remaining 11 original shorts into versioned R2 keys with audited switches
+        id: apply
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" \
+            'docker exec -i -e DEMO_BATCH_MODE=apply jalwa-worker-staging node --input-type=module -' \
+            < scripts/demo-batch-reencode-20261105.mjs | tee demo-batch-reencode.log
+          grep -F 'BATCH_SUCCESS ' demo-batch-reencode.log
+      - name: Install pinned Playwright Chromium QA
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/jalwa-demo-16-browser"
+          npm install --prefix "$RUNNER_TEMP/jalwa-demo-16-browser" --no-save --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          "$RUNNER_TEMP/jalwa-demo-16-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Test 16 Jalwa videos in both demo domains, desktop and mobile
+        id: strictQA
+        env:
+          JALWA_PLAYWRIGHT_PATH: ${{ runner.temp }}/jalwa-demo-16-browser/node_modules/@playwright/test
+        run: node qa/demo-16-playback-acceptance-20261105.cjs
+      - name: Roll back the 11 media pointers on ANY batch or browser failure
+        if: failure() && (steps.apply.outcome == 'success' || steps.apply.outcome == 'failure')
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          echo "Demo batch did not pass; restoring all previous 11 media references"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" \
+            'docker exec -i -e DEMO_BATCH_MODE=rollback jalwa-worker-staging node --input-type=module -' \
+            < scripts/demo-batch-reencode-20261105.mjs | tee demo-batch-rollback.log
+      - name: Preserve exact-release logs, QA screenshots and rollback evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jalwa-demo-aspect-v2-batch-${{ github.sha }}
+          path: |
+            demo-batch-reencode.log
+            demo-batch-rollback.log
+            demo-16-playback-acceptance/
+          retention-days: 30
+          if-no-files-found: warn
