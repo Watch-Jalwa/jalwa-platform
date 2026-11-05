@@ -1,0 +1,27 @@
+name: Jalwa 14 approved source asset preflight (read-only)
+on:
+  push:
+    branches: ["ops/jalwa-fourteen-media-ingest-20261105"]
+    paths: [".github/workflows/fourteen-approved-source-preflight-20261105.yml"]
+permissions:
+  contents: read
+jobs:
+  source-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Resolve 14 selected official media sources without downloads or writes
+        run: |
+          set -Eeuo pipefail
+          node --check scripts/fourteen-approved-source-preflight-20261105.mjs
+          node scripts/fourteen-approved-source-preflight-20261105.mjs | tee official-14-sources.log
+          test "$(grep -Ec '^OFFICIAL_(SOURCE|ERROR) ' official-14-sources.log)" -eq 14
+      - name: Save official URL/mime/size discovery
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jalwa-official-14-source-inventory
+          path: official-14-sources.log
+          retention-days: 21
+          if-no-files-found: warn
