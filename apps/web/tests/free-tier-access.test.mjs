@@ -34,8 +34,10 @@ test("summarizeVideoAccess counts free vs premium-locked videos", () => {
 test("content cards only badge Free on gated videos, not live streams", async () => {
   const source = await readFile(new URL("../components/content-card.tsx", import.meta.url), "utf8");
   assert.match(source, /isGatedVideoType/);
+  assert.match(source, /lockedForViewer !== false/);
   assert.match(source, /"Live"/);
   assert.match(source, /"Premium"/);
+  assert.doesNotMatch(source, /free-tier-access-core\.mjs/);
 });
 
 test("premium signed-in viewers can play any video", () => {

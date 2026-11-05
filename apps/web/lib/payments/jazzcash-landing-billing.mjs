@@ -260,11 +260,12 @@ export async function chargeAndGrantJazzcashIntent(intent, paymentToken, { userI
 }
 
 /**
- * After phone signup/signin/profile load, finish any completed JazzCash links for this number.
- * Matches by user id or MSISDN so Premium follows the signed-in account.
+ * After phone signup/signin/profile load, finish any JazzCash links for this number.
+ * Matches by user id or MSISDN so Premium follows the signed-in account, including
+ * subscriptions that were granted to a guest checkout user before password sign-in.
  */
 export async function reconcileJazzcashPremiumForUser(userId) {
-  if (!userId || paymentServiceEnabled()) {
+  if (!userId) {
     return { attempted: 0, granted: 0 };
   }
 
@@ -281,8 +282,7 @@ export async function reconcileJazzcashPremiumForUser(userId) {
   const pending = await databasePool.query(
     `select *
      from public.jazzcash_wallet_link_intents
-     where subscription_id is null
-       and (
+     where (
          user_id = $1
          or (
            $2::text is not null
@@ -290,11 +290,18 @@ export async function reconcileJazzcashPremiumForUser(userId) {
          )
        )
        and (
-         status = 'completed'
+         -- Already activated on guest/other user: move Premium onto this account.
+         (subscription_id is not null and user_id is distinct from $1)
          or (
-           $5::boolean = true
-           and status in ('started', 'returned', 'completed', 'failed')
-           and created_at > now() - interval '72 hours'
+           subscription_id is null
+           and (
+             status = 'completed'
+             or (
+               $5::boolean = true
+               and status in ('started', 'returned', 'completed', 'failed')
+               and created_at > now() - interval '72 hours'
+             )
+           )
          )
        )
      order by completed_at desc nulls last, created_at desc
