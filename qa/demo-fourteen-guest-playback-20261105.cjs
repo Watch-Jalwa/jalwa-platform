@@ -24,7 +24,20 @@ async function check(browser,host,mobile){
   const res=await page.goto("https://"+host+"/watch/"+slug,{waitUntil:"domcontentloaded",timeout:30000});
   if(res?.status()!==200)throw Error("Watch page "+res?.status());
   await page.locator("h1").waitFor({state:"visible",timeout:10000});
-  const video=page.locator(".self-hosted-media-frame video").first();
+  const player=page.locator(".self-hosted-media-frame video").first();
+  const videoPresent=(await player.count())>0;
+  if(!videoPresent){
+    const gated=page.getByText(/Free accounts can watch 10 videos/i);
+    await gated.waitFor({state:"visible",timeout:8000});
+    await page.getByRole("link",{name:/View Premium/i}).first().waitFor({state:"visible",timeout:8000});
+    result.passed=true;
+    result.access="expected_premium_gate";
+    result.playbackChecked=false;
+    await page.screenshot({path:path.join(out,slug+"-"+host+"-"+result.device+".png"),animations:"disabled",timeout:14000});
+    console.log("FOURTEEN_GUEST_PASS "+JSON.stringify(result));
+    return result;
+  }
+  const video=player;
   await video.waitFor({state:"attached",timeout:15000});
   await page.waitForFunction(()=>{
     const el=document.querySelector(".self-hosted-media-frame video");
@@ -47,6 +60,8 @@ async function check(browser,host,mobile){
   if(seconds<0.25){await page.waitForTimeout(3000);seconds=await video.evaluate(el=>el.currentTime);}
   if(!(seconds>=0.25))throw Error("Video playback not advancing");
   result.passed=true;
+  result.access="public_playback";
+  result.playbackChecked=true;
   result.decoder=[dims.width,dims.height];
   result.aspect=Number(sourceAspect.toFixed(4));
   result.playedSeconds=Number(seconds.toFixed(2));
