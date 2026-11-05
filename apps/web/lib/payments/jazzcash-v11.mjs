@@ -19,10 +19,18 @@ export function jazzcashV11Configured() {
 }
 
 export function jazzcashReturnUrl() {
-  return (
-    process.env.JAZZCASH_RETURN_URL?.trim()
-    || `${(process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "")}/callback`
-  );
+  const appOrigin = (process.env.NEXT_PUBLIC_APP_URL ?? process.env.APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
+  const configured = process.env.JAZZCASH_RETURN_URL?.trim();
+  // Wallet return must hit THIS app's /callback (same DB) or Premium never attaches and Profile stays Free.
+  // Staging previously pointed at watch-jalwa.com while the app ran on jalwa-platform.codistan.org.
+  if (configured) {
+    try {
+      if (new URL(configured).host === new URL(appOrigin).host) return configured;
+    } catch {
+      // fall through to app-origin callback
+    }
+  }
+  return `${appOrigin}/callback`;
 }
 
 export function jazzcashHost() {

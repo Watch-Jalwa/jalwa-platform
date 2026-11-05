@@ -75,6 +75,20 @@ test("LinkWallet form uses SkillUp V11 fields only", () => {
   assert.match(form.fields.pp_SecureHash, /^[A-F0-9]{64}$/);
 });
 
+test("JazzCash return URL follows the app origin when the configured host differs", async () => {
+  const previousApp = process.env.NEXT_PUBLIC_APP_URL;
+  const previousReturn = process.env.JAZZCASH_RETURN_URL;
+  process.env.NEXT_PUBLIC_APP_URL = "https://jalwa-platform.codistan.org";
+  process.env.JAZZCASH_RETURN_URL = "https://watch-jalwa.com/callback";
+  try {
+    const mod = await import(`../lib/payments/jazzcash-v11.mjs?stagingReturn=${Date.now()}`);
+    assert.equal(mod.jazzcashReturnUrl(), "https://jalwa-platform.codistan.org/callback");
+  } finally {
+    process.env.NEXT_PUBLIC_APP_URL = previousApp;
+    process.env.JAZZCASH_RETURN_URL = previousReturn;
+  }
+});
+
 test("JazzCash RequestID stays short and rejects free-form landing keys", () => {
   const id = newJazzcashRequestId();
   assert.equal(isValidJazzcashRequestId(id), true);

@@ -94,7 +94,7 @@ jobs:
       JAZZCASH_PASSWORD: ${{ secrets.JAZZCASH_PASSWORD }}
       JAZZCASH_INTEGRITY_SALT: ${{ secrets.JAZZCASH_INTEGRITY_SALT }}
       JAZZCASH_SECRET: ${{ secrets.JAZZCASH_SECRET }}
-      JAZZCASH_RETURN_URL: ${{ vars.JAZZCASH_RETURN_URL || 'https://watch-jalwa.com/callback' }}
+      JAZZCASH_RETURN_URL: ${{ vars.JAZZCASH_RETURN_URL || format('https://{0}/callback', vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org') }}
       JAZZCASH_HOST: ${{ vars.JAZZCASH_HOST || 'https://onlinepayments.jazzcash.com.pk' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
