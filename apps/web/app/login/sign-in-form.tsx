@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { readLandingMsisdn } from "@/lib/utm-attribution.mjs";
 
@@ -23,21 +23,28 @@ const messages: Record<string, string> = {
   "method-disabled": "Phone sign-in is not enabled yet. Use an email address.",
 };
 
+function subscribeToLandingIdentity(change: () => void) {
+  if (typeof window === "undefined") return () => {};
+  window.addEventListener("storage", change);
+  return () => window.removeEventListener("storage", change);
+}
+
+function serverLandingIdentity() {
+  return "";
+}
+
 export function SignInForm({ next, prefillIdentity = "" }: { next: string; prefillIdentity?: string }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [fullName, setFullName] = useState("");
-  const [identity, setIdentity] = useState(prefillIdentity);
+  // Session storage exists only after hydration; external-store snapshots avoid an effect-driven render loop.
+  const storedLandingIdentity = useSyncExternalStore(subscribeToLandingIdentity, readLandingMsisdn, serverLandingIdentity);
+  const [identityOverride, setIdentityOverride] = useState<string | null>(null);
+  const identity = identityOverride ?? (prefillIdentity || storedLandingIdentity);
   const [code, setCode] = useState("");
   const [challenge, setChallenge] = useState<Challenge | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (prefillIdentity) return;
-    const stored = readLandingMsisdn();
-    if (stored) setIdentity(stored);
-  }, [prefillIdentity]);
 
   async function start(identityValue = identity) {
     setError(null);
@@ -169,7 +176,7 @@ export function SignInForm({ next, prefillIdentity = "" }: { next: string; prefi
           maxLength={254}
           placeholder="0300 1234567 or you@example.com"
           value={identity}
-          onChange={(event) => setIdentity(event.target.value)}
+          onChange={(event) => setIdentityOverride(event.target.value)}
         />
       </label>
       <p className="form-message">Pakistan mobile formats such as 0300 1234567 and +923001234567 are accepted. After JazzCash, use the same number.</p>

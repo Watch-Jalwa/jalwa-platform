@@ -1,11 +1,20 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { buildHlsArgs, buildShortArgs, buildThumbnailArgs } from "../src/media.mjs";
 
-test("short transcode uses faststart, portrait canvas and local protocols", () => {
+test("short transcode preserves source aspect instead of burning portrait black bars", () => {
   const args = buildShortArgs("input", "output");
+  const filter = args[args.indexOf("-vf") + 1];
   assert.ok(args.includes("+faststart"));
-  assert.ok(args.some((value) => value.includes("720:1280")));
+  assert.match(filter, /force_original_aspect_ratio=decrease/);
+  assert.match(filter, /force_divisible_by=2/);
+  assert.match(filter, /min\(iw,1280\)/);
+  assert.match(filter, /min\(ih,1280\)/);
+  assert.doesNotMatch(filter, /\bpad=/);
   assert.ok(args.includes("-nostdin"));
   assert.ok(args.includes("-protocol_whitelist"));
   assert.ok(args.includes("file,pipe,crypto,data"));
@@ -32,4 +41,41 @@ test("HLS transcode supports video with no audio stream", () => {
   const args = buildHlsArgs("input", "/tmp/output", false);
   assert.ok(args.includes("v:0,name:360p v:1,name:480p v:2,name:720p"));
   assert.equal(args.filter((value) => value === "0:a?").length, 0);
+});
+
+const ffmpegAvailable = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0
+  && spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
+
+test("short transcode outputs preserve landscape, portrait and archival proportions", { skip: !ffmpegAvailable }, () => {
+  const directory = mkdtempSync(join(tmpdir(), "jalwa-video-aspect-"));
+  try {
+    for (const [width, height, expectedWidth, expectedHeight] of [
+      [1280, 720, 1280, 720],
+      [720, 1280, 720, 1280],
+      [640, 480, 640, 480],
+      [854, 480, 854, 480],
+      [1920, 1080, 1280, 720],
+    ]) {
+      const input = join(directory, `source-${width}x${height}.mp4`);
+      const output = join(directory, `short-${width}x${height}.mp4`);
+      const generated = spawnSync("ffmpeg", [
+        "-hide_banner", "-loglevel", "error", "-y",
+        "-f", "lavfi", "-i", `testsrc2=size=${width}x${height}:rate=1`,
+        "-frames:v", "2", "-c:v", "mpeg4", input,
+      ], { encoding: "utf8", timeout: 30_000 });
+      assert.equal(generated.status, 0, `Fixture ${width}x${height}: ${generated.stderr}`);
+      const encoded = spawnSync("ffmpeg", buildShortArgs(input, output), { encoding: "utf8", timeout: 40_000 });
+      assert.equal(encoded.status, 0, `Encoded ${width}x${height}: ${encoded.stderr}`);
+      const probed = spawnSync("ffprobe", [
+        "-v", "error", "-select_streams", "v:0",
+        "-show_entries", "stream=width,height", "-of", "json", output,
+      ], { encoding: "utf8", timeout: 15_000 });
+      assert.equal(probed.status, 0, `Probed ${width}x${height}: ${probed.stderr}`);
+      const stream = JSON.parse(probed.stdout).streams[0];
+      assert.deepEqual([stream.width, stream.height], [expectedWidth, expectedHeight],
+        `Incorrect output orientation for ${width}x${height}`);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });

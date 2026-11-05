@@ -15,7 +15,8 @@ export function buildShortArgs(input, output) {
     "-y",
     ...inputArgs(input),
     "-vf",
-    "scale=720:1280:force_original_aspect_ratio=decrease,pad=720:1280:(ow-iw)/2:(oh-ih)/2",
+    // Preserve the source display shape; baked-in portrait bars make landscape clips tiny on watch pages.
+    "scale=w='min(iw,1280)':h='min(ih,1280)':force_original_aspect_ratio=decrease:force_divisible_by=2",
     "-c:v",
     "libx264",
     "-preset",

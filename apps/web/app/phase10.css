@@ -1,1 +1,37 @@
 .jalwa-ad-slot{width:min(100% - 2rem,1180px);margin:.75rem auto 0;padding:.8rem 1rem;border:1px solid var(--border);border-radius:1rem;background:linear-gradient(120deg,rgba(255,107,44,.12),rgba(255,255,255,.04));display:flex;flex-wrap:wrap;align-items:center;gap:.55rem 1rem;font-size:.85rem}.jalwa-ad-slot strong{font-size:.95rem}.jalwa-ad-slot>span:not(.eyebrow){color:var(--muted);flex:1 1 18rem}.jalwa-ad-slot>a{font-weight:800;text-decoration:underline}.premium-benefit-grid{display:grid;grid-template-columns:1fr;gap:.8rem;margin:1rem 0 2rem}.premium-benefit-card h2{margin:.4rem 0}.premium-benefit-card p{color:var(--muted);margin-bottom:0}.premium-collection-list{display:grid;gap:1rem}.playback-quality-badge{display:inline-flex;margin-top:.55rem;padding:.3rem .55rem;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:.72rem}@media(min-width:720px){.jalwa-ad-slot{width:min(100% - 3rem,1180px)}.premium-benefit-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* Self-hosted watch assets can be portrait, landscape, or 4:3 archival media.
+   Keep this scoped: live, DRM and official embeds retain their own player geometry. */
+.player-shell.player-shell--self-hosted {
+  aspect-ratio: auto;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+
+.self-hosted-media-frame {
+  width: 100%;
+  margin-inline: auto;
+  overflow: hidden;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: #000;
+}
+
+.player-shell.player-shell--self-hosted .self-hosted-media-frame video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+}
+
+.player-shell--self-hosted .self-hosted-stack .playback-quality-badge {
+  justify-self: start;
+}
+
+.player-shell--self-hosted .player-placeholder {
+  min-height: 16rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}

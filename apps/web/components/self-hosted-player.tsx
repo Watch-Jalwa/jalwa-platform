@@ -11,6 +11,7 @@ export function SelfHostedPlayer({ contentId, title, poster }: { contentId: stri
   const [error, setError] = useState<{ message: string; code?: string } | null>(null);
   const [qualityTier, setQualityTier] = useState<"standard" | "enhanced" | null>(null);
   const [maxQualityHeight, setMaxQualityHeight] = useState<number | null>(null);
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
 
   useEffect(() => {
     let hls: Hls | null = null;
@@ -56,5 +57,44 @@ export function SelfHostedPlayer({ contentId, title, poster }: { contentId: stri
   }
 
   if (error) return <div className="player-placeholder"><p>{error.message}</p>{error.code === "payment_required" ? <Link className="button button-primary" href="/pricing">View Premium</Link> : <button className="button button-secondary" type="button" onClick={() => window.location.reload()}>Retry</button>}</div>;
-  return <div className="self-hosted-stack"><video ref={videoRef} controls playsInline poster={poster ?? undefined} preload="metadata" title={title} onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; if (current - lastSavedRef.current >= 15) void saveProgress(); }} onPause={() => void saveProgress()} onEnded={() => void saveProgress(true)} />{qualityTier ? <span className="playback-quality-badge" data-testid="playback-quality-tier">{qualityTier === "enhanced" ? `Enhanced quality${maxQualityHeight ? ` · up to ${maxQualityHeight}p` : ""}` : `Standard quality${maxQualityHeight ? ` · up to ${maxQualityHeight}p` : ""}`}</span> : null}<OfflineButton contentId={contentId} title={title} /></div>;
+  const aspectRatio = videoDimensions ? videoDimensions.width / videoDimensions.height : 16 / 9;
+  const mediaStyle = {
+    aspectRatio: `${videoDimensions?.width ?? 16} / ${videoDimensions?.height ?? 9}`,
+    // Bound the display by both page width and viewport height without stretching portrait media.
+    maxWidth: `min(100%, ${(72 * aspectRatio).toFixed(3)}dvh)`,
+  };
+
+  return (
+    <div className="self-hosted-stack">
+      <div className="self-hosted-media-frame" data-testid="self-hosted-media-frame" style={mediaStyle}>
+        <video
+          ref={videoRef}
+          controls
+          playsInline
+          poster={poster ?? undefined}
+          preload="metadata"
+          title={title}
+          onLoadedMetadata={(event) => {
+            const { videoWidth, videoHeight } = event.currentTarget;
+            if (videoWidth > 0 && videoHeight > 0) {
+              setVideoDimensions({ width: videoWidth, height: videoHeight });
+            }
+          }}
+          onEmptied={() => setVideoDimensions(null)}
+          onTimeUpdate={(event) => {
+            const current = event.currentTarget.currentTime;
+            if (current - lastSavedRef.current >= 15) void saveProgress();
+          }}
+          onPause={() => void saveProgress()}
+          onEnded={() => void saveProgress(true)}
+        />
+      </div>
+      {qualityTier ? (
+        <span className="playback-quality-badge" data-testid="playback-quality-tier">
+          {qualityTier === "enhanced" ? `Enhanced quality${maxQualityHeight ? ` · up to ${maxQualityHeight}p` : ""}` : `Standard quality${maxQualityHeight ? ` · up to ${maxQualityHeight}p` : ""}`}
+        </span>
+      ) : null}
+      <OfflineButton contentId={contentId} title={title} />
+    </div>
+  );
 }
