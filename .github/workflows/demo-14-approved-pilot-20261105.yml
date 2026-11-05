@@ -1,4 +1,4 @@
-name: Jalwa pilot approved official source ingest with signed playback QA
+name: Jalwa pilot approved source and commercial entitlement QA
 
 on:
   push:
@@ -96,7 +96,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/jalwa-14-guest"
           npm install --prefix "$RUNNER_TEMP/jalwa-14-guest" --no-save --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
           "$RUNNER_TEMP/jalwa-14-guest/node_modules/.bin/playwright" install --with-deps chromium
-      - name: Four-way actual guest video decoding, playback and aspect QA
+      - name: Four-way guest publication and entitlement QA (playback only when authorized)
         id: browser
         env:
           JALWA_PLAYWRIGHT_PATH: ${{ runner.temp }}/jalwa-14-guest/node_modules/@playwright/test
