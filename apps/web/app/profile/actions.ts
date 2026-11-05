@@ -67,7 +67,7 @@ export async function cancelAccountDeletion(formData: FormData) {
 }
 
 /** Immediately stop Premium: cancel open subscriptions and revoke active entitlements now. */
-export async function unsubscribePremium() {
+export async function unsubscribePremium(): Promise<{ ok: true } | { ok: false; message: string }> {
   const { user } = await authenticatedUser();
 
   if (paymentServiceEnabled()) {
@@ -83,40 +83,80 @@ export async function unsubscribePremium() {
     }
   }
 
-  await databasePool.query(
-    `update public.subscriptions
-     set status = 'cancelled',
-         cancel_at_period_end = false,
-         current_period_end = least(coalesce(current_period_end, now()), now()),
-         cancellation_requested_at = coalesce(cancellation_requested_at, now()),
-         cancelled_at = coalesce(cancelled_at, now()),
-         updated_at = now()
-     where user_id = $1
-       and status in ('active', 'past_due', 'cancel_at_period_end', 'incomplete')`,
-    [user.id],
-  );
+  try {
+    await databasePool.query(
+      `update public.subscriptions
+       set status = 'cancelled'::public.subscription_status,
+           cancel_at_period_end = false,
+           auto_renew_consented = false,
+           current_period_end = least(coalesce(current_period_end, now()), now()),
+           cancellation_requested_at = coalesce(cancellation_requested_at, now()),
+           cancelled_at = coalesce(cancelled_at, now()),
+           updated_at = now()
+       where user_id = $1
+         and status in ('active', 'past_due', 'cancel_at_period_end', 'incomplete')`,
+      [user.id],
+    );
 
-  await databasePool.query(
-    `update public.entitlements
-     set status = 'revoked',
-         ends_at = least(ends_at, now()),
-         updated_at = now()
-     where user_id = $1
-       and status = 'active'`,
-    [user.id],
-  );
+    await databasePool.query(
+      `update public.entitlements
+       set status = 'revoked'::public.entitlement_status,
+           ends_at = least(ends_at, now()),
+           updated_at = now()
+       where user_id = $1
+         and status = 'active'`,
+      [user.id],
+    );
 
-  await databasePool.query(
-    `insert into public.audit_logs (actor_id, action, entity_type, entity_id, metadata)
-     values ($1, 'premium_unsubscribed_immediate', 'user', $1::text, jsonb_build_object('source', 'profile'))`,
-    [user.id],
-  );
+    // Stop staging mock reconcile from instantly re-granting open JazzCash intents after unsubscribe.
+    try {
+      await databasePool.query(
+        `update public.jazzcash_wallet_link_intents
+         set status = 'failed',
+             response_code = coalesce(nullif(response_code, ''), 'USER_UNSUBSCRIBED'),
+             response_message = coalesce(nullif(response_message, ''), 'User unsubscribed from profile'),
+             updated_at = now()
+         where user_id = $1
+           and status in ('started', 'returned')
+           and created_at > now() - interval '72 hours'`,
+        [user.id],
+      );
+    } catch (intentError) {
+      console.warn("premium_unsubscribe_intent_mark_failed", {
+        userId: user.id,
+        error: intentError instanceof Error ? intentError.message : String(intentError),
+      });
+    }
+
+    try {
+      await databasePool.query(
+        `insert into public.audit_logs (actor_id, action, entity_type, entity_id, metadata)
+         values ($1, 'premium_unsubscribed_immediate', 'user', $1::text, jsonb_build_object('source', 'profile'))`,
+        [user.id],
+      );
+    } catch (auditError) {
+      console.warn("premium_unsubscribe_audit_failed", {
+        userId: user.id,
+        error: auditError instanceof Error ? auditError.message : String(auditError),
+      });
+    }
+  } catch (error) {
+    console.error("premium_unsubscribe_failed", {
+      userId: user.id,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : "Could not stop Premium right now.",
+    };
+  }
 
   revalidatePath("/profile");
   revalidatePath("/billing");
   revalidatePath("/premium");
+  revalidatePath("/explore");
   revalidatePath("/");
-  redirect("/profile?unsubscribed=1");
+  return { ok: true };
 }
 
 export async function signOut() {

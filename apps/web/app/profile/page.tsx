@@ -4,12 +4,12 @@ import { createClient } from "@/lib/database/server";
 import { reconcileJazzcashPremiumForUser } from "@/lib/payments/jazzcash-landing-billing.mjs";
 import { getUserMembership } from "@/lib/profile/membership.mjs";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
+import { UnsubscribePremiumButton } from "@/components/unsubscribe-premium-button";
 import {
   cancelAccountDeletion,
   requestAccountDeletion,
   requestAccountExport,
   signOut,
-  unsubscribePremium,
 } from "./actions";
 
 export const metadata = { title: "Profile" };
@@ -66,7 +66,10 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
     const { data: { user } } = await database.auth.getUser();
     if (!user) redirect("/login?next=/profile");
     identity = user.email ?? user.phone ?? "Jalwa user";
-    await reconcileJazzcashPremiumForUser(user.id).catch(() => undefined);
+    // After voluntary unsubscribe, do not auto-reclaim mock JazzCash Premium on this render.
+    if (!params.unsubscribed) {
+      await reconcileJazzcashPremiumForUser(user.id).catch(() => undefined);
+    }
     const [profileResult, requestResult, nextMembership] = await Promise.all([
       database.from("profiles").select("display_name,preferred_language").eq("id", user.id).maybeSingle(),
       database
@@ -127,7 +130,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
         <h2>Your plan</h2>
         <p>
           <strong>{membership.planName}</strong>
-          {membership.status !== "free" ? ` · ${membership.status.replaceAll("_", " ")}` : null}
+          {membership.status !== "free" ? ` · ${String(membership.status).replaceAll("_", " ")}` : null}
         </p>
         {periodLabel && membership.canUnsubscribe ? (
           <small>Access recorded through {periodLabel}. Unsubscribe ends Premium immediately.</small>
@@ -136,11 +139,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
         )}
         <div className="account-actions profile-membership-actions">
           {membership.canUnsubscribe ? (
-            <form action={unsubscribePremium}>
-              <button className="button button-danger" type="submit" disabled={preview}>
-                Unsubscribe
-              </button>
-            </form>
+            <UnsubscribePremiumButton disabled={preview} />
           ) : (
             <Link className="button button-primary" href="/pricing">
               View Premium

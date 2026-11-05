@@ -328,6 +328,16 @@ export async function reconcileJazzcashPremiumForUser(userId) {
         continue;
       }
       if (intent.subscription_id) {
+        const linked = await databasePool.query(
+          `select status from public.subscriptions where id = $1::uuid limit 1`,
+          [intent.subscription_id],
+        );
+        const linkedStatus = linked.rows[0]?.status;
+        // Cancelled/expired linked subscriptions must not count as an active grant,
+        // and must not trigger a fresh mock charge for the same intent.
+        if (linkedStatus && ["cancelled", "expired"].includes(String(linkedStatus))) {
+          continue;
+        }
         granted += 1;
         continue;
       }
