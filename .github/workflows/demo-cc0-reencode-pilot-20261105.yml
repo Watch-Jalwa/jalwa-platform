@@ -1,8 +1,7 @@
 name: Jalwa demo CC0 video aspect pilot (versioned, no pointer change)
 
 on:
-  push:
-    branches: ["ops/jalwa-demo-source-reencode-pilot-20261105"]
+  workflow_dispatch:
 
 permissions:
   contents: read
