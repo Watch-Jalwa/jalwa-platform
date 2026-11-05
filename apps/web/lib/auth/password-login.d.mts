@@ -1,9 +1,19 @@
+export type JazzcashClaimResult = {
+  attempted: number;
+  granted: number;
+  mockChargeAllowed?: boolean;
+  phoneMatched?: boolean;
+  errors?: Array<{ requestId?: string; message: string }>;
+  error?: string;
+};
+
 export type PasswordLoginResult =
   | {
       ok: true;
       created: boolean;
       response: Response;
       learner: { phone: string; displayName?: string | null; email: string };
+      jazzcashClaim?: JazzcashClaimResult;
     }
   | {
       ok: false;
