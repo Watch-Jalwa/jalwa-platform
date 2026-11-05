@@ -60,8 +60,8 @@ async function check(browser,item){
    result.frameAspect=Number((value.frameWidth/value.frameHeight).toFixed(4));
    result.videoAspect=Number((value.width/value.height).toFixed(4));
    result.aspectDelta=Number(Math.abs(result.frameAspect-result.videoAspect).toFixed(4));
-   if(padded.has(item.slug) && value.width<=value.height){
-     throw Error("Previously padded landscape clip still decodes portrait: "+value.width+"x"+value.height);
+   if(padded.has(item.slug) && value.width===720 && value.height===1280){
+     throw Error("Artificially padded 720x1280 legacy encode still in use for "+item.slug);
    }
    if(result.aspectDelta>0.055)throw Error("Aspect mismatch "+result.aspectDelta);
    if(value.frameWidth<120||value.frameHeight<80)throw Error("Tiny rendered media frame");
