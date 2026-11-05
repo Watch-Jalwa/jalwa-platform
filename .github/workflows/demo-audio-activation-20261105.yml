@@ -1,0 +1,155 @@
+name: Jalwa demo - repair and verify three licensed audio recordings
+
+on:
+  push:
+    branches: ["ops/jalwa-audio-activation-20261105"]
+    paths: ["ops/trigger-demo-audio-activation-20261105.txt"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-demo-audio-three-licensed
+  cancel-in-progress: false
+
+jobs:
+  audio-repair:
+    name: Repair and verify ${{ matrix.slug }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: staging
+    strategy:
+      max-parallel: 1
+      fail-fast: true
+      matrix:
+        slug:
+          - huamei-bird-calling-cc0
+          - house-sparrow-tschilp-cc0
+          - abrasive-bird-debate-cc0
+    env:
+      AUDIO_REPAIR_SLUG: ${{ matrix.slug }}
+      AUDIO_EXPECTED_SHA: b459aa21f1c9aff1c0bce5d1f86b48d2b137f1a2
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Confirm exact current demo release on both domains
+        run: |
+          set -Eeuo pipefail
+          for domain in watch-jalwa.com jalwa-platform.codistan.org; do
+            curl -fsS --max-time 15 "https://$domain/api/health" |
+              jq -e --arg version "$AUDIO_EXPECTED_SHA" '.status=="ready" and .version==$version' >/dev/null
+            echo "AUDIO_RELEASE_READY $domain"
+          done
+      - name: Configure pinned existing server and check worker resources
+        run: |
+          set -Eeuo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          for name in HOST USER APP_DIR KNOWN_HOSTS SSH_KEY; do test -n "${!name:-}"; done
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -i ~/.ssh/jalwa "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          disk_kb="$(df -P / | awk 'NR==2 {print $4}')"
+          memory_kb="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)"
+          echo "AUDIO_HOST_CAPACITY disk_free_kb=$disk_kb available_memory_kb=$memory_kb"
+          test "$disk_kb" -ge 8388608
+          test "$memory_kb" -ge 3145728
+          for name in jalwa-worker-staging jalwa-web-staging jalwa-postgres-staging; do
+            test "$(docker inspect -f '{{.State.Running}}' "$name")" = true
+          done
+          test "$(docker inspect -f '{{.State.Health.Status}}' jalwa-worker-staging)" = healthy
+          test "$(docker inspect -f '{{.State.Health.Status}}' jalwa-web-staging)" = healthy
+          docker exec jalwa-worker-staging node -e \
+            'const e=process.env;if(e.DEPLOYMENT_ENVIRONMENT!=="staging"||e.MEDIA_BACKEND!=="r2"||e.PAYMENT_PROVIDER!=="mock"||e.GIT_SHA!=="b459aa21f1c9aff1c0bce5d1f86b48d2b137f1a2")process.exit(1);console.log("AUDIO_WORKER_BOUNDARY_OK")'
+          REMOTE
+      - name: Requeue only the existing verified source audio asset
+        id: queue
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i -e AUDIO_REPAIR_MODE=queue -e AUDIO_REPAIR_SLUG=$AUDIO_REPAIR_SLUG -e AUDIO_EXPECTED_SHA=$AUDIO_EXPECTED_SHA jalwa-worker-staging node --input-type=module -" \
+            < scripts/demo-audio-activate-20261105.mjs | tee audio-queue.log
+          grep -Eq '^AUDIO_(QUEUED|ALREADY_QUEUED|ALREADY_READY) ' audio-queue.log
+      - name: Await successful audio-only processing and validate R2 AAC output
+        id: processed
+        run: |
+          set -Eeuo pipefail
+          for attempt in $(seq 1 48); do
+            if ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -i ~/.ssh/jalwa "$USER@$HOST" \
+              "docker exec -i -e AUDIO_REPAIR_MODE=ready -e AUDIO_REPAIR_SLUG=$AUDIO_REPAIR_SLUG -e AUDIO_EXPECTED_SHA=$AUDIO_EXPECTED_SHA jalwa-worker-staging node --input-type=module -" \
+              < scripts/demo-audio-activate-20261105.mjs > audio-ready.log 2>&1; then
+              cat audio-ready.log
+              grep -q '^AUDIO_READY ' audio-ready.log
+              exit 0
+            fi
+            if grep -Fq 'AUDIO_REPAIR_FAILED ' audio-ready.log; then
+              cat audio-ready.log >&2
+              exit 1
+            fi
+            sleep 8
+          done
+          cat audio-ready.log >&2
+          echo "AUDIO_PROCESSING_TIMEOUT: media is still unavailable; no publish attempted" >&2
+          exit 1
+      - name: Publish only this rights-approved and verified audio
+        id: publish
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i -e AUDIO_REPAIR_MODE=publish -e AUDIO_REPAIR_SLUG=$AUDIO_REPAIR_SLUG -e AUDIO_EXPECTED_SHA=$AUDIO_EXPECTED_SHA jalwa-worker-staging node --input-type=module -" \
+            < scripts/demo-audio-activate-20261105.mjs | tee audio-publish.log
+          grep -Eq '^AUDIO_(PUBLISHED|ALREADY_PUBLISHED) ' audio-publish.log
+      - name: Install pinned Playwright Chromium
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/audio-qa"
+          npm install --prefix "$RUNNER_TEMP/audio-qa" --no-save --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          "$RUNNER_TEMP/audio-qa/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Check real AAC audio playback in both domains and viewport sizes
+        id: browser
+        env:
+          JALWA_PLAYWRIGHT_PATH: ${{ runner.temp }}/audio-qa/node_modules/@playwright/test
+        run: node qa/demo-audio-playback-20261105.cjs
+      - name: Roll back only this published audio if browser acceptance fails
+        if: failure() && (steps.publish.outcome == 'success' || steps.publish.outcome == 'failure')
+        run: |
+          set -Eeuo pipefail
+          for attempt in 1 2 3; do
+            if ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -i ~/.ssh/jalwa "$USER@$HOST" \
+              "docker exec -i -e AUDIO_REPAIR_MODE=rollback -e AUDIO_REPAIR_SLUG=$AUDIO_REPAIR_SLUG -e AUDIO_EXPECTED_SHA=$AUDIO_EXPECTED_SHA jalwa-worker-staging node --input-type=module -" \
+              < scripts/demo-audio-activate-20261105.mjs | tee audio-rollback.log; then
+              grep -Eq '^AUDIO_(UNPUBLISHED|ALREADY_UNPUBLISHED) ' audio-rollback.log
+              exit 0
+            fi
+            sleep 7
+          done
+          echo "AUDIO_ROLLBACK_UNVERIFIED: manual intervention required" >&2
+          exit 1
+      - name: Recheck both sites are healthy
+        if: always()
+        run: |
+          for domain in watch-jalwa.com jalwa-platform.codistan.org; do
+            curl -fsS --max-time 15 "https://$domain/api/health" |
+              jq -e '.status=="ready"' >/dev/null
+          done
+      - name: Upload audio media and browser QA evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jalwa-audio-${{ matrix.slug }}-${{ github.sha }}
+          path: |
+            audio-queue.log
+            audio-ready.log
+            audio-publish.log
+            audio-rollback.log
+            demo-audio-browser-evidence/
+          retention-days: 30
+          if-no-files-found: warn
