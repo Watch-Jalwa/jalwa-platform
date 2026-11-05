@@ -72,42 +72,44 @@ export function LandingShell({
 
       <h1 className="visually-hidden">{h1}</h1>
 
-      <section className="landing-hero" aria-label="Jalwa campaign">
-        <Link className="landing-hero-link" href={ctaHref} aria-label="Watch Now — explore Jalwa">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="landing-hero-image landing-hero-image-desktop"
-            src={webBannerSrc}
-            alt="Jalwa — Scroll se aagay. Jalwa dekho."
-          />
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            className="landing-hero-image landing-hero-image-mobile"
-            src={mobileBannerSrc}
-            alt="Jalwa — Scroll se aagay. Jalwa dekho."
-          />
-        </Link>
-      </section>
+      <div className="landing-above-fold">
+        <section className="landing-hero" aria-label="Jalwa campaign">
+          <Link className="landing-hero-link" href={ctaHref} aria-label="Watch Now — explore Jalwa">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              className="landing-hero-image landing-hero-image-desktop"
+              src={webBannerSrc}
+              alt="Jalwa — Scroll se aagay. Jalwa dekho."
+            />
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              className="landing-hero-image landing-hero-image-mobile"
+              src={mobileBannerSrc}
+              alt="Jalwa — Scroll se aagay. Jalwa dekho."
+            />
+          </Link>
+        </section>
 
-      <section className="landing-middle" aria-label="JazzCash subscribe">
-        {showJazzcashReward ? (
-          <aside className="landing-reward-card" aria-label="Monthly JazzCash reward">
-            <div>
-              <p className="eyebrow">Monthly reward</p>
-              <strong>10,000</strong>
-              <span>JazzCash credits</span>
-            </div>
-            <small>Chance to win. Terms and Conditions apply.</small>
-          </aside>
-        ) : null}
+        <section className="landing-middle" aria-label="JazzCash subscribe">
+          {showJazzcashReward ? (
+            <aside className="landing-reward-card" aria-label="Monthly JazzCash reward">
+              <div>
+                <p className="eyebrow">Monthly reward</p>
+                <strong>10,000</strong>
+                <span>JazzCash credits</span>
+              </div>
+              <small>Chance to win. Terms and Conditions apply.</small>
+            </aside>
+          ) : null}
 
-        <LandingSubscribe
-          campaign={campaign}
-          offerNotice={offerNotice}
-          ctaLabel={subscribeCta}
-          heading="Enter Your JazzCash Number"
-        />
-      </section>
+          <LandingSubscribe
+            campaign={campaign}
+            offerNotice={offerNotice}
+            ctaLabel={subscribeCta}
+            heading="Enter Your JazzCash Number"
+          />
+        </section>
+      </div>
 
       <section className="landing-below" aria-labelledby="landing-offerings">
         <div className="landing-section-rule">

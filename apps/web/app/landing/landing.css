@@ -35,6 +35,16 @@ body.campaign-shell .site-main-campaign,
   border: 0;
 }
 
+/* First screen: banner + JazzCash. Footer ("Jalwa par kya milega?") starts below. */
+.landing-above-fold {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: var(--landing-stack-gap);
+  min-height: 100dvh;
+  box-sizing: border-box;
+}
+
 /* Banner on top — full graphic, never cropped.
    Native web creatives are 1600×639; display capped for a balanced column. */
 .landing-hero {
@@ -42,6 +52,7 @@ body.campaign-shell .site-main-campaign,
   justify-content: center;
   background: #000;
   padding: var(--landing-stack-gap) var(--landing-gutter) 0;
+  flex: 0 0 auto;
 }
 
 .landing-hero-link {
@@ -72,10 +83,12 @@ body.campaign-shell .site-main-campaign,
 /* JazzCash in the middle — stacked form, a little narrower than banner */
 .landing-middle {
   width: min(100% - (var(--landing-gutter) * 2), var(--landing-banner-max));
-  margin: var(--landing-stack-gap) auto 0;
+  margin: 0 auto;
   display: grid;
   gap: 0.75rem;
   justify-items: center;
+  flex: 0 0 auto;
+  padding-bottom: var(--landing-stack-gap);
 }
 
 .landing-cta {
@@ -499,15 +512,22 @@ body.campaign-shell .site-main-campaign,
 }
 
 @media (max-width: 720px) {
+  /* Full-bleed mobile: no side gutters / no 400px column that left black bars. */
   .campaign-landing {
-    --landing-banner-max: 400px;
-    --landing-form-max: 378px; /* ~5% narrower than banner */
-    --landing-gutter: 0.55rem;
-    --landing-stack-gap: 0.75rem;
+    --landing-banner-max: 100%;
+    --landing-form-max: 100%;
+    --landing-gutter: 0;
+    --landing-stack-gap: 0.45rem;
+  }
+
+  .landing-above-fold {
+    min-height: 100dvh;
+    gap: 0.4rem;
   }
 
   .landing-hero {
-    padding-top: 0.45rem;
+    padding: 0;
+    width: 100%;
   }
 
   .landing-hero-image-desktop {
@@ -518,21 +538,97 @@ body.campaign-shell .site-main-campaign,
     display: block;
   }
 
-  /* Mobile creative ~1091×1441 — full width, no crop */
+  /* 4:3 fold creatives — edge-to-edge, full graphic, no crop */
   .landing-hero-link {
-    width: min(100%, var(--landing-banner-max));
+    width: 100%;
+    max-width: none;
+    border-radius: 0;
+  }
+
+  .landing-hero-image {
+    width: 100%;
+    height: auto;
+    display: block;
+    object-fit: contain;
+    object-position: center top;
+    background: #000;
   }
 
   .landing-middle {
-    width: min(100% - (var(--landing-gutter) * 2), var(--landing-banner-max));
+    width: 100%;
+    margin: 0;
+    padding: 0 0.7rem 0.65rem;
+    box-sizing: border-box;
   }
 
   .landing-subscribe {
-    width: min(100%, var(--landing-form-max));
+    width: 100%;
+    padding: 0.7rem 0.75rem 0.8rem;
+    border-radius: 0.75rem;
+  }
+
+  .landing-subscribe-head {
+    margin-bottom: 0.5rem;
+  }
+
+  .landing-subscribe h2 {
+    font-size: 0.95rem;
+  }
+
+  .landing-subscribe-phone {
+    width: 1.85rem;
+    height: 1.85rem;
+  }
+
+  .landing-subscribe-landscape {
+    gap: 0.55rem;
+  }
+
+  .landing-msisdn-field {
+    min-height: 2.55rem;
+  }
+
+  .landing-subscribe-actions {
+    gap: 0.5rem;
+  }
+
+  .landing-consent {
+    font-size: 0.78rem;
+  }
+
+  .landing-cta {
+    min-height: 2.55rem;
+    font-size: 0.92rem;
+  }
+
+  .landing-offer-banner {
+    margin-top: 0.55rem;
+    padding: 0.5rem 0.6rem;
+  }
+
+  .landing-offer-banner p {
+    font-size: 0.74rem;
+    line-height: 1.35;
+  }
+
+  .landing-offer-megaphone {
+    width: 1.6rem;
+    height: 1.6rem;
+  }
+
+  .landing-reward-card {
+    padding: 0.65rem 0.75rem;
+  }
+
+  .landing-reward-card strong {
+    font-size: 1.35rem;
   }
 
   .landing-below {
-    width: min(100% - (var(--landing-gutter) * 2), var(--landing-banner-max));
+    width: 100%;
+    margin-top: 0.85rem;
+    padding: 0 0.7rem 2rem;
+    box-sizing: border-box;
   }
 
   .landing-msisdn-wordmark {
@@ -545,11 +641,6 @@ body.campaign-shell .site-main-campaign,
 }
 
 @media (max-width: 419px) {
-  .campaign-landing {
-    --landing-banner-max: 360px;
-    --landing-form-max: 340px;
-  }
-
   .landing-reward-card {
     flex-direction: column;
     text-align: center;
@@ -562,5 +653,25 @@ body.campaign-shell .site-main-campaign,
 
   .landing-offer-banner {
     align-items: center;
+  }
+}
+
+/* Short phones: tighten JazzCash so the 4:3 banner + form stay above the fold */
+@media (max-width: 720px) and (max-height: 740px) {
+  .landing-subscribe {
+    padding: 0.55rem 0.65rem 0.65rem;
+  }
+
+  .landing-subscribe-head {
+    margin-bottom: 0.4rem;
+  }
+
+  .landing-offer-banner {
+    margin-top: 0.4rem;
+    padding: 0.4rem 0.55rem;
+  }
+
+  .landing-offer-banner p {
+    font-size: 0.7rem;
   }
 }
