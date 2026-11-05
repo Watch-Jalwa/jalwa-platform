@@ -4,7 +4,7 @@
 set -Eeuo pipefail
 slug="${DEMO_14_RECOVER_SLUG:?}"
 case "$slug" in
-  grca-south-rim-winter-scenic|caminandes-llamigos) ;;
+  grca-south-rim-winter-scenic|caminandes-llamigos|spring-blender|sprite-fright|cosmos-laundromat|apollo-11-eagle-has-landed) ;;
   *) echo "RECOVERY_REFUSED disallowed_slug" >&2; exit 2 ;;
 esac
 for ctr in jalwa-web-staging jalwa-worker-staging jalwa-postgres-staging; do
@@ -39,10 +39,11 @@ WHERE c.slug=:'target'
   AND a.status='processing'
   AND a.is_available=false
   AND a.storage_key LIKE 'incoming/%'
+  AND a.size_bytes>1024 AND a.size_bytes<367001600
   AND j.status='processing'
   AND j.attempts>=1
   AND j.attempts<j.max_attempts
-  AND j.locked_at<now()-interval '6 minutes'
+  AND j.locked_at<now()-interval '12 minutes'
   AND NOT EXISTS (SELECT 1 FROM public.playback_sources p
     WHERE p.content_id=c.id AND p.media_asset_id=a.id AND p.is_available)
 ORDER BY j.created_at DESC;
@@ -67,6 +68,8 @@ BEGIN
  IF EXISTS (SELECT 1 FROM target_job WHERE
    (slug='grca-south-rim-winter-scenic' AND (job_type<>'short_mp4' OR size_bytes<>1729591))
    OR (slug='caminandes-llamigos' AND job_type<>'hls')
+   OR (slug IN ('spring-blender','sprite-fright','cosmos-laundromat') AND job_type<>'hls')
+   OR (slug='apollo-11-eagle-has-landed' AND job_type NOT IN ('hls','short_mp4'))
  ) THEN
    RAISE EXCEPTION 'Unexpected source bytes/job type: no mutation';
  END IF;
