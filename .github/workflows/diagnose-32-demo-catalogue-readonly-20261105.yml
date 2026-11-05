@@ -1,0 +1,53 @@
+name: Jalwa - diagnose 32 unavailable demo titles (read-only)
+
+on:
+  push:
+    branches:
+      - diagnostic/jalwa-32-unavailable-20261105
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Verify only the existing demo target and pinned SSH identity
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          for name in HOST USER APP_DIR KNOWN_HOSTS SSH_KEY; do
+            test -n "${!name:-}" || { echo "Missing staging access: $name" >&2; exit 1; }
+          done
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=9 -o ServerAliveInterval=12 -o ServerAliveCountMax=4 -i ~/.ssh/jalwa "$USER@$HOST" true
+      - name: Inspect 32 exact catalogue, rights, media and playback rows (zero writes)
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=9 -o ServerAliveInterval=12 -o ServerAliveCountMax=4 -i ~/.ssh/jalwa "$USER@$HOST" 'bash -s' \
+            < scripts/diagnose-32-demo-catalogue-readonly-20261105.sh | tee jalwa-32-diagnostics.log
+          test "$(grep -c 'JALWA_INVENTORY ' jalwa-32-diagnostics.log)" = 32
+      - name: Preserve diagnostic evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jalwa-32-content-state-${{ github.sha }}
+          path: jalwa-32-diagnostics.log
+          retention-days: 14
+          if-no-files-found: warn
