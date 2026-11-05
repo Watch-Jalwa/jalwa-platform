@@ -27,7 +27,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
       <section className="auth-intro">
         <span className="eyebrow">Welcome to Jalwa</span>
         <h1>Sign in or create account</h1>
-        <p>One passwordless screen for new and returning viewers. First successful code creates your account; next time the same email or number signs you in.</p>
+        <p>Use the same JazzCash mobile number you subscribed with (or your email). First successful code creates your account; next time the same identity signs you in. JazzCash PIN/MPIN is never entered on Jalwa.</p>
       </section>
       <div className="auth-methods">
         <SignInForm next={next} prefillIdentity={prefillIdentity} />

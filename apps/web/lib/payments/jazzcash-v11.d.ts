@@ -6,6 +6,7 @@ export function verifyJazzcashSecureHash(fields: Record<string, string>): boolea
 export function buildLinkWalletForm(input: {
   requestId: string;
   msisdn: string;
-  description?: string;
 }): { requestId: string; actionUrl: string; fields: Record<string, string> };
 export function newJazzcashRequestId(): string;
+export function newJazzcashAlphanumericId(): string;
+export function jazzcashOfficialTestVectorHash(): string;

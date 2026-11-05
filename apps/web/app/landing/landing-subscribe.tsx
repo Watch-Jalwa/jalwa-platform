@@ -66,8 +66,8 @@ export function LandingSubscribe({
           planCode: campaign.planCode,
           msisdn,
           consentToAutoPay: true,
-          // JazzCash pp_TxnRefNo: keep alphanumeric (no hyphens).
-          idempotencyKey: `JL${campaign.landing}${msisdn}${Date.now()}`.replace(/[^A-Za-z0-9]/g, "").slice(0, 20),
+          // Server signs pp_RequestID; keep a stable unique key (ReqId… style).
+          idempotencyKey: `ReqId${campaign.landing}${msisdn}${Date.now()}`.replace(/[^A-Za-z0-9]/g, "").slice(0, 40),
           attribution,
         }),
       });
@@ -81,9 +81,11 @@ export function LandingSubscribe({
         return;
       }
 
+      // POST server-signed fields verbatim — never recompute pp_SecureHash in the browser.
       const form = document.createElement("form");
       form.method = "POST";
       form.action = payload.actionUrl;
+      form.acceptCharset = "UTF-8";
       form.hidden = true;
       for (const [name, value] of Object.entries(payload.fields as Record<string, unknown>)) {
         if (typeof value !== "string") continue;

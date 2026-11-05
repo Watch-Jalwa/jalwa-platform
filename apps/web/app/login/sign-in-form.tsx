@@ -179,7 +179,7 @@ export function SignInForm({ next, prefillIdentity = "" }: { next: string; prefi
           onChange={(event) => setIdentityOverride(event.target.value)}
         />
       </label>
-      <p className="form-message">Pakistan mobile formats such as 0300 1234567 and +923001234567 are accepted. After JazzCash, use the same number.</p>
+      <p className="form-message">Pakistan mobile formats such as 03001234567 and +923001234567 are accepted. After JazzCash wallet link, enter that same number here — staging phone OTP is <strong>1234</strong> until SMS is wired.</p>
       <p className="form-message" role="status">{error ?? ""}</p>
       <button className="button button-primary" type="submit" disabled={pending}>Continue</button>
     </form>

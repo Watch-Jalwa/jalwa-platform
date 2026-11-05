@@ -79,7 +79,6 @@ export async function startJazzcashLandingLink({ msisdn, planCode, consentToAuto
   const form = buildLinkWalletForm({
     requestId,
     msisdn: learner.msisdn,
-    description: `Jalwa Premium ${planCode}`,
   });
 
   return {
@@ -97,7 +96,8 @@ export async function completeJazzcashLandingLink(fields) {
     throw error;
   }
 
-  const requestId = String(fields.pp_TxnRefNo ?? fields.pp_RequestID ?? "").trim();
+  // LinkWallet V11 returns pp_RequestID; accept legacy pp_TxnRefNo during transition.
+  const requestId = String(fields.pp_RequestID ?? fields.pp_TxnRefNo ?? "").trim();
   if (!requestId) {
     const error = new Error("missing_request_id");
     error.status = 400;
