@@ -168,7 +168,7 @@ async function applyOne(slug){
     const encodeArgs=buildShortArgs(source,targetFile);
     encodeArgs.splice(1,0,"-filter_threads","1");
     encodeArgs.splice(-1,0,"-threads","1");
-    await run("ffmpeg",encodeArgs,12*60*1000);
+    await run("ffmpeg",encodeArgs,25*60*1000);
     console.log("SINGLE_TRANSCODE_DONE "+slug);
     const output=ffprobe(targetFile);
     const outputBytes=(await stat(targetFile)).size;
