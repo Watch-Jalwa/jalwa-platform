@@ -46,7 +46,7 @@ export function SignInForm({
   async function submit() {
     setError(null);
     if (isSignup && password !== confirmPassword) {
-      setError(messages["password-mismatch"]);
+      setError(messages["password-mismatch"] ?? "Passwords do not match.");
       return;
     }
 
