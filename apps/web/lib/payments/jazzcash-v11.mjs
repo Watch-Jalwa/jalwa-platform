@@ -78,11 +78,12 @@ export function buildLinkWalletForm({ requestId, msisdn }) {
     throw new Error("invalid_msisdn");
   }
 
+  const resolvedRequestId = isValidJazzcashRequestId(requestId) ? String(requestId).trim() : newJazzcashRequestId();
   const fields = {
     pp_MerchantID: merchantId,
     pp_Password: password,
     pp_MSISDN: national,
-    pp_RequestID: String(requestId).trim(),
+    pp_RequestID: resolvedRequestId,
     pp_ReturnURL: returnUrl,
   };
 
@@ -94,11 +95,20 @@ export function buildLinkWalletForm({ requestId, msisdn }) {
   };
 }
 
-/** SkillUp-style request id: ReqId + timestamp + hex (unique, hashed as pp_RequestID). */
+/** JazzCash LinkWallet pp_RequestID: ReqId + compact unique suffix, max 20 chars. */
+export const JAZZCASH_REQUEST_ID_MAX = 20;
+
+export function isValidJazzcashRequestId(value) {
+  const id = String(value ?? "").trim();
+  return id.length >= 8 && id.length <= JAZZCASH_REQUEST_ID_MAX && /^ReqId[0-9A-Za-z]+$/.test(id);
+}
+
 export function newJazzcashRequestId() {
-  const stamp = Date.now().toString(36);
-  const hex = randomBytes(4).toString("hex");
-  return `ReqId${stamp}${hex}`.slice(0, 40);
+  // SkillUp example is ReqId123. Long free-form IDs (landing+msisdn+epoch) are rejected:
+  // "Please provide a valid value for pp_RequestID."
+  const stamp = Date.now().toString().slice(-12);
+  const hex = randomBytes(1).toString("hex");
+  return `ReqId${stamp}${hex}`.slice(0, JAZZCASH_REQUEST_ID_MAX);
 }
 
 export function jazzcashOfficialTestVectorHash() {

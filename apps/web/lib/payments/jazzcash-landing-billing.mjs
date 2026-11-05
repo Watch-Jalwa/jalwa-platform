@@ -1,5 +1,11 @@
 import { databasePool } from "@/lib/database/pool";
-import { buildLinkWalletForm, jazzcashV11Configured, newJazzcashRequestId, verifyJazzcashSecureHash } from "./jazzcash-v11.mjs";
+import {
+  buildLinkWalletForm,
+  isValidJazzcashRequestId,
+  jazzcashV11Configured,
+  newJazzcashRequestId,
+  verifyJazzcashSecureHash,
+} from "./jazzcash-v11.mjs";
 import { resolveOrCreatePhoneLearnerForCheckout } from "./phone-checkout-user.mjs";
 import { paymentServiceEnabled, linkPaymentServiceWallet } from "./payment-service";
 
@@ -34,8 +40,9 @@ export async function startJazzcashLandingLink({ msisdn, planCode, consentToAuto
 
   const learner = await resolveOrCreatePhoneLearnerForCheckout(msisdn);
   const attr = sanitizeAttribution(attribution);
-  const requestId = String(idempotencyKey ?? "").trim().length >= 12
-    ? String(idempotencyKey).trim().slice(0, 40)
+  // Never forward free-form client keys as pp_RequestID — JazzCash rejects long/invalid values.
+  const requestId = isValidJazzcashRequestId(idempotencyKey)
+    ? String(idempotencyKey).trim()
     : newJazzcashRequestId();
 
   await databasePool.query(

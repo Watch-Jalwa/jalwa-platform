@@ -66,8 +66,7 @@ export function LandingSubscribe({
           planCode: campaign.planCode,
           msisdn,
           consentToAutoPay: true,
-          // Server signs pp_RequestID; keep a stable unique key (ReqId… style).
-          idempotencyKey: `ReqId${campaign.landing}${msisdn}${Date.now()}`.replace(/[^A-Za-z0-9]/g, "").slice(0, 40),
+          // Server generates JazzCash-valid pp_RequestID (ReqId + ≤20 chars). Do not invent one here.
           attribution,
         }),
       });

@@ -11,6 +11,8 @@ const {
   verifyJazzcashSecureHash,
   buildLinkWalletForm,
   jazzcashOfficialTestVectorHash,
+  isValidJazzcashRequestId,
+  newJazzcashRequestId,
 } = await import("../lib/payments/jazzcash-v11.mjs");
 
 test("JazzCash SecureHash matches official sample vector", () => {
@@ -71,4 +73,18 @@ test("LinkWallet form uses SkillUp V11 fields only", () => {
   assert.equal(form.fields.pp_TxnRefNo, undefined);
   assert.equal(form.fields.pp_Version, undefined);
   assert.match(form.fields.pp_SecureHash, /^[A-F0-9]{64}$/);
+});
+
+test("JazzCash RequestID stays short and rejects free-form landing keys", () => {
+  const id = newJazzcashRequestId();
+  assert.equal(isValidJazzcashRequestId(id), true);
+  assert.ok(id.length <= 20);
+  assert.match(id, /^ReqId[0-9A-Za-z]+$/);
+  assert.equal(isValidJazzcashRequestId("ReqIdmainLanding031234567891793863240914"), false);
+  const form = buildLinkWalletForm({
+    requestId: "ReqIdmainLanding031234567891793863240914",
+    msisdn: "03001234567",
+  });
+  assert.equal(isValidJazzcashRequestId(form.fields.pp_RequestID), true);
+  assert.notEqual(form.fields.pp_RequestID, "ReqIdmainLanding031234567891793863240914");
 });
