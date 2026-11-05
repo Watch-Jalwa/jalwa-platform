@@ -1,0 +1,42 @@
+name: Jalwa final 16 video guest playback regression (read-only)
+
+on:
+  push:
+    branches: ["ops/jalwa-demo-source-reencode-pilot-20261105"]
+    paths: [".github/workflows/demo-final-16-readonly-20261105.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  read-only-acceptance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Verify demo deployments are ready
+        run: |
+          set -Eeuo pipefail
+          for domain in watch-jalwa.com jalwa-platform.codistan.org; do
+            response="$(curl -fsS --max-time 15 "https://$domain/api/health")"
+            jq -e --arg sha "ec0a76f8efd3d9cf0a64e864d264be6d274deb34" '.status=="ready" and .version==$sha' <<<"$response" > /dev/null
+            echo "DEMO_READY $domain"
+          done
+      - name: Install isolated Playwright and Chromium
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/jalwa-final16-browser"
+          npm install --prefix "$RUNNER_TEMP/jalwa-final16-browser" --no-save --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          "$RUNNER_TEMP/jalwa-final16-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Check actual playback, proportions and controls across 39 cases
+        env:
+          JALWA_PLAYWRIGHT_PATH: ${{ runner.temp }}/jalwa-final16-browser/node_modules/@playwright/test
+        run: node qa/demo-16-playback-acceptance-20261105.cjs
+      - name: Save individual browser evidence and screenshots
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jalwa-final16-guest-playback-${{ github.sha }}
+          path: demo-16-playback-acceptance/
+          retention-days: 30
+          if-no-files-found: warn
