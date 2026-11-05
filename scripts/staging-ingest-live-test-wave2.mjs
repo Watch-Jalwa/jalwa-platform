@@ -15,9 +15,10 @@ const WAVE2 = [
   // Skip FREE_real_VHS_static.webm (~1GB source); needs an editorial trim before ingest.
   { slug: "how-fossils-form-cc-by", file: "Wie_entstehen_Fossilien_(CC_by_4.0).webm", mime: "video/webm", kind: "source_video", source: "commons" },
   { slug: "proxima-centauri-flythrough-cc-by", file: "A_fly-through_of_the_Proxima_Centauri_system_(video).webm", mime: "video/webm", kind: "source_video", source: "commons" },
-  { slug: "huamei-bird-calling-cc0", file: "Upbeat_huamei_bird_calling.oga", mime: "audio/ogg", kind: "source_audio", source: "commons" },
-  { slug: "house-sparrow-tschilp-cc0", file: "Joseph_Sardin_-_Passer_domesticus_tschilp_call.oga", mime: "audio/ogg", kind: "source_audio", source: "commons" },
-  { slug: "abrasive-bird-debate-cc0", file: "Abrasive_sounding_bird_debate.oga", mime: "audio/ogg", kind: "source_audio", source: "commons" },
+  // media_asset_kind enum has source_video (not source_audio); audio sources use source_video + audio mime.
+  { slug: "huamei-bird-calling-cc0", file: "Upbeat_huamei_bird_calling.oga", mime: "audio/ogg", kind: "source_video", source: "commons" },
+  { slug: "house-sparrow-tschilp-cc0", file: "Joseph_Sardin_-_Passer_domesticus_tschilp_call.oga", mime: "audio/ogg", kind: "source_video", source: "commons" },
+  { slug: "abrasive-bird-debate-cc0", file: "Abrasive_sounding_bird_debate.oga", mime: "audio/ogg", kind: "source_video", source: "commons" },
   { slug: "eso-cast-254-light", file: "ESOcast_254_Light.webm", mime: "video/webm", kind: "source_video", source: "commons" },
   { slug: "eso-cast-265-light", file: "ESOcast_265_Light.webm", mime: "video/webm", kind: "source_video", source: "commons" },
 ];

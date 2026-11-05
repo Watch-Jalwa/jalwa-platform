@@ -1,4 +1,4 @@
--- Staging-only: mark stuck processing media as failed so wave4 can re-ingest.
+-- Staging-only: mark stuck processing media as failed so later waves can re-ingest.
 begin;
 select set_config('request.jwt.claim.role','service_role',true);
 set local role service_role;
@@ -9,17 +9,16 @@ with stuck as (
       disabled_reason = coalesce(disabled_reason, 'staging_wave_reset_stuck_processing'),
       updated_at = now()
   where a.status in ('processing', 'queued', 'pending_upload')
-    and a.created_at < now() - interval '45 minutes'
+    and a.created_at < now() - interval '20 minutes'
     and exists (
       select 1 from public.content_items ci
       where ci.id = a.content_id
         and ci.slug in (
           'invitation-to-pakistan-nara','promise-of-pakistan-geography',
           'huamei-bird-calling-cc0','house-sparrow-tschilp-cc0','abrasive-bird-debate-cc0',
-          'eso-cast-254-light','eso-cast-265-light',
+          'eso-cast-254-light','eso-cast-265-light','vhs-static-cc0-clip',
           'sintel','elephants-dream','caminandes-llamigos','tears-of-steel',
-          'sprite-fright','spring-blender','cosmos-laundromat',
-          'vhs-static-cc0-clip'
+          'sprite-fright','spring-blender','cosmos-laundromat'
         )
     )
   returning a.id, a.content_id, a.status
@@ -44,7 +43,10 @@ select json_build_object(
           ('tree-trimmer-cc0'),('counting-chisenbop-cc0'),('vanellus-vanellus-cc0'),
           ('how-fossils-form-cc-by'),('proxima-centauri-flythrough-cc-by'),
           ('invitation-to-pakistan-nara'),('promise-of-pakistan-geography'),
-          ('wikipedia-science-comms-cc-by'),('big-buck-bunny')
+          ('wikipedia-science-comms-cc-by'),('big-buck-bunny'),('elephants-dream'),
+          ('eso-cast-254-light'),('eso-cast-265-light'),
+          ('huamei-bird-calling-cc0'),('house-sparrow-tschilp-cc0'),('abrasive-bird-debate-cc0'),
+          ('vhs-static-cc0-clip'),('sintel'),('tears-of-steel')
         ) s(slug)
       )
   )
