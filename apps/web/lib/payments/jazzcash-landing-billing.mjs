@@ -181,7 +181,7 @@ export async function chargeAndGrantJazzcashIntent(intent, paymentToken, { userI
              charge_txn_ref = $3,
              charge_response_code = $4,
              response_message = $5,
-             charged_at = case when $6 then now() else charged_at end,
+             charged_at = case when $6::boolean then now() else charged_at end,
              updated_at = now()
          where request_id = $1`,
         [
@@ -190,7 +190,7 @@ export async function chargeAndGrantJazzcashIntent(intent, paymentToken, { userI
           charge.txnRefNo,
           String(charge.responseCode).slice(0, 40) || null,
           charge.responseMessage || null,
-          charge.ok,
+          Boolean(charge.ok),
         ],
       );
 
@@ -403,11 +403,11 @@ export async function grantPremiumForJazzcashIntent(intent, { chargeTxnRef, prov
          now(), $4::timestamptz, false,
          true, now(),
          jsonb_build_object(
-           'code', $5,
-           'currency', $6,
-           'amountMinor', $7,
-           'billingPeriod', $8,
-           'chargeTxnRef', $9
+           'code', $5::text,
+           'currency', $6::text,
+           'amountMinor', $7::bigint,
+           'billingPeriod', $8::text,
+           'chargeTxnRef', $9::text
          )
        )
        returning id::text as id`,
@@ -418,7 +418,7 @@ export async function grantPremiumForJazzcashIntent(intent, { chargeTxnRef, prov
         endsAt,
         price.price_code,
         price.currency,
-        price.amount_minor,
+        Number(price.amount_minor),
         price.billing_period,
         chargeTxnRef ?? null,
       ],
@@ -460,10 +460,10 @@ export async function grantPremiumForJazzcashIntent(intent, { chargeTxnRef, prov
       `insert into public.audit_logs (actor_id, action, entity_type, entity_id, metadata)
        values ($1, 'jazzcash_payfirst_premium_granted', 'subscription', $2,
                jsonb_build_object(
-                 'requestId', $3,
-                 'planCode', $4,
-                 'chargeTxnRef', $5,
-                 'msisdn', $6
+                 'requestId', $3::text,
+                 'planCode', $4::text,
+                 'chargeTxnRef', $5::text,
+                 'msisdn', $6::text
                ))`,
       [intent.user_id, subscriptionId, intent.request_id, intent.plan_code, chargeTxnRef ?? null, intent.msisdn],
     );
@@ -592,8 +592,8 @@ export async function completeJazzcashLandingLink(fields) {
   await databasePool.query(
     `update public.jazzcash_wallet_link_intents
      set status = $2,
-         payment_token_present = $3,
-         payment_token = case when $3 and $6 <> '' then $6 else payment_token end,
+         payment_token_present = $3::boolean,
+         payment_token = case when $3::boolean and $6::text <> '' then $6::text else payment_token end,
          response_code = $4,
          response_message = $5,
          completed_at = case when $2 = 'completed' then now() else completed_at end,
