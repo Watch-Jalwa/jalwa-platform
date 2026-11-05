@@ -100,8 +100,15 @@ while read -r volume; do
 done < <(docker volume ls -q --filter dangling=true | grep -E '^[0-9a-f]{64}$' || true)
 
 if [[ -d "$APP_DIR/candidate-db" ]]; then
-  find "$APP_DIR/candidate-db" -mindepth 1 -maxdepth 1 -type d -mtime +1 -print -exec rm -rf -- {} + || true
+  # Live-test wave media is re-downloadable; drop it aggressively to free staging disk.
+  find "$APP_DIR/candidate-db" -type d \( -name 'live-test-wave*' -o -name 'media' \) -print -exec rm -rf -- {} + 2>/dev/null || true
+  find "$APP_DIR/candidate-db" -mindepth 1 -maxdepth 1 -type d -mtime +0 -print -exec rm -rf -- {} + || true
 fi
+
+# Runner/host temp media left by wave ingest (Commons / Blender downloads).
+rm -rf /tmp/wave1-media /tmp/wave2-media /tmp/wave3-media /tmp/wave4-media /tmp/wave5-media \
+  /tmp/wave1-ingest.out /tmp/wave2-ingest.out /tmp/wave3-ingest.out /tmp/wave4-ingest.out /tmp/wave5-ingest.out \
+  2>/dev/null || true
 
 if sudo -n true >/dev/null 2>&1; then
   sudo -n apt-get clean >/dev/null 2>&1 || true
