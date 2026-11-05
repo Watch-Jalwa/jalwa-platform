@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: jalwa-14-approved-source-ingest
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   serial-title:
