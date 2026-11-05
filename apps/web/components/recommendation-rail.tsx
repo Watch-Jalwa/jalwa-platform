@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { formatDuration } from "@/lib/catalogue/demo-data";
 import { isGatedVideoType } from "@/lib/catalogue/free-tier-access.mjs";
+import { lockedContentBadge, lockedContentHref } from "@/lib/catalogue/locked-content-cta.mjs";
 import type { RecommendedItem } from "@/lib/recommendations/repository";
 import { RecommendationImpressions } from "@/components/recommendation-impressions";
 
@@ -12,10 +13,15 @@ export function RecommendationRail({ items, title = "Recommended for you", place
       {items.map((item) => {
         const gated = isGatedVideoType(item.contentType);
         const locked = gated && item.lockedForViewer !== false;
+        const signedIn = Boolean(item.viewerSignedIn);
         const href = locked
-          ? `/pricing?next=${encodeURIComponent(`/watch/${item.slug}`)}`
+          ? lockedContentHref(item.slug, signedIn)
           : `/watch/${item.slug}`;
-        const badge = locked ? "Premium" : gated ? "Free" : (item.accessLevel === "premium" ? "Premium" : item.category);
+        const badge = locked
+          ? lockedContentBadge(signedIn)
+          : gated
+            ? "Free"
+            : (item.accessLevel === "premium" ? "Premium" : item.category);
         return (
           <article className={`recommendation-card${locked ? " recommendation-card-locked" : ""}`} data-recommendation-id={item.id} key={item.id ?? item.slug}>
             <Link href={href}>

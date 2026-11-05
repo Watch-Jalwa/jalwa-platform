@@ -45,6 +45,8 @@ export type CatalogueItem = {
   isEarlyAccess?: boolean;
   /** True when this viewer cannot play the title without Premium. */
   lockedForViewer?: boolean;
+  /** Session signed-in flag for locked CTAs (Sign in vs Premium). */
+  viewerSignedIn?: boolean;
 };
 export type PremiumCatalogueCollection = { slug: string; title: string; description?: string | null; items: CatalogueItem[] };
 export type LiveCatalogueCollection = { slug: string; title: string; description?: string | null; items: CatalogueItem[] };

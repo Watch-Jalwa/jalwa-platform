@@ -29,9 +29,6 @@ export async function SiteHeader() {
         <Link href="/ask">Ask Jalwa</Link>
       </nav>
       <div className="header-actions">
-        <Link className="notification-link" href="/notifications" aria-label="Notifications">
-          ●
-        </Link>
         <Link className="button button-primary" href="/pricing">
           Premium
         </Link>

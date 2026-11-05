@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { CommentsSection } from "@/components/comments-section";
 import { DrmPlayer } from "@/components/drm-player";
 import { OfficialLiveEmbedPlayer } from "@/components/official-live-embed-player";
@@ -11,6 +11,7 @@ import { SelfHostedPlayer } from "@/components/self-hosted-player";
 import { SocialActions } from "@/components/social-actions";
 import { formatDuration } from "@/lib/catalogue/demo-data";
 import { canPlayVideoContent, getViewerVideoAccess } from "@/lib/catalogue/free-tier-access.mjs";
+import { lockedContentHref } from "@/lib/catalogue/locked-content-cta.mjs";
 import { getContentBySlug } from "@/lib/catalogue/repository";
 import { getRecommendations } from "@/lib/recommendations/repository";
 
@@ -35,17 +36,18 @@ export default async function WatchPage({ params }: { params: Params }) {
 
   let player: React.ReactNode;
   if (!playbackAllowed) {
+    // Signed-in without entitlement → plans. Guests stay on watch with Sign in (then play or pricing).
+    if (viewerAccess.signedIn) {
+      redirect(lockedContentHref(item.slug, true));
+    }
     player = (
       <div className="player-placeholder">
-        <span className="eyebrow">Premium</span>
-        <p>This title is locked. Free accounts can watch 10 videos. Sign in with Premium to unlock the rest.</p>
+        <span className="eyebrow">Sign in</span>
+        <p>Sign in to watch this title. If your account has Premium, playback starts right away; otherwise you will see Monthly plans.</p>
         <div className="watch-actions">
-          <Link className="button button-primary" href="/pricing">View Premium</Link>
-          {!viewerAccess.signedIn ? (
-            <Link className="button button-secondary" href={`/login?next=${encodeURIComponent(`/watch/${item.slug}`)}`}>
-              Sign in
-            </Link>
-          ) : null}
+          <Link className="button button-primary" href={lockedContentHref(item.slug, false)}>
+            Sign in
+          </Link>
         </div>
       </div>
     );

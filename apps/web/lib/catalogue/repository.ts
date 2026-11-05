@@ -4,6 +4,7 @@ import { createClient } from "@/lib/database/server";
 import { annotateCatalogueAccess } from "./free-tier-access.mjs";
 import { withCataloguePosterFallback } from "./poster-core.mjs";
 import { categories as demoCategories, featuredContent } from "./demo-data";
+import { filterVisibleCatalogueItems, isTemporarilyHiddenSlug } from "./temporarily-hidden-slugs.mjs";
 import type { CatalogueCategory, CatalogueItem, LiveCatalogueCollection, PlaybackSource, PremiumCatalogueCollection } from "./types";
 
 function asString(value: unknown) { return typeof value === "string" ? value : null; }
@@ -64,7 +65,7 @@ export async function searchCatalogue(input: { query?: string; category?: string
     const demo = featuredContent.filter((item) => {
       const categoryMatches = !category || item.categorySlug === category;
       const haystack = `${item.title} ${item.titleUrdu ?? ""} ${item.description ?? ""}`.toLowerCase();
-      return categoryMatches && (!query || haystack.includes(query.toLowerCase()));
+      return categoryMatches && (!query || haystack.includes(query.toLowerCase())) && !isTemporarilyHiddenSlug(item.slug);
     });
     return annotateCatalogueAccess(demo);
   }
@@ -74,15 +75,16 @@ export async function searchCatalogue(input: { query?: string; category?: string
     const { data, error } = await database.rpc("search_catalogue", { p_query: query || null, p_category: category || null, p_limit: input.limit ?? 40 });
     if (error) throw error;
     const items = ((data ?? []) as Record<string, unknown>[]).map(mapSearchRow);
-    const filtered = liveSourcesEnabled() ? items : items.filter((item) => item.contentType !== "live");
+    const filtered = filterVisibleCatalogueItems(liveSourcesEnabled() ? items : items.filter((item) => item.contentType !== "live"));
     return annotateCatalogueAccess(filtered);
   } catch (error) {
-    if (canUseDemoData()) return annotateCatalogueAccess(featuredContent);
+    if (canUseDemoData()) return annotateCatalogueAccess(filterVisibleCatalogueItems(featuredContent));
     return catalogueFailure("search", error);
   }
 }
 
 export async function getContentBySlug(slug: string): Promise<CatalogueItem | null> {
+  if (isTemporarilyHiddenSlug(slug)) return null;
   if (canUseDemoData()) {
     const demo = featuredContent.find((item) => item.slug === slug) ?? null;
     if (!demo) return null;

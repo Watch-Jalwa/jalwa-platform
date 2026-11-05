@@ -1,14 +1,16 @@
 import Link from "next/link";
 import { formatDuration } from "@/lib/catalogue/demo-data";
 import { isGatedVideoType } from "@/lib/catalogue/free-tier-access.mjs";
+import { lockedContentBadge, lockedContentHref } from "@/lib/catalogue/locked-content-cta.mjs";
 import type { CatalogueItem } from "@/lib/catalogue/types";
 
 export function ContentCard({ item }: { item: CatalogueItem }) {
   const gatedVideo = isGatedVideoType(item.contentType);
   // Fail closed: only the free unlocked set (lockedForViewer === false) plays without Premium.
   const locked = gatedVideo && item.lockedForViewer !== false;
+  const signedIn = Boolean(item.viewerSignedIn);
   const badge = locked
-    ? "Premium"
+    ? lockedContentBadge(signedIn)
     : gatedVideo
       ? "Free"
       : item.contentType === "live"
@@ -16,7 +18,7 @@ export function ContentCard({ item }: { item: CatalogueItem }) {
         : String(item.contentType || "Open");
   return (
     <article className={`content-card${locked ? " content-card-locked" : ""}`}>
-      <Link href={locked ? `/pricing?next=${encodeURIComponent(`/watch/${item.slug}`)}` : `/watch/${item.slug}`}>
+      <Link href={locked ? lockedContentHref(item.slug, signedIn) : `/watch/${item.slug}`}>
         <div
           className="content-art"
           style={item.thumbnailUrl ? { backgroundImage: `linear-gradient(180deg,transparent,rgba(0,0,0,.82)),url(${item.thumbnailUrl})` } : undefined}

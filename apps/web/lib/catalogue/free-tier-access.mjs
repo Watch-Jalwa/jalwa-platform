@@ -8,6 +8,7 @@ import {
   isGatedVideoType,
   summarizeVideoAccess,
 } from "./free-tier-access-core.mjs";
+import { TEMPORARILY_HIDDEN_CONTENT_SLUGS, isTemporarilyHiddenSlug } from "./temporarily-hidden-slugs.mjs";
 
 export { canPlayVideoContent, FREE_UNLOCKED_VIDEO_LIMIT, isGatedVideoType, summarizeVideoAccess };
 
@@ -23,7 +24,7 @@ async function loadFreeUnlockedVideoIds() {
   if (canUseDemoData() || !hasBackendConfiguration()) {
     const ids = new Set(
       featuredContent
-        .filter((item) => isGatedVideoType(item.contentType))
+        .filter((item) => isGatedVideoType(item.contentType) && !isTemporarilyHiddenSlug(item.slug))
         .slice(0, FREE_UNLOCKED_VIDEO_LIMIT)
         .map((item) => item.id || `slug:${item.slug}`),
     );
@@ -37,12 +38,13 @@ async function loadFreeUnlockedVideoIds() {
      from public.content_items
      where status = 'published'
        and content_type in ('video', 'short')
+       and slug <> all($2::text[])
      order by is_featured desc,
               publish_at desc nulls last,
               created_at desc,
               id asc
      limit $1`,
-    [FREE_UNLOCKED_VIDEO_LIMIT],
+    [FREE_UNLOCKED_VIDEO_LIMIT, [...TEMPORARILY_HIDDEN_CONTENT_SLUGS]],
   );
   const ids = new Set(result.rows.map((row) => String(row.id)));
   freeUnlockedCache = { at: now, ids };
@@ -87,6 +89,7 @@ export async function annotateCatalogueAccess(items) {
     return {
       ...item,
       lockedForViewer,
+      viewerSignedIn: access.signedIn,
       accessLevel: lockedForViewer ? "premium" : item.accessLevel,
     };
   });

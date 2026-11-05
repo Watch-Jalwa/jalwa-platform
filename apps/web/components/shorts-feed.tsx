@@ -3,13 +3,17 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { SelfHostedPlayer } from "@/components/self-hosted-player";
+import { lockedContentHref, lockedContentPrimaryLabel } from "@/lib/catalogue/locked-content-cta.mjs";
 import type { CatalogueItem } from "@/lib/catalogue/types";
 
 function ShortCard({ item }: { item: CatalogueItem }) {
   const ref = useRef<HTMLElement>(null);
   // Fail closed: only the free unlocked set (lockedForViewer === false) may embed.
   const playbackAllowed = item.lockedForViewer === false;
+  const signedIn = Boolean(item.viewerSignedIn);
   const isYouTube = playbackAllowed && item.playback?.provider === "youtube" && item.playback.embedUrl;
+  const lockedHref = lockedContentHref(item.slug, signedIn);
+  const lockedLabel = lockedContentPrimaryLabel(signedIn);
 
   useEffect(() => {
     const node = ref.current;
@@ -31,10 +35,14 @@ function ShortCard({ item }: { item: CatalogueItem }) {
       <div className="short-player">
         {!playbackAllowed ? (
           <div className="player-placeholder">
-            <span className="eyebrow">Premium</span>
-            <p>Free accounts can watch 10 videos. Subscribe to unlock more Shorts.</p>
-            <Link className="button button-primary" href={`/pricing?next=${encodeURIComponent(`/watch/${item.slug}`)}`}>
-              View Premium
+            <span className="eyebrow">{signedIn ? "Premium" : "Sign in"}</span>
+            <p>
+              {signedIn
+                ? "Free accounts can watch 10 videos. Subscribe to unlock more Shorts."
+                : "Sign in to watch. Premium unlocks videos beyond the free 10."}
+            </p>
+            <Link className="button button-primary" href={lockedHref}>
+              {lockedLabel}
             </Link>
           </div>
         ) : isYouTube ? (
@@ -53,11 +61,11 @@ function ShortCard({ item }: { item: CatalogueItem }) {
         )}
       </div>
       <div className="short-copy">
-        <span className="eyebrow">{playbackAllowed ? item.category : "Premium"}</span>
+        <span className="eyebrow">{playbackAllowed ? item.category : (signedIn ? "Premium" : "Sign in")}</span>
         <h2>{item.title}</h2>
         {item.description ? <p>{item.description}</p> : null}
-        <Link href={playbackAllowed ? `/watch/${item.slug}` : `/pricing?next=${encodeURIComponent(`/watch/${item.slug}`)}`}>
-          {playbackAllowed ? "Open details" : "Unlock with Premium"}
+        <Link href={playbackAllowed ? `/watch/${item.slug}` : lockedHref}>
+          {playbackAllowed ? "Open details" : (signedIn ? "Unlock with Premium" : "Sign in to watch")}
         </Link>
       </div>
     </article>
