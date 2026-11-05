@@ -1,0 +1,59 @@
+name: Jalwa final three-audio guest QA on latest shared demo release
+
+on:
+  push:
+    branches: ["ops/jalwa-audio-activation-20261105"]
+    paths:
+      - ".github/workflows/demo-audio-final-readonly-20261105.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-demo-three-audio-readonly-qa
+  cancel-in-progress: false
+
+jobs:
+  qa:
+    name: Guest audio QA ${{ matrix.slug }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        slug:
+          - huamei-bird-calling-cc0
+          - house-sparrow-tschilp-cc0
+          - abrasive-bird-debate-cc0
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      AUDIO_REPAIR_SLUG: ${{ matrix.slug }}
+      AUDIO_EXPECTED_SHA: 9d12f385ef033dbea9d936dd45389b6498aa06ce
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Verify exact live release on both domains
+        run: |
+          set -Eeuo pipefail
+          for domain in watch-jalwa.com jalwa-platform.codistan.org; do
+            curl -fsS --max-time 15 "https://$domain/api/health" |
+              jq -e --arg sha "$AUDIO_EXPECTED_SHA" '.status=="ready" and .version==$sha' >/dev/null
+            echo "FINAL_AUDIO_RELEASE_OK $domain"
+          done
+      - name: Install isolated Playwright Chromium
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/jalwa-audio-readonly"
+          npm install --prefix "$RUNNER_TEMP/jalwa-audio-readonly" --no-save --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          "$RUNNER_TEMP/jalwa-audio-readonly/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Real guest audio playback and media authorization tests on both domains
+        env:
+          JALWA_PLAYWRIGHT_PATH: ${{ runner.temp }}/jalwa-audio-readonly/node_modules/@playwright/test
+        run: node qa/demo-audio-playback-20261105.cjs
+      - name: Preserve exact revision media acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jalwa-three-audio-final-${{ matrix.slug }}-${{ github.sha }}
+          path: demo-audio-browser-evidence/
+          retention-days: 30
+          if-no-files-found: warn
