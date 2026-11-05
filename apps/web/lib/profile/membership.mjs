@@ -5,7 +5,7 @@ import { databasePool } from "@/lib/database/pool";
  */
 export async function getUserMembership(userId) {
   const subscription = await databasePool.query(
-    `select s.id, s.status, s.current_period_end, p.name as plan_name, p.code as plan_code
+    `select s.id, s.status, s.current_period_end, s.price_snapshot, p.name as plan_name, p.code as plan_code
      from public.subscriptions s
      left join public.plans p on p.id = s.plan_id
      where s.user_id = $1
@@ -39,8 +39,12 @@ export async function getUserMembership(userId) {
   const subActive = sub && ["active", "past_due", "cancel_at_period_end"].includes(sub.status);
 
   if (subActive || premiumActive) {
+    const snapshotCode = typeof sub?.price_snapshot === "object" && sub?.price_snapshot
+      ? String((sub.price_snapshot).code ?? "")
+      : "";
+    const monthly = snapshotCode.includes("monthly") || String(sub?.plan_code ?? "") === "premium";
     return {
-      planName: sub?.plan_name || "Jalwa Premium",
+      planName: monthly ? "Monthly" : (sub?.plan_name || "Jalwa Premium"),
       planCode: sub?.plan_code || "premium",
       status: subActive ? sub.status : "active",
       currentPeriodEnd: sub?.current_period_end || entitlement.rows[0]?.ends_at || null,

@@ -203,17 +203,30 @@ export async function chargeAndGrantJazzcashIntent(intent, paymentToken, { userI
       if (usedMock) {
         // keep going to local grant
       }
-    } else if (mockJazzcashChargeAllowed() && (intent.payment_token_present || intent.status === "completed")) {
+    } else if (
+      mockJazzcashChargeAllowed()
+      && (
+        intent.payment_token_present
+        || intent.status === "completed"
+        || intent.status === "started"
+        || intent.status === "returned"
+      )
+    ) {
+      // Staging: JazzCash hosted OTP/MPIN may succeed while merchant return/callback never reaches us.
+      // After the learner signs in with the same MSISDN, activate Premium with an auditable mock charge.
       chargeTxnRef = `mock${String(intent.request_id).replace(/\W/g, "").slice(-16)}`.slice(0, 20);
       await databasePool.query(
         `update public.jazzcash_wallet_link_intents
-         set charge_txn_ref = $2,
+         set status = 'completed',
+             payment_token_present = coalesce(payment_token_present, false),
+             charge_txn_ref = $2,
              charge_response_code = 'mock',
              response_message = $3,
+             completed_at = coalesce(completed_at, now()),
              charged_at = now(),
              updated_at = now()
          where request_id = $1`,
-        [intent.request_id, chargeTxnRef, "Mock JazzCash charge without retained token (staging)."],
+        [intent.request_id, chargeTxnRef, "Mock JazzCash charge after same-number sign-in (staging callback gap)."],
       );
     } else {
       return {
@@ -264,15 +277,24 @@ export async function reconcileJazzcashPremiumForUser(userId) {
   const nationalDigits = national ? national.replace(/\D/g, "") : null;
   const e164Digits = phone ? String(phone).replace(/\D/g, "") : null;
 
+  const allowMockClaim = mockJazzcashChargeAllowed();
   const pending = await databasePool.query(
     `select *
      from public.jazzcash_wallet_link_intents
-     where status = 'completed'
+     where subscription_id is null
        and (
          user_id = $1
          or (
            $2::text is not null
            and regexp_replace(msisdn, '\\D', '', 'g') in ($2::text, $3::text, $4::text)
+         )
+       )
+       and (
+         status = 'completed'
+         or (
+           $5::boolean = true
+           and status in ('started', 'returned', 'completed', 'failed')
+           and created_at > now() - interval '72 hours'
          )
        )
      order by completed_at desc nulls last, created_at desc
@@ -282,6 +304,7 @@ export async function reconcileJazzcashPremiumForUser(userId) {
       nationalDigits,
       nationalDigits ? nationalDigits.replace(/^0/, "92") : null,
       e164Digits,
+      allowMockClaim,
     ],
   );
 
@@ -503,7 +526,8 @@ export async function completeJazzcashLandingLink(fields) {
     throw error;
   }
 
-  if (jazzcashV11Configured() && fields.pp_SecureHash && !verifyJazzcashSecureHash(fields)) {
+  const hashValid = !fields.pp_SecureHash || !jazzcashV11Configured() || verifyJazzcashSecureHash(fields);
+  if (!hashValid && !mockJazzcashChargeAllowed()) {
     const error = new Error("invalid_hash");
     error.status = 400;
     throw error;

@@ -33,8 +33,16 @@ async function handle(request: Request) {
       const result = await completeJazzcashLandingLink(fields);
       ok = result.ok;
       signInHint = result.signInHint ?? "";
+      if (!ok) {
+        console.error("jazzcash_callback_not_ok", {
+          requestId: result.requestId,
+          status: result.status,
+          message: result.message,
+        });
+      }
     }
-  } catch {
+  } catch (error) {
+    console.error("jazzcash_callback_failed", error instanceof Error ? error.message : error);
     ok = false;
   }
 
