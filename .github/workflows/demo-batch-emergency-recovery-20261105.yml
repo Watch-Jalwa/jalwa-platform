@@ -1,0 +1,128 @@
+name: Emergency Jalwa demo batch recovery and playback pointer rollback
+
+on:
+  push:
+    branches: ["ops/jalwa-demo-source-reencode-pilot-20261105"]
+    paths: [".github/workflows/demo-batch-emergency-recovery-20261105.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-demo-aspect-v2-emergency-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Configure pinned authorized SSH
+        run: |
+          set -Eeuo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          for k in HOST USER APP_DIR KNOWN_HOSTS SSH_KEY; do test -n "${!k:-}"; done
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+      - name: Retry SSH to the existing demo server, never alter host credentials
+        id: ssh
+        run: |
+          set -Eeuo pipefail
+          ready=false
+          for attempt in {1..12}; do
+            if timeout 13s ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=7 -o ConnectionAttempts=1 -o ServerAliveInterval=5 -o ServerAliveCountMax=2 -i ~/.ssh/jalwa "$USER@$HOST" true; then
+              ready=true;break
+            fi
+            echo "SSH demo recovery attempt $attempt/12 unavailable"
+            sleep 8
+          done
+          test "$ready" = true || { echo "Demo host unavailable over pinned SSH; server-console recovery required" >&2; exit 1; }
+      - name: Capture minimal resource and Jalwa container health diagnostics
+        if: steps.ssh.outcome == 'success'
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=7 -o ServerAliveInterval=5 -i ~/.ssh/jalwa "$USER@$HOST" 'bash -s' <<'REMOTE' | tee demo-emergency-resource-check.log
+          set -Eeuo pipefail
+          date -u
+          uptime
+          df -h /
+          free -m
+          docker ps --format '{{.Names}} {{.Status}}' | grep -E '^jalwa-' || true
+          docker inspect -f 'web-running={{.State.Running}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' jalwa-web-staging || true
+          docker inspect -f 'worker-running={{.State.Running}} health={{if .State.Health}}{{.State.Health.Status}}{{else}}n/a{{end}}' jalwa-worker-staging || true
+          REMOTE
+      - name: Stop ONLY an orphaned demo batch ffmpeg child, if present
+        if: steps.ssh.outcome == 'success'
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=7 -o ServerAliveInterval=5 -i ~/.ssh/jalwa "$USER@$HOST" \
+            'docker exec -i jalwa-worker-staging node --input-type=commonjs -' <<'NODE'
+          const fs=require('node:fs');
+          let killed=0;
+          for(const n of fs.readdirSync('/proc')) {
+            if(!/^\d+$/.test(n))continue;
+            let cmd='';
+            try{cmd=fs.readFileSync('/proc/'+n+'/cmdline','utf8').replace(/\0/g,' ');}catch{continue}
+            if(cmd.includes('ffmpeg') && cmd.includes('/tmp/jalwa-demo-batch-')) {
+              try {process.kill(Number(n),'SIGTERM');killed++;} catch {}
+            }
+          }
+          console.log('Orphan demo batch ffmpeg processes terminated: '+killed);
+          NODE
+      - name: Restore every affected batch playback pointer from its audited original
+        id: rollback
+        if: steps.ssh.outcome == 'success'
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=7 -o ServerAliveInterval=5 -i ~/.ssh/jalwa "$USER@$HOST" \
+            'docker exec -i -e DEMO_BATCH_MODE=rollback jalwa-worker-staging node --input-type=module -' \
+            < scripts/demo-batch-reencode-20261105.mjs | tee demo-emergency-rollback.log
+          grep -F 'BATCH_ROLLBACK_SUMMARY ' demo-emergency-rollback.log
+      - name: Check web container and restore service if stopped
+        if: steps.ssh.outcome == 'success'
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=7 -o ServerAliveInterval=5 -i ~/.ssh/jalwa "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          web_running="$(docker inspect -f '{{.State.Running}}' jalwa-web-staging)"
+          if [ "$web_running" != true ]; then
+            echo 'Starting existing demo web container (no image change)'
+            docker start jalwa-web-staging
+          fi
+          REMOTE
+      - name: Verify demo health on both public hostnames after rollback
+        run: |
+          set -Eeuo pipefail
+          for site in watch-jalwa.com jalwa-platform.codistan.org; do
+            ready=false
+            for attempt in {1..10}; do
+              if curl -fsS --max-time 7 "https://$site/api/health" | jq -e '.status=="ready"' >/dev/null 2>&1; then
+                ready=true;break
+              fi
+              sleep 5
+            done
+            if [ "$ready" != true ]; then echo "Demo health did not recover: $site" >&2;exit 1;fi
+            echo "DEMO_HEALTH_RECOVERED $site"
+          done
+      - name: Retain emergency diagnostics and rollback evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jalwa-demo-emergency-recovery-${{ github.sha }}
+          path: |
+            demo-emergency-resource-check.log
+            demo-emergency-rollback.log
+          retention-days: 30
+          if-no-files-found: warn
