@@ -1,0 +1,4 @@
+Jalwa existing internal-demo: permitted activation of exactly three already rights-approved bird audio sources, on deployed SHA b459aa21f1c9aff1c0bce5d1f86b48d2b137f1a2.
+Workflow: .github/workflows/demo-audio-activation-20261105.yml
+Source: existing immutable originals in private R2. No YouTube, hold, live billing, unrelated content or production changes.
+Activated after successful deployment workflow 41995793329 on 2026-11-05.
