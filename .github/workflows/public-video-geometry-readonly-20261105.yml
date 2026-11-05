@@ -1,0 +1,38 @@
+name: Jalwa read-only public video geometry report
+
+on:
+  push:
+    branches:
+      - diagnostic/jalwa-public-video-geometry-20261105
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: 22
+          package-manager-cache: false
+      - name: Install isolated Playwright browser and dependencies
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/jalwa-geometry-browser"
+          npm install --prefix "$RUNNER_TEMP/jalwa-geometry-browser" --no-save --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          "$RUNNER_TEMP/jalwa-geometry-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Measure guest video geometry, no logins or writes
+        env:
+          JALWA_PLAYWRIGHT_PATH: ${{ runner.temp }}/jalwa-geometry-browser/node_modules/@playwright/test
+        run: node qa/public-video-geometry-readonly-20261105.cjs
+      - name: Retain per-video screenshot and sanitized geometry evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jalwa-video-geometry-public-readonly-${{ github.sha }}
+          path: public-video-geometry-evidence/
+          retention-days: 14
+          if-no-files-found: warn
