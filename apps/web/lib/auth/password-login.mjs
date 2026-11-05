@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { headers } from "next/headers";
 import { auth } from "@/lib/auth";
 import { databasePool } from "@/lib/database/pool";
+import { reconcileJazzcashPremiumForUser } from "@/lib/payments/jazzcash-landing-billing.mjs";
 import { normalizePakistaniMobile, validateDisplayName } from "./identity.mjs";
 import { hashPassword, validateLearnerPassword, verifyPassword } from "./password-hash.mjs";
 
@@ -117,6 +118,7 @@ export async function passwordLogin({ displayName, phone, password }) {
       // Ensure credential row uses accountId = user.id for future sign-ins.
       const hash = await hashPassword(password);
       await ensureCredentialPassword(userId, hash);
+      await reconcileJazzcashPremiumForUser(userId).catch(() => undefined);
     }
 
     // signUpEmail may already have set the session cookie.
@@ -181,6 +183,8 @@ export async function passwordLogin({ displayName, phone, password }) {
       message: "Mobile number or password is incorrect.",
     };
   }
+
+  await reconcileJazzcashPremiumForUser(user.id).catch(() => undefined);
 
   return {
     ok: true,

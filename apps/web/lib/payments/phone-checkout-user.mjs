@@ -57,7 +57,7 @@ export async function resolveOrCreatePhoneLearnerForCheckout(msisdn) {
   await databasePool.query(
     `insert into public."account" (id, "accountId", "providerId", "userId", "createdAt", "updatedAt")
      values ($1, $2, 'credential', $3, now(), now())`,
-    [randomUUID(), email, userId],
+    [randomUUID(), userId, userId],
   );
   await databasePool.query(
     `insert into public.profiles (id, display_name, preferred_language)

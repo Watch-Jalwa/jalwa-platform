@@ -25,9 +25,100 @@ export function jazzcashReturnUrl() {
   );
 }
 
+export function jazzcashHost() {
+  return (process.env.JAZZCASH_HOST ?? DEFAULT_HOST).replace(/\/$/, "");
+}
+
 export function jazzcashActionUrl() {
-  const host = (process.env.JAZZCASH_HOST ?? DEFAULT_HOST).replace(/\/$/, "");
-  return `${host}${LINK_WALLET_PATH}`;
+  return `${jazzcashHost()}${LINK_WALLET_PATH}`;
+}
+
+export function jazzcashPayViaTokenUrl() {
+  return `${jazzcashHost()}/payment-orchestrator/api/v4/rest/payments/m-wallet`;
+}
+
+/** Asia/Karachi stamp yyyyMMddHHmmss for JazzCash txn fields. */
+export function jazzcashPktDateTime(date = new Date()) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Karachi",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(date);
+  const get = (type) => parts.find((part) => part.type === type)?.value ?? "00";
+  return `${get("year")}${get("month")}${get("day")}${get("hour")}${get("minute")}${get("second")}`;
+}
+
+/** PayViaToken txn ref: Goo + PKT stamp + hex, max 20 chars (SkillUp). */
+export function newJazzcashPayTxnRef() {
+  const stamp = jazzcashPktDateTime().slice(-12);
+  const hex = randomBytes(1).toString("hex");
+  return `Goo${stamp}${hex}`.slice(0, 20);
+}
+
+/**
+ * Charge a linked wallet token (server-side). Never send MPIN/CNIC.
+ * amountMinor is PKR paisa string convention used by JazzCash (59900 = Rs 599.00).
+ */
+export async function payViaJazzcashToken({
+  paymentToken,
+  amountMinor,
+  billReference,
+  description = "Jalwa Premium",
+  txnRefNo,
+}) {
+  const merchantId = requiredEnv("JAZZCASH_MERCHANT_ID");
+  const password = requiredEnv("JAZZCASH_PASSWORD");
+  const token = String(paymentToken ?? "").trim();
+  if (!token) {
+    const error = new Error("missing_payment_token");
+    error.status = 400;
+    throw error;
+  }
+  const amount = String(Math.trunc(Number(amountMinor)));
+  if (!/^[1-9][0-9]*$/.test(amount)) {
+    const error = new Error("invalid_amount");
+    error.status = 400;
+    throw error;
+  }
+
+  const txnDateTime = jazzcashPktDateTime();
+  const expiry = jazzcashPktDateTime(new Date(Date.now() + 60 * 60 * 1000));
+  const resolvedTxnRef = String(txnRefNo ?? newJazzcashPayTxnRef()).slice(0, 20);
+  const fields = {
+    pp_MerchantID: merchantId,
+    pp_Password: password,
+    pp_PaymentToken: token,
+    pp_TxnRefNo: resolvedTxnRef,
+    pp_Amount: amount,
+    pp_BillReference: String(billReference ?? `Jalwa${amount.slice(-8)}`).slice(0, 20),
+    pp_Description: String(description).slice(0, 200),
+    pp_TxnCurrency: "PKR",
+    pp_TxnDateTime: txnDateTime,
+    pp_TxnExpiryDateTime: expiry,
+  };
+  fields.pp_SecureHash = buildJazzcashSecureHash(fields);
+
+  const response = await fetch(jazzcashPayViaTokenUrl(), {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(fields),
+    signal: AbortSignal.timeout(Number(process.env.JAZZCASH_TIMEOUT_MS ?? 30000)),
+  });
+  const payload = await response.json().catch(() => ({}));
+  const responseCode = String(payload.pp_ResponseCode ?? payload.responseCode ?? "").trim();
+  const ok = response.ok && ["000", "121", "200", "0"].includes(responseCode);
+  return {
+    ok,
+    responseCode,
+    responseMessage: String(payload.pp_ResponseMessage ?? payload.responseMessage ?? "").slice(0, 200),
+    txnRefNo: fields.pp_TxnRefNo,
+    payload,
+  };
 }
 
 /**

@@ -11,6 +11,28 @@ export function startJazzcashLandingLink(input: {
   fields: Record<string, string>;
 }>;
 
+export function grantPremiumForJazzcashIntent(
+  intent: Record<string, unknown>,
+  options?: { chargeTxnRef?: string; providerRef?: string },
+): Promise<{ subscriptionId: string; alreadyGranted: boolean; endsAt?: string; planName?: string }>;
+
+export function chargeAndGrantJazzcashIntent(
+  intent: Record<string, unknown>,
+  paymentToken?: string | null,
+): Promise<{
+  ok: boolean;
+  status?: string;
+  message?: string;
+  alreadyGranted?: boolean;
+  subscriptionId?: string;
+  planCode?: string;
+  planName?: string;
+}>;
+
+export function reconcileJazzcashPremiumForUser(
+  userId: string,
+): Promise<{ attempted: number; granted: number }>;
+
 export function completeJazzcashLandingLink(fields: Record<string, string>): Promise<{
   ok: boolean;
   requestId: string;
@@ -18,4 +40,5 @@ export function completeJazzcashLandingLink(fields: Record<string, string>): Pro
   message: string;
   signInHint?: string;
   planCode?: string;
+  subscriptionId?: string;
 }>;
