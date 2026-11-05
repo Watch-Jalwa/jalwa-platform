@@ -56,7 +56,7 @@ export default async function WatchPage({ params }: { params: Params }) {
   } else if (isDrm) {
     player = <DrmPlayer contentId={item.id!} poster={item.thumbnailUrl} title={item.title} nextPath={`/watch/${item.slug}`} />;
   } else if (isSelfHosted) {
-    player = <SelfHostedPlayer contentId={item.id!} poster={item.thumbnailUrl} title={item.title} />;
+    player = <SelfHostedPlayer contentId={item.id!} poster={item.thumbnailUrl} title={item.title} audioOnly={item.contentType === "audio"} />;
   } else {
     player = <div className="player-placeholder"><span className="eyebrow">{item.accessLevel === "premium" ? "Premium" : "Free"}</span><p>Playback source is awaiting media processing, rights approval or final publication.</p></div>;
   }

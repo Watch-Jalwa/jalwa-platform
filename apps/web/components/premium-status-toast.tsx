@@ -14,20 +14,24 @@ export function PremiumStatusToast() {
 
   useEffect(() => {
     if (status !== "enabled" && status !== "failed") return;
-
-    setToast({
-      kind: status === "enabled" ? "ok" : "error",
-      message:
-        status === "enabled"
-          ? "Premium features enabled"
-          : "JazzCash linking did not complete. Try Subscribe Now again.",
+    // Queue the notification after the effect: avoid a synchronous render cascade.
+    let active = true;
+    queueMicrotask(() => {
+      if (!active) return;
+      setToast({
+        kind: status === "enabled" ? "ok" : "error",
+        message:
+          status === "enabled"
+            ? "Premium features enabled"
+            : "JazzCash linking did not complete. Try Subscribe Now again.",
+      });
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("premium");
+      params.delete("msisdn");
+      const next = pathname + (params.toString() ? "?" + params.toString() : "");
+      router.replace(next, { scroll: false });
     });
-
-    const params = new URLSearchParams(searchParams.toString());
-    params.delete("premium");
-    params.delete("msisdn");
-    const next = params.toString() ? `${pathname}?${params}` : pathname;
-    router.replace(next, { scroll: false });
+    return () => { active = false; };
   }, [status, pathname, router, searchParams]);
 
   useEffect(() => {

@@ -68,19 +68,23 @@ try {
   await page.waitForURL(/\/explore\?q=skills/);
 
   await page.goto("/login", { waitUntil: "networkidle" });
-  await page.getByRole("heading", { level: 1, name: /Sign in or create account/i }).waitFor();
-  const identity = page.getByLabel(/Email or mobile number/i);
+  await page.getByRole("heading", { level: 1, name: /^Sign in$/i }).waitFor();
+  const identity = page.getByLabel(/^Mobile number$/i);
   assert.equal(await identity.getAttribute("required"), "");
   assert.equal(await identity.evaluate((element) => element.checkValidity()), false);
-  await page.getByLabel(/Full name/i).waitFor();
-  await page.getByRole("button", { name: /^Continue$/i }).waitFor();
+  await page.getByLabel(/^Password$/i).waitFor();
+  await page.getByRole("button", { name: /^Sign in$/i }).waitFor();
   await assertNoHorizontalOverflow(page, "desktop login");
 
   await page.goto("/signup", { waitUntil: "networkidle" });
-  assert.equal(new URL(page.url()).pathname, "/login");
-  await page.getByLabel(/Full name/i).fill("Launch Test");
-  await page.getByLabel(/Email or mobile number/i).fill("launch@example.com");
-  await page.getByRole("button", { name: /^Continue$/i }).waitFor();
+  assert.equal(new URL(page.url()).pathname, "/signup");
+  await page.getByRole("heading", { level: 1, name: /^Create account$/i }).waitFor();
+  await page.getByLabel(/^Full name$/i).fill("Launch Test");
+  await page.getByLabel(/^Mobile number$/i).fill("03001234567");
+  await page.getByLabel(/^Password$/i).fill("Launch@123");
+  await page.getByLabel(/^Confirm password$/i).fill("Launch@123");
+  await page.getByRole("button", { name: /^Create account$/i }).waitFor();
+  await assertNoHorizontalOverflow(page, "desktop signup");
 
   for (const path of ["/legal/privacy", "/legal/terms"]) {
     await page.goto(path, { waitUntil: "networkidle" });
@@ -136,7 +140,7 @@ try {
   assert.equal(await profileLink.evaluate((element) => element === document.activeElement), true);
 
   await mobilePage.goto("/login", { waitUntil: "networkidle" });
-  await mobilePage.getByRole("textbox", { name: /Email/i }).waitFor();
+  await mobilePage.getByLabel(/^Mobile number$/i).waitFor();
   await assertNoHorizontalOverflow(mobilePage, "mobile login");
   await mobile.close();
 

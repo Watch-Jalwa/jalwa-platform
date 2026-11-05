@@ -40,3 +40,28 @@
 @media(min-width:720px){.premium-status-toast{bottom:2rem}}
 .premium-status-toast-error{border-color:rgba(248,113,113,.55);background:#1c1010;color:#fecaca}
 @keyframes premium-toast-in{from{opacity:0;transform:translate(-50%,.6rem)}to{opacity:1;transform:translate(-50%,0)}}
+
+/* Audio-only content retains the signed media gateway while using native audio controls.
+   Do not apply video aspect-ratio/height rules to an audio recording. */
+.player-shell--self-hosted .self-hosted-media-frame--audio {
+  aspect-ratio: auto;
+  display: flex;
+  align-items: center;
+  min-height: 8rem;
+  padding: 1.25rem;
+}
+.self-hosted-audio {
+  display: grid;
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+}
+.self-hosted-audio-label {
+  margin: 0;
+  font-weight: 600;
+}
+.player-shell--self-hosted .self-hosted-audio audio {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}
