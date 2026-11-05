@@ -45,6 +45,74 @@ button, input { font: inherit; }
 .hero h1 { margin: .5rem 0 1rem; font-size: clamp(2.1rem, 8vw, 4.7rem); line-height: .98; letter-spacing: -.055em; }
 .hero p { max-width: 40rem; color: #d4d4d8; font-size: 1.05rem; line-height: 1.7; }
 .hero-actions { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.25rem; }
+.tamasha-premium-banner {
+  display: grid;
+  gap: 1.25rem;
+  align-items: center;
+  margin: 1.5rem 0 0.5rem;
+  padding: 1.35rem 1.4rem;
+  border-radius: 1.35rem;
+  background: linear-gradient(105deg, #1e1b4b 0%, #1a1625 48%, #1f1f1f 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.tamasha-premium-kicker {
+  display: inline-block;
+  margin-bottom: 0.45rem;
+  color: #67e8f9;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.tamasha-premium-copy h2 {
+  margin: 0 0 0.45rem;
+  font-size: clamp(1.35rem, 3.5vw, 1.85rem);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+.tamasha-premium-copy p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+.tamasha-premium-cta {
+  display: grid;
+  justify-items: start;
+  gap: 0.2rem;
+}
+.tamasha-premium-cta strong {
+  font-size: clamp(1.6rem, 4vw, 2rem);
+  letter-spacing: -0.03em;
+}
+.tamasha-premium-cta small {
+  color: #c4b5fd;
+  font-size: 0.85rem;
+}
+.tamasha-premium-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 0.65rem;
+  min-height: 2.6rem;
+  padding: 0.55rem 1.35rem;
+  border-radius: 999px;
+  background: #fbbf24;
+  color: #111;
+  font-weight: 800;
+  text-decoration: none;
+}
+@media (min-width: 720px) {
+  .tamasha-premium-banner {
+    grid-template-columns: 1fr auto;
+    gap: 2rem;
+    padding: 1.55rem 1.75rem;
+  }
+  .tamasha-premium-cta {
+    justify-items: end;
+    text-align: right;
+  }
+}
 .button { display: inline-flex; justify-content: center; align-items: center; min-height: 2.8rem; padding: .7rem 1rem; border-radius: 999px; border: 1px solid var(--border); font-weight: 750; }
 .button-primary { background: var(--brand); color: #111; border-color: transparent; }
 .button-primary:hover { background: var(--brand-strong); }
@@ -71,6 +139,13 @@ button, input { font: inherit; }
 .bottom-nav span { font-size: 1.15rem; }
 .form-shell { width: min(100%, 28rem); margin: 2rem auto; padding: 1.25rem; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 .form-shell h1 { margin-top: 0; }
+.auth-methods .form-shell,
+.signup-form.form-shell,
+.auth-journey .form-shell {
+  width: min(100%, 40rem);
+  max-width: 40rem;
+  padding: 1.55rem 1.65rem 1.7rem;
+}
 .form-field { display: grid; gap: .4rem; margin: 1rem 0; }
 .form-field input { width: 100%; min-height: 3rem; padding: .75rem; color: var(--text); background: #0f0f12; border: 1px solid var(--border); border-radius: .8rem; }
 .form-message { min-height: 1.4rem; color: #fca5a5; }

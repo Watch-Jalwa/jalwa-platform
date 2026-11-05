@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ContentCard } from "@/components/content-card";
+import { FREE_UNLOCKED_VIDEO_LIMIT, summarizeVideoAccess } from "@/lib/catalogue/free-tier-access.mjs";
 import { getCategories, searchCatalogue } from "@/lib/catalogue/repository";
 
 export const metadata = { title: "Explore" };
@@ -8,7 +9,8 @@ type SearchParams = Promise<{ q?: string; category?: string }>;
 
 export default async function ExplorePage({ searchParams }: { searchParams: SearchParams }) {
   const { q = "", category = "" } = await searchParams;
-  const [categories, content] = await Promise.all([getCategories(), searchCatalogue({ query: q, category })]);
+  const [categories, content] = await Promise.all([getCategories(), searchCatalogue({ query: q, category, limit: 100 })]);
+  const access = summarizeVideoAccess(content);
   return (
     <div className="page-shell">
       <div className="section-heading"><div><span className="eyebrow">Catalogue</span><h1>Explore Jalwa</h1></div></div>
@@ -25,6 +27,12 @@ export default async function ExplorePage({ searchParams }: { searchParams: Sear
         })}
       </nav>
       <p className="result-summary">{content.length} result{content.length === 1 ? "" : "s"}{q ? ` for “${q}”` : ""}</p>
+      {access.totalVideos ? (
+        <p className="result-summary">
+          Free plan: {Math.min(access.freeUnlocked, FREE_UNLOCKED_VIDEO_LIMIT)} of {access.totalVideos} videos playable.
+          {access.lockedForPremium ? ` ${access.lockedForPremium} locked for Tamasha Premium / Monthly.` : ""}
+        </p>
+      ) : null}
       {content.length ? <div className="content-grid">{content.map((item) => <ContentCard item={item} key={item.slug} />)}</div> : <div className="empty-state"><h2>No matching content</h2><p>Try a broader term or another category.</p></div>}
     </div>
   );

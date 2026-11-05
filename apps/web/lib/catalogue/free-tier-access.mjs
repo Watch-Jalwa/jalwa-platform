@@ -2,9 +2,14 @@ import { databasePool } from "@/lib/database/pool";
 import { createClient } from "@/lib/database/server";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import { featuredContent } from "./demo-data";
-import { canPlayVideoContent, FREE_UNLOCKED_VIDEO_LIMIT, isGatedVideoType } from "./free-tier-access-core.mjs";
+import {
+  canPlayVideoContent,
+  FREE_UNLOCKED_VIDEO_LIMIT,
+  isGatedVideoType,
+  summarizeVideoAccess,
+} from "./free-tier-access-core.mjs";
 
-export { canPlayVideoContent, FREE_UNLOCKED_VIDEO_LIMIT, isGatedVideoType };
+export { canPlayVideoContent, FREE_UNLOCKED_VIDEO_LIMIT, isGatedVideoType, summarizeVideoAccess };
 
 let freeUnlockedCache = { at: 0, ids: /** @type {Set<string>} */ (new Set()) };
 const FREE_UNLOCKED_CACHE_MS = 30_000;
@@ -26,12 +31,16 @@ async function loadFreeUnlockedVideoIds() {
     return ids;
   }
 
+  // Same ranking as public browse so the Free 10 are the ones learners actually see first.
   const result = await databasePool.query(
     `select id::text as id
      from public.content_items
      where status = 'published'
        and content_type in ('video', 'short')
-     order by coalesce(publish_at, created_at) asc, id asc
+     order by is_featured desc,
+              publish_at desc nulls last,
+              created_at desc,
+              id asc
      limit $1`,
     [FREE_UNLOCKED_VIDEO_LIMIT],
   );

@@ -1,9 +1,34 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { canPlayVideoContent, FREE_UNLOCKED_VIDEO_LIMIT } from "../lib/catalogue/free-tier-access-core.mjs";
+import {
+  canPlayVideoContent,
+  FREE_UNLOCKED_VIDEO_LIMIT,
+  summarizeVideoAccess,
+} from "../lib/catalogue/free-tier-access-core.mjs";
+import { readFile } from "node:fs/promises";
 
 test("free unlocked video limit is 10", () => {
   assert.equal(FREE_UNLOCKED_VIDEO_LIMIT, 10);
+});
+
+test("free unlocked catalogue query stays capped at 10 featured/newest videos", async () => {
+  const source = await readFile(new URL("../lib/catalogue/free-tier-access.mjs", import.meta.url), "utf8");
+  assert.match(source, /FREE_UNLOCKED_VIDEO_LIMIT/);
+  assert.match(source, /is_featured desc/);
+  assert.match(source, /limit \$1/);
+});
+
+test("summarizeVideoAccess counts free vs premium-locked videos", () => {
+  const summary = summarizeVideoAccess([
+    { contentType: "video", lockedForViewer: false },
+    { contentType: "video", lockedForViewer: false },
+    { contentType: "short", lockedForViewer: true },
+    { contentType: "article", lockedForViewer: false },
+  ]);
+  assert.equal(summary.totalVideos, 3);
+  assert.equal(summary.freeUnlocked, 2);
+  assert.equal(summary.lockedForPremium, 1);
+  assert.equal(summary.freeLimit, 10);
 });
 
 test("premium signed-in viewers can play any video", () => {

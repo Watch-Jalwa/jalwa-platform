@@ -15,3 +15,12 @@ export function canPlayVideoContent(
   input: { contentId?: string | null; contentType: ContentType | string },
 ): boolean;
 export function annotateCatalogueAccess(items: CatalogueItem[]): Promise<CatalogueItem[]>;
+export function summarizeVideoAccess(
+  items: Array<Pick<CatalogueItem, "contentType" | "lockedForViewer">>,
+  freeLimit?: number,
+): {
+  totalVideos: number;
+  freeUnlocked: number;
+  lockedForPremium: number;
+  freeLimit: number;
+};

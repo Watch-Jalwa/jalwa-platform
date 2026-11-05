@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { ContentCard } from "@/components/content-card";
+import { FREE_UNLOCKED_VIDEO_LIMIT, summarizeVideoAccess } from "@/lib/catalogue/free-tier-access.mjs";
 import { getCategories, searchCatalogue } from "@/lib/catalogue/repository";
 
 export const dynamic = "force-dynamic";
@@ -7,8 +8,21 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   let categories: Awaited<ReturnType<typeof getCategories>> = [];
   let featuredContent: Awaited<ReturnType<typeof searchCatalogue>> = [];
+  let accessSummary = {
+    totalVideos: 0,
+    freeUnlocked: 0,
+    lockedForPremium: 0,
+    freeLimit: FREE_UNLOCKED_VIDEO_LIMIT,
+  };
   try {
-    [categories, featuredContent] = await Promise.all([getCategories(), searchCatalogue({ limit: 8 })]);
+    const [nextCategories, nextFeatured, catalogueWindow] = await Promise.all([
+      getCategories(),
+      searchCatalogue({ limit: 8 }),
+      searchCatalogue({ limit: 100 }),
+    ]);
+    categories = nextCategories;
+    featuredContent = nextFeatured;
+    accessSummary = summarizeVideoAccess(catalogueWindow);
   } catch {
     // Keep home reachable for post-JazzCash toast even when catalogue DB is offline locally.
   }
@@ -24,6 +38,24 @@ export default async function HomePage() {
             <Link className="button button-secondary" href="/signup">Signup</Link>
             <Link className="button button-secondary" href="/login">Sign in</Link>
           </div>
+        </div>
+      </section>
+
+      <section className="tamasha-premium-banner" aria-labelledby="tamasha-premium-title">
+        <div className="tamasha-premium-copy">
+          <span className="tamasha-premium-kicker">Tamasha Premium</span>
+          <h2 id="tamasha-premium-title">Full videos access.</h2>
+          <p>
+            Full catalogue access · {accessSummary.freeLimit} free videos ·{" "}
+            {accessSummary.lockedForPremium > 0
+              ? `${accessSummary.lockedForPremium} more unlocked with Monthly`
+              : "Premium challenges · Reward eligibility"}
+          </p>
+        </div>
+        <div className="tamasha-premium-cta">
+          <strong>Rs 599</strong>
+          <small>monthly JazzCash</small>
+          <Link className="tamasha-premium-button" href="/pricing">See plans</Link>
         </div>
       </section>
 

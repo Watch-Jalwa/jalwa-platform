@@ -14,7 +14,7 @@ function asTimestamp(value: unknown) {
 function asNumber(value: unknown) { return typeof value === "number" ? value : null; }
 function mapSearchRow(row: Record<string, unknown>): CatalogueItem {
   return {
-    id: asString(row.id) ?? undefined,
+    id: row.id == null ? undefined : String(row.id),
     slug: asString(row.slug) ?? "unavailable",
     title: asString(row.title) ?? "Untitled",
     titleUrdu: asString(row.title_ur),
