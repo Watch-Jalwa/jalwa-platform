@@ -1,0 +1,26 @@
+name: Jalwa demo audio activation scripts syntax and guard checks
+
+on:
+  push:
+    branches: ["ops/jalwa-audio-activation-20261105"]
+    paths: [".github/workflows/demo-audio-preflight-20261105.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Parse guarded operator scripts
+        run: |
+          set -Eeuo pipefail
+          node --check scripts/demo-audio-activate-20261105.mjs
+          node --check qa/demo-audio-playback-20261105.cjs
+          grep -F 'AUDIO_REPAIR_MODE' scripts/demo-audio-activate-20261105.mjs
+          grep -F 'PAYMENT_PROVIDER,"mock"' scripts/demo-audio-activate-20261105.mjs
+          grep -F 'MEDIA_BACKEND,"r2"' scripts/demo-audio-activate-20261105.mjs
+          grep -F 'rights_gate' scripts/demo-audio-activate-20261105.mjs
+          grep -F 'AUDIO_UNPUBLISHED' scripts/demo-audio-activate-20261105.mjs
+          echo "SCRIPTS_SYNTAX_AND_GUARDS_OK"
