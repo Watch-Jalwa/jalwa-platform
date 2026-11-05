@@ -16,7 +16,7 @@ jobs:
   audio-repair:
     name: Repair and verify ${{ matrix.slug }}
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
     environment: staging
     strategy:
       max-parallel: 1
@@ -36,14 +36,35 @@ jobs:
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-      - name: Confirm exact current demo release on both domains
+      - name: Wait for existing shared demo host recovery and exact deployed audio SHA
         run: |
           set -Eeuo pipefail
-          for domain in watch-jalwa.com jalwa-platform.codistan.org; do
-            curl -fsS --max-time 15 "https://$domain/api/health" |
-              jq -e --arg version "$AUDIO_EXPECTED_SHA" '.status=="ready" and .version==$version' >/dev/null
-            echo "AUDIO_RELEASE_READY $domain"
+          # The Codistan on-prem machine requires physical power/network service.
+          # Never mutate content until BOTH public sites AND SSH:22 are reachable.
+          for attempt in $(seq 1 90); do
+            healthy=true
+            for domain in watch-jalwa.com jalwa-platform.codistan.org; do
+              body="$(curl -fsS --connect-timeout 4 --max-time 7 "https://$domain/api/health" 2>/dev/null || true)"
+              if [ -z "$body" ]; then healthy=false; continue; fi
+              got="$(jq -r '.version // ""' <<<"$body" 2>/dev/null || true)"
+              ready="$(jq -r '.status // ""' <<<"$body" 2>/dev/null || true)"
+              if [ "$ready" != ready ]; then healthy=false; continue; fi
+              if [ "$got" != "$AUDIO_EXPECTED_SHA" ]; then
+                echo "AUDIO_RELEASE_CHANGED hostname=$domain actual=$got expected=$AUDIO_EXPECTED_SHA; refuse to requeue" >&2
+                exit 2
+              fi
+            done
+            if [ "$healthy" = true ] && timeout 6 bash -c 'exec 3<>/dev/tcp/"$1"/22' _ "$HOST" 2>/dev/null; then
+              echo "AUDIO_EXISTING_HOST_RESTORED_AND_RELEASE_VERIFIED"
+              exit 0
+            fi
+            if [ $((attempt % 5)) -eq 0 ]; then
+              echo "AUDIO_HOST_OFFLINE attempt=$attempt/90 (no media writes)"
+            fi
+            sleep 20
           done
+          echo "AUDIO_HOST_UNREACHABLE: Physical/provider console intervention required; no title mutated by this run." >&2
+          exit 1
       - name: Configure pinned existing server and check worker resources
         run: |
           set -Eeuo pipefail
