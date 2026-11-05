@@ -2,3 +2,4 @@ Jalwa existing internal-demo: permitted activation of exactly three already righ
 Workflow: .github/workflows/demo-audio-activation-20261105.yml
 Source: existing immutable originals in private R2. No YouTube, hold, live billing, unrelated content or production changes.
 Activated after successful deployment workflow 41995793329 on 2026-11-05.
+Recovery attempt: after incident #169, wait for powered-on Codistan host, reverify exact b459 demo SHA, then serially test Huamei and finish the two licensed audio titles. Safe fail closed; rights holds and payments unchanged.
