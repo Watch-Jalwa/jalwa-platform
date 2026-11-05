@@ -1,8 +1,15 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/database/admin";
 import { createClient } from "@/lib/database/server";
+import { databasePool } from "@/lib/database/pool";
+import {
+  cancelPaymentServiceSubscription,
+  getPaymentServiceStatus,
+  paymentServiceEnabled,
+} from "@/lib/payments/payment-service";
 
 async function authenticatedUser() {
   const database = await createClient();
@@ -59,8 +66,63 @@ export async function cancelAccountDeletion(formData: FormData) {
   redirect("/profile?request=deletion-cancelled");
 }
 
+/** Immediately stop Premium: cancel open subscriptions and revoke active entitlements now. */
+export async function unsubscribePremium() {
+  const { user } = await authenticatedUser();
+
+  if (paymentServiceEnabled()) {
+    try {
+      const status = await getPaymentServiceStatus(user.id);
+      for (const subscription of status.subscriptions ?? []) {
+        if (["initiated", "trialing", "active", "past_due", "paused"].includes(subscription.status)) {
+          await cancelPaymentServiceSubscription(subscription.id);
+        }
+      }
+    } catch {
+      // Still revoke local entitlements below so access stops even if the remote cancel fails.
+    }
+  }
+
+  await databasePool.query(
+    `update public.subscriptions
+     set status = 'cancelled',
+         cancel_at_period_end = false,
+         current_period_end = least(coalesce(current_period_end, now()), now()),
+         cancellation_requested_at = coalesce(cancellation_requested_at, now()),
+         cancelled_at = coalesce(cancelled_at, now()),
+         updated_at = now()
+     where user_id = $1
+       and status in ('active', 'past_due', 'cancel_at_period_end', 'incomplete')`,
+    [user.id],
+  );
+
+  await databasePool.query(
+    `update public.entitlements
+     set status = 'revoked',
+         ends_at = least(ends_at, now()),
+         updated_at = now()
+     where user_id = $1
+       and status = 'active'`,
+    [user.id],
+  );
+
+  await databasePool.query(
+    `insert into public.audit_logs (actor_id, action, entity_type, entity_id, metadata)
+     values ($1, 'premium_unsubscribed_immediate', 'user', $1::text, jsonb_build_object('source', 'profile'))`,
+    [user.id],
+  );
+
+  revalidatePath("/profile");
+  revalidatePath("/billing");
+  revalidatePath("/premium");
+  revalidatePath("/");
+  redirect("/profile?unsubscribed=1");
+}
+
 export async function signOut() {
-  const { database } = await authenticatedUser();
+  const database = await createClient();
   await database.auth.signOut();
+  revalidatePath("/");
+  revalidatePath("/profile");
   redirect("/");
 }

@@ -1,8 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useSyncExternalStore, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useSyncExternalStore } from "react";
 import { readLandingMsisdn } from "@/lib/utm-attribution.mjs";
 
 const messages: Record<string, string> = {
@@ -32,8 +31,6 @@ export function SignInForm({
   prefillIdentity?: string;
   mode?: "signin" | "signup";
 }) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
   const isSignup = mode === "signup";
   const [fullName, setFullName] = useState("");
   const storedLandingIdentity = useSyncExternalStore(subscribeToLandingIdentity, readLandingMsisdn, serverLandingIdentity);
@@ -42,6 +39,7 @@ export function SignInForm({
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
 
   async function submit() {
     setError(null);
@@ -50,26 +48,29 @@ export function SignInForm({
       return;
     }
 
-    const response = await fetch("/api/v1/auth/password/login", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify({
-        displayName: isSignup ? fullName.trim() : undefined,
-        phone,
-        password,
-        next,
-      }),
-    });
-    const payload = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      setError(messages[String(payload.error ?? "")] ?? payload.message ?? "Sign-in failed.");
-      return;
+    setPending(true);
+    try {
+      const response = await fetch("/api/v1/auth/password/login", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          displayName: isSignup ? fullName.trim() : undefined,
+          phone,
+          password,
+          next,
+        }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setError(messages[String(payload.error ?? "")] ?? payload.message ?? "Sign-in failed.");
+        return;
+      }
+      // Full navigation so the server header re-reads the new session cookie.
+      window.location.assign(typeof payload.next === "string" ? payload.next : next);
+    } finally {
+      setPending(false);
     }
-    startTransition(() => {
-      router.replace(typeof payload.next === "string" ? payload.next : next);
-      router.refresh();
-    });
   }
 
   const switchHref = isSignup

@@ -22,6 +22,9 @@
 .profile-page { max-width: 820px; }
 .account-card { margin-bottom: 1rem; }
 .account-actions { display: flex; flex-wrap: wrap; gap: .75rem; }
+.profile-membership { display: grid; gap: .65rem; }
+.profile-membership small { color: var(--muted); }
+.profile-membership-actions { margin-top: .35rem; }
 .danger-form { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--border); }
 .button-danger { background: rgba(239,68,68,.13); border-color: rgba(239,68,68,.35); color: #fecaca; }
 .request-list { display: grid; gap: .65rem; padding: 0; list-style: none; }

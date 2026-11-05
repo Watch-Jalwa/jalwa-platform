@@ -83,7 +83,7 @@ export async function POST(request: Request, { params }: { params: Params }) {
   if (availabilityError) return NextResponse.json({ error: "Playback availability could not be verified." }, { status: 503 });
   if (!available) return NextResponse.json({ error: "Content unavailable." }, { status: 404 });
 
-  const { data: content } = await database.from("content_items").select("id,access_level,status").eq("id", contentId).maybeSingle();
+  const { data: content } = await database.from("content_items").select("id,access_level,status,content_type").eq("id", contentId).maybeSingle();
   if (!content || content.status !== "published") return NextResponse.json({ error: "Content unavailable." }, { status: 404 });
   if (content.access_level === "registered" && !user) return NextResponse.json({ error: "Sign in required.", code: "sign_in_required" }, { status: 401 });
 
@@ -91,6 +91,18 @@ export async function POST(request: Request, { params }: { params: Params }) {
     if (!user) return NextResponse.json({ error: "Sign in required.", code: "sign_in_required" }, { status: 401 });
     const { data: entitled } = await database.rpc("has_active_benefit", { p_benefit: "premium_catalogue" });
     if (!entitled) return NextResponse.json({ error: "Premium entitlement is required.", code: "payment_required" }, { status: 402 });
+  }
+
+  // Product rule: guests/free get only the first 10 published videos/shorts; Premium unlocks the rest.
+  {
+    const { canPlayVideoContent, getViewerVideoAccess } = await import("@/lib/catalogue/free-tier-access.mjs");
+    const access = await getViewerVideoAccess();
+    if (!canPlayVideoContent(access, { contentId: content.id, contentType: content.content_type })) {
+      if (!user) {
+        return NextResponse.json({ error: "Sign in and subscribe to Premium to watch this title.", code: "sign_in_required" }, { status: 401 });
+      }
+      return NextResponse.json({ error: "Premium entitlement is required.", code: "payment_required" }, { status: 402 });
+    }
   }
 
   let deviceId: string | null = null;

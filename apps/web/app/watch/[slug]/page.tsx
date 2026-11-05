@@ -10,6 +10,7 @@ import { ResilientYouTubePlayer } from "@/components/resilient-youtube-player";
 import { SelfHostedPlayer } from "@/components/self-hosted-player";
 import { SocialActions } from "@/components/social-actions";
 import { formatDuration } from "@/lib/catalogue/demo-data";
+import { canPlayVideoContent, getViewerVideoAccess } from "@/lib/catalogue/free-tier-access.mjs";
 import { getContentBySlug } from "@/lib/catalogue/repository";
 import { getRecommendations } from "@/lib/recommendations/repository";
 
@@ -26,9 +27,29 @@ export default async function WatchPage({ params }: { params: Params }) {
   const isSelfHosted = !liveSource && item.id && ["self_host_open", "self_host_owned"].includes(item.hostingMode) && item.playback?.mediaAssetId;
   const officialSource = item.playback?.officialSourceUrl ?? item.sourceUrl ?? item.playback?.externalUrl ?? "";
   const attribution = item.attribution ?? item.playback?.requiredAttribution ?? "Official public source.";
+  const viewerAccess = await getViewerVideoAccess();
+  const playbackAllowed = canPlayVideoContent(viewerAccess, {
+    contentId: item.id || (item.slug ? `slug:${item.slug}` : null),
+    contentType: item.contentType,
+  });
 
   let player: React.ReactNode;
-  if (liveSource && item.playback?.deliveryAdapter === "official_live_embed") {
+  if (!playbackAllowed) {
+    player = (
+      <div className="player-placeholder">
+        <span className="eyebrow">Premium</span>
+        <p>This title is locked. Free accounts can watch 10 videos. Sign in with Premium to unlock the rest.</p>
+        <div className="watch-actions">
+          <Link className="button button-primary" href="/pricing">View Premium</Link>
+          {!viewerAccess.signedIn ? (
+            <Link className="button button-secondary" href={`/login?next=${encodeURIComponent(`/watch/${item.slug}`)}`}>
+              Sign in
+            </Link>
+          ) : null}
+        </div>
+      </div>
+    );
+  } else if (liveSource && item.playback?.deliveryAdapter === "official_live_embed") {
     player = <OfficialLiveEmbedPlayer
       attribution={attribution}
       checkedAt={item.playback.checkedAt}

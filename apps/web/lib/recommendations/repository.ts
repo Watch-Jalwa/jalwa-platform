@@ -1,5 +1,6 @@
 import { getActiveViewerProfile } from "@/lib/customer/active-profile";
 import { featuredContent } from "@/lib/catalogue/demo-data";
+import { annotateCatalogueAccess } from "@/lib/catalogue/free-tier-access.mjs";
 import type { CatalogueItem } from "@/lib/catalogue/types";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import { createClient } from "@/lib/database/server";
@@ -39,7 +40,9 @@ function recommendationFailure(error: unknown): never {
 }
 
 export async function getRecommendations({ limit = 24, contextContentId = null, contextSlug = null }: { limit?: number; contextContentId?: string | null; contextSlug?: string | null } = {}): Promise<RecommendedItem[]> {
-  if (canUseDemoData()) return demoRecommendations(limit, contextSlug);
+  if (canUseDemoData()) {
+    return annotateCatalogueAccess(demoRecommendations(limit, contextSlug)) as Promise<RecommendedItem[]>;
+  }
   if (!hasBackendConfiguration()) return recommendationFailure(new Error("Database backend is not configured."));
   try {
     const database = await createClient();
@@ -47,19 +50,25 @@ export async function getRecommendations({ limit = 24, contextContentId = null, 
     if (!user) {
       const { data, error } = await database.rpc("search_catalogue", { p_query: null, p_category: null, p_limit: limit });
       if (error) throw error;
-      return ((data ?? []) as Record<string, unknown>[]).map((row) => ({ ...mapRow(row), recommendationReason: "Trending on Jalwa" }));
+      return annotateCatalogueAccess(
+        ((data ?? []) as Record<string, unknown>[]).map((row) => ({ ...mapRow(row), recommendationReason: "Trending on Jalwa" })),
+      ) as Promise<RecommendedItem[]>;
     }
     const profile = await getActiveViewerProfile(user.id);
     if (!profile) {
       const { data, error } = await database.rpc("search_catalogue", { p_query: null, p_category: null, p_limit: limit });
       if (error) throw error;
-      return ((data ?? []) as Record<string, unknown>[]).map((row) => ({ ...mapRow(row), recommendationReason: "Popular on Jalwa" }));
+      return annotateCatalogueAccess(
+        ((data ?? []) as Record<string, unknown>[]).map((row) => ({ ...mapRow(row), recommendationReason: "Popular on Jalwa" })),
+      ) as Promise<RecommendedItem[]>;
     }
     const { data, error } = await database.rpc("get_recommendations", { p_viewer_profile_id: profile.id, p_limit: limit, p_context_content_id: contextContentId });
     if (error) throw error;
-    return ((data ?? []) as Record<string, unknown>[]).map(mapRow);
+    return annotateCatalogueAccess(((data ?? []) as Record<string, unknown>[]).map(mapRow)) as Promise<RecommendedItem[]>;
   } catch (error) {
-    if (canUseDemoData()) return demoRecommendations(limit, contextSlug);
+    if (canUseDemoData()) {
+      return annotateCatalogueAccess(demoRecommendations(limit, contextSlug)) as Promise<RecommendedItem[]>;
+    }
     return recommendationFailure(error);
   }
 }

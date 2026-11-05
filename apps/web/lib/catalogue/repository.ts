@@ -1,6 +1,7 @@
 import { liveSourcesEnabled } from "@/lib/live-sources/registry";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import { createClient } from "@/lib/database/server";
+import { annotateCatalogueAccess } from "./free-tier-access.mjs";
 import { categories as demoCategories, featuredContent } from "./demo-data";
 import type { CatalogueCategory, CatalogueItem, LiveCatalogueCollection, PlaybackSource, PremiumCatalogueCollection } from "./types";
 
@@ -33,7 +34,11 @@ function requireDatabase() {
 }
 
 function catalogueFailure(scope: string, error: unknown): never {
-  console.error(`catalogue_${scope}_failed`, error);
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+  // Local/dev without a reachable Postgres host is expected during UI work — avoid Next.js issue spam.
+  if (code !== "ENOTFOUND" && code !== "ECONNREFUSED") {
+    console.error(`catalogue_${scope}_failed`, error);
+  }
   throw new Error("Jalwa catalogue is temporarily unavailable.");
 }
 
@@ -55,11 +60,12 @@ export async function searchCatalogue(input: { query?: string; category?: string
   const query = input.query?.trim() ?? "";
   const category = input.category?.trim() ?? "";
   if (canUseDemoData()) {
-    return featuredContent.filter((item) => {
+    const demo = featuredContent.filter((item) => {
       const categoryMatches = !category || item.categorySlug === category;
       const haystack = `${item.title} ${item.titleUrdu ?? ""} ${item.description ?? ""}`.toLowerCase();
       return categoryMatches && (!query || haystack.includes(query.toLowerCase()));
     });
+    return annotateCatalogueAccess(demo);
   }
   requireDatabase();
   try {
@@ -67,15 +73,21 @@ export async function searchCatalogue(input: { query?: string; category?: string
     const { data, error } = await database.rpc("search_catalogue", { p_query: query || null, p_category: category || null, p_limit: input.limit ?? 40 });
     if (error) throw error;
     const items = ((data ?? []) as Record<string, unknown>[]).map(mapSearchRow);
-    return liveSourcesEnabled() ? items : items.filter((item) => item.contentType !== "live");
+    const filtered = liveSourcesEnabled() ? items : items.filter((item) => item.contentType !== "live");
+    return annotateCatalogueAccess(filtered);
   } catch (error) {
-    if (canUseDemoData()) return featuredContent;
+    if (canUseDemoData()) return annotateCatalogueAccess(featuredContent);
     return catalogueFailure("search", error);
   }
 }
 
 export async function getContentBySlug(slug: string): Promise<CatalogueItem | null> {
-  if (canUseDemoData()) return featuredContent.find((item) => item.slug === slug) ?? null;
+  if (canUseDemoData()) {
+    const demo = featuredContent.find((item) => item.slug === slug) ?? null;
+    if (!demo) return null;
+    const [annotated] = await annotateCatalogueAccess([demo]);
+    return annotated ?? null;
+  }
   requireDatabase();
   try {
     const database = await createClient();
@@ -142,7 +154,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       termsUrl: asString(liveConfig?.terms_url),
       requiredAttribution: asString(liveConfig?.required_attribution),
     } : null;
-    return {
+    const item: CatalogueItem = {
       id: data.id,
       slug: data.slug,
       title: data.title_en,
@@ -160,8 +172,15 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       attribution: rights?.attribution_text ?? source?.requiredAttribution,
       isEarlyAccess: Boolean(data.publish_at && new Date(data.publish_at).getTime() > Date.now()),
     };
+    const [annotated] = await annotateCatalogueAccess([item]);
+    return annotated ?? item;
   } catch (error) {
-    if (canUseDemoData()) return featuredContent.find((item) => item.slug === slug) ?? null;
+    if (canUseDemoData()) {
+      const demo = featuredContent.find((item) => item.slug === slug) ?? null;
+      if (!demo) return null;
+      const [annotated] = await annotateCatalogueAccess([demo]);
+      return annotated ?? null;
+    }
     return catalogueFailure("content", error);
   }
 }

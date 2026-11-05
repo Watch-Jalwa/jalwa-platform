@@ -1,6 +1,19 @@
 import Link from "next/link";
+import { createClient } from "@/lib/database/server";
+import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 
-export function SiteHeader() {
+export async function SiteHeader() {
+  let signedIn = false;
+  if (hasBackendConfiguration() && !canUseDemoData()) {
+    try {
+      const database = await createClient();
+      const { data: { user } } = await database.auth.getUser();
+      signedIn = Boolean(user);
+    } catch {
+      signedIn = false;
+    }
+  }
+
   return (
     <header className="site-header">
       <Link className="brand" href="/" aria-label="Jalwa home">
@@ -22,12 +35,20 @@ export function SiteHeader() {
         <Link className="button button-primary" href="/pricing">
           Premium
         </Link>
-        <Link className="button button-secondary header-signup" href="/signup">
-          Signup
-        </Link>
-        <Link className="button button-secondary" href="/login">
-          Sign in
-        </Link>
+        {signedIn ? (
+          <Link className="button button-secondary" href="/profile">
+            Profile
+          </Link>
+        ) : (
+          <>
+            <Link className="button button-secondary header-signup" href="/signup">
+              Signup
+            </Link>
+            <Link className="button button-secondary" href="/login">
+              Sign in
+            </Link>
+          </>
+        )}
       </div>
     </header>
   );

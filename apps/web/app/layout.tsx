@@ -45,7 +45,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const campaignShell = headerStore.get("x-jalwa-campaign") === "1";
 
   return (
-    <html lang={documentLanguage(locale)} dir={documentDirection(locale)} data-release={releaseSha} suppressHydrationWarning>
+    <html
+      lang={documentLanguage(locale)}
+      dir={documentDirection(locale)}
+      data-release={releaseSha}
+      data-scroll-behavior="smooth"
+      suppressHydrationWarning
+    >
       <body className={campaignShell ? "campaign-shell" : undefined} suppressHydrationWarning>
         {campaignShell ? null : <PreviewBanner />}
         {campaignShell ? null : <SiteHeader />}
