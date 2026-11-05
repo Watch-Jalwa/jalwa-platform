@@ -41,3 +41,11 @@ jobs:
         run: |
           set -Eeuo pipefail
           ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" 'bash -s' < scripts/staging-boundary-readonly-20261104.sh
+
+      - name: Inspect original R2 objects and per-title licence evidence read-only
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" \
+            'docker exec -i jalwa-worker-staging node --input-type=module -' \
+            < scripts/demo-original-source-readonly-20261105.mjs
