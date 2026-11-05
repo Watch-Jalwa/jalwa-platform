@@ -8,7 +8,12 @@ export const dynamic = "force-dynamic";
 export default async function HomePage() {
   let categories: Awaited<ReturnType<typeof getCategories>> = [];
   let featuredContent: Awaited<ReturnType<typeof searchCatalogue>> = [];
-  let accessSummary = {
+  let accessSummary: {
+    totalVideos: number;
+    freeUnlocked: number;
+    lockedForPremium: number;
+    freeLimit: number;
+  } = {
     totalVideos: 0,
     freeUnlocked: 0,
     lockedForPremium: 0,
