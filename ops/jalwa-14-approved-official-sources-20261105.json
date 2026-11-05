@@ -1,0 +1,139 @@
+{
+  "schemaVersion": 1,
+  "scope": "existing-internal-demo",
+  "rights": "already-approved-in-database-only",
+  "titles": [
+    {
+      "slug": "artemis-ii-lunar-flyby-svs",
+      "kind": "direct",
+      "page": "https://svs.gsfc.nasa.gov/5536",
+      "uri": "https://svs.gsfc.nasa.gov/vis/a000000/a005500/a005536/a2_flyby_1min_720p30.mp4",
+      "ext": "mp4",
+      "mime": "video/mp4"
+    },
+    {
+      "slug": "artemis-ii-trajectory-svs",
+      "kind": "direct",
+      "page": "https://svs.gsfc.nasa.gov/5610/",
+      "uri": "https://svs.gsfc.nasa.gov/vis/a000000/a005600/a005610/artemis2_full_1080p60.mp4",
+      "ext": "mp4",
+      "mime": "video/mp4"
+    },
+    {
+      "slug": "hd-earth-views-svs",
+      "kind": "direct",
+      "page": "https://svs.gsfc.nasa.gov/10766/",
+      "uri": "https://svs.gsfc.nasa.gov/vis/a010000/a010700/a010766/Earth_View_shuttle_over_clouds.webmhd.webm",
+      "ext": "webm",
+      "mime": "video/webm"
+    },
+    {
+      "slug": "hst-fly-by-nasa",
+      "kind": "nasa",
+      "page": "https://images.nasa.gov/details/GSFC_20080520_HST_m10216_Whip_Pan",
+      "nasaId": "GSFC_20080520_HST_m10216_Whip_Pan",
+      "prefer": [
+        "~medium.mp4",
+        "~mobile.mp4",
+        "~small.mp4"
+      ],
+      "ext": "mp4",
+      "mime": "video/mp4"
+    },
+    {
+      "slug": "hst-sm4-rendezvous-nasa",
+      "kind": "nasa",
+      "page": "https://images.nasa.gov/details/GSFC_20080822_HST_m10329_Capture_005",
+      "nasaId": "GSFC_20080822_HST_m10329_Capture_005",
+      "prefer": [
+        "~medium.mp4",
+        "~mobile.mp4",
+        "~small.mp4"
+      ],
+      "ext": "mp4",
+      "mime": "video/mp4"
+    },
+    {
+      "slug": "earth-views-from-iss-nasa",
+      "kind": "nasa",
+      "page": "https://images.nasa.gov/details/NHQ_2019_0626_Earth%20Views%20from%20the%20ISS",
+      "nasaId": "NHQ_2019_0626_Earth Views from the ISS",
+      "prefer": [
+        "~mobile.mp4",
+        "~medium.mp4",
+        "~small.mp4"
+      ],
+      "ext": "mp4",
+      "mime": "video/mp4"
+    },
+    {
+      "slug": "apollo-11-eagle-has-landed",
+      "kind": "nasa",
+      "page": "https://images.nasa.gov/details/KSC-19690716-MH-NAS01-0001-The_Flight_of_Apollo_11_The_Eagle_Has_Landed_HS_from_Film_JSC-DVC_1928",
+      "nasaId": "KSC-19690716-MH-NAS01-0001-The_Flight_of_Apollo_11_The_Eagle_Has_Landed_HS_from_Film_JSC-DVC_1928",
+      "prefer": [
+        "~mobile.mp4",
+        "~small.mp4",
+        "~preview.mp4"
+      ],
+      "ext": "mp4",
+      "mime": "video/mp4"
+    },
+    {
+      "slug": "sprite-fright",
+      "kind": "direct",
+      "page": "https://studio.blender.org/films/sprite-fright/",
+      "uri": "https://video.blender.org/download/web-videos/a69d68a5-a0e0-4a80-9d66-49f093c97aaf-720.mp4",
+      "ext": "mp4",
+      "mime": "video/mp4"
+    },
+    {
+      "slug": "spring-blender",
+      "kind": "direct",
+      "page": "https://studio.blender.org/films/spring/",
+      "uri": "https://video.blender.org/download/web-videos/3d95fb3d-c866-42c8-9db1-fe82f48ccb95-480.mp4",
+      "ext": "mp4",
+      "mime": "video/mp4"
+    },
+    {
+      "slug": "cosmos-laundromat",
+      "kind": "direct",
+      "page": "https://gooseberry.blender.org/cosmos-laundromat-first-cycle/",
+      "uri": "https://video.blender.org/download/web-videos/f507dfdc-e73e-45a4-9778-d758cbe1ce96-480.mp4",
+      "ext": "mp4",
+      "mime": "video/mp4"
+    },
+    {
+      "slug": "caminandes-llamigos",
+      "kind": "direct",
+      "page": "https://studio.blender.org/films/caminandes-3/",
+      "uri": "https://video.blender.org/download/web-videos/23f3ef79-15dc-44c5-aa45-cf92e78a4509-480.mp4",
+      "ext": "mp4",
+      "mime": "video/mp4"
+    },
+    {
+      "slug": "grca-south-rim-summer-timelapse",
+      "kind": "direct",
+      "page": "https://www.nps.gov/grca/learn/photosmultimedia/b-roll_hd01.htm",
+      "uri": "https://www.nps.gov/nps-audiovideo/audiovideo/48415e02-695b-45b0-bb91-25a5cb1e7e96720p.mp4",
+      "ext": "mp4",
+      "mime": "video/mp4"
+    },
+    {
+      "slug": "grca-animals-broll",
+      "kind": "direct",
+      "page": "https://www.nps.gov/grca/learn/photosmultimedia/b-roll_hd20.htm",
+      "uri": "https://www.nps.gov/nps-audiovideo/audiovideo/06fbbf73-8e2d-4f3a-baa7-12c8d6eb49fa720p.mp4",
+      "ext": "mp4",
+      "mime": "video/mp4"
+    },
+    {
+      "slug": "grca-south-rim-winter-scenic",
+      "kind": "direct",
+      "page": "https://www.nps.gov/grca/learn/photosmultimedia/b-roll_hd16.htm",
+      "uri": "https://www.nps.gov/nps-audiovideo/audiovideo/3ce9672f-bf59-403c-9ef0-dd7679c93845720p.mp4",
+      "ext": "mp4",
+      "mime": "video/mp4"
+    }
+  ]
+}
