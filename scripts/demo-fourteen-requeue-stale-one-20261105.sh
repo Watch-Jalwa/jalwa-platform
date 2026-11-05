@@ -19,6 +19,9 @@ if docker top jalwa-worker-staging -eo pid,etime,comm | grep -Eq '(^|[[:space:]]
 fi
 cat <<'SQL' | docker exec -i jalwa-postgres-staging sh -lc 'exec psql -X -A -t -v ON_ERROR_STOP=1 -P pager=off -v target="$1" -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}"' _ "$slug"
 BEGIN;
+CREATE TEMP TABLE target_scope ON COMMIT DROP AS
+SELECT c.id,c.slug,c.status::text status
+FROM public.content_items c WHERE c.slug=:'target';
 CREATE TEMP TABLE target_job ON COMMIT DROP AS
 SELECT c.id content_id,c.slug,a.id asset_id,a.status::text asset_status,
        a.storage_key,a.size_bytes,j.id job_id,j.status::text job_status,
@@ -45,8 +48,21 @@ WHERE c.slug=:'target'
 ORDER BY j.created_at DESC;
 DO $guard$
 BEGIN
- IF (SELECT count(*) FROM target_job) <> 1 THEN
-   RAISE EXCEPTION 'One and only one stale eligible media job required: no mutation';
+ IF (SELECT count(*) FROM target_scope) <> 1 THEN
+   RAISE EXCEPTION 'Requested content record absent; no mutation';
+ END IF;
+ IF (SELECT count(*) FROM target_job) = 0 THEN
+   IF NOT EXISTS (
+     SELECT 1 FROM target_scope c
+     JOIN public.media_assets a ON a.content_id=c.id AND a.kind='source_video'
+     JOIN public.media_jobs j ON j.media_asset_id=a.id
+     WHERE (j.status IN ('queued','completed') OR a.status IN ('queued','ready'))
+        AND NOT (j.status='processing' AND a.status='processing')
+   ) THEN
+     RAISE EXCEPTION 'No eligible stale job and no queued/ready asset; refuse to infer recovery';
+   END IF;
+ ELSIF (SELECT count(*) FROM target_job) <> 1 THEN
+   RAISE EXCEPTION 'Multiple stale jobs; no mutation';
  END IF;
  IF EXISTS (SELECT 1 FROM target_job WHERE
    (slug='grca-south-rim-winter-scenic' AND (job_type<>'short_mp4' OR size_bytes<>1729591))
@@ -73,5 +89,8 @@ SELECT 'DEMO_14_STALE_JOB_REQUEUED '||jsonb_build_object(
 FROM target_job t
 JOIN public.media_jobs j ON j.id=t.job_id
 JOIN public.media_assets a ON a.id=t.asset_id;
+SELECT 'DEMO_14_STALE_NOT_NEEDED '||jsonb_build_object(
+ 'slug',s.slug,'status',s.status)::text
+FROM target_scope s WHERE NOT EXISTS(SELECT 1 FROM target_job);
 COMMIT;
 SQL
