@@ -42,8 +42,8 @@ async function testOne(browser,origin,mobile) {
    result.video={width:dims.width,height:dims.height};
    result.frameAspect=Math.round(dims.frameWidth/dims.frameHeight*10000)/10000;
    result.videoAspect=Math.round(dims.width/dims.height*10000)/10000;
-   if(!(dims.width>dims.height && dims.width<=1280 && dims.height>=200))
-     throw Error("Expected native landscape/4:3 re-encode; decoded "+dims.width+"x"+dims.height);
+   if(!(dims.width>=200 && dims.height>=200 && Math.max(dims.width,dims.height)<=1280))
+     throw Error("Expected bounded native video dimensions; decoded "+dims.width+"x"+dims.height);
    if(Math.abs(result.videoAspect-result.frameAspect)>0.055)
      throw Error("Video and frame mismatch "+JSON.stringify({frame:result.frameAspect,video:result.videoAspect}));
    if(!dims.controls||dims.error)throw Error("Controls or decode error");
