@@ -105,7 +105,7 @@ jobs:
       - name: Decode actual private R2 MP4 or HLS transport segment
         run: |
           set -Eeuo pipefail
-          { node -e 'const fs=require("fs");process.stdout.write("process.env.DEMO_14_MANIFEST="+JSON.stringify(fs.readFileSync("ops/jalwa-14-approved-official-sources-20261105.json","utf8"))+";\\n")'; cat scripts/demo-fourteen-ingest-20261105.mjs; } |
+          { node -e 'const fs=require("fs");process.stdout.write("process.env.DEMO_14_MANIFEST="+JSON.stringify(fs.readFileSync("ops/jalwa-14-approved-official-sources-20261105.json","utf8"))+";\n")'; cat scripts/demo-fourteen-ingest-20261105.mjs; } |
             ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -i ~/.ssh/jalwa "$USER@$HOST" "docker exec -i -e DEMO_14_MODE=verify -e DEMO_14_SLUG=$DEMO_14_SLUG -e DEMO_14_EXPECTED_SHA=$DEMO_14_EXPECTED_SHA jalwa-worker-staging node --input-type=module -" | tee media-decode.log
           grep -q '^DEMO_14_MEDIA_DECODE_OK ' media-decode.log
       - name: Publish only when same approved rights and R2 output are verified
