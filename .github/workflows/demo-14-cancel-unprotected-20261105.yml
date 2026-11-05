@@ -1,0 +1,30 @@
+name: Jalwa stop obsolete media runner before protected deployment-locked ingest
+on:
+  push:
+    branches: ["ops/jalwa-fourteen-media-ingest-20261105"]
+    paths: [".github/workflows/demo-14-cancel-unprotected-20261105.yml"]
+permissions:
+  contents: read
+  actions: write
+jobs:
+  cancel-old-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Cancel only exact obsolete unprotected six-video waiter (not its worker process)
+        run: |
+          set -Eeuo pipefail
+          repo="Watch-Jalwa/jalwa-platform"
+          id="42019055912"
+          gh api "repos/$repo/actions/runs/$id" > old.json
+          test "$(jq -r '.head_branch' old.json)" = ops/jalwa-fourteen-media-ingest-20261105
+          test "$(jq -r '.head_sha' old.json)" = bab9a00a3690076e5dcf169e6701aff1622760b3
+          test "$(jq -r '.name' old.json)" = "Jalwa finish six outstanding approved media titles with stale-worker recovery"
+          if [ "$(jq -r '.status' old.json)" = completed ]; then
+            echo "RUN_ALREADY_DONE; no cancellation necessary"
+            exit 0
+          fi
+          gh api --method POST "repos/$repo/actions/runs/$id/cancel"
+          echo "CANCELLED_ONLY_OLD_INGEST_RUN_42019055912"
