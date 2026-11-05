@@ -144,7 +144,7 @@ Jalwa was posting a **legacy/wrong field set** (`pp_MobileNumber`, `pp_TxnRefNo`
 | Merchant Id | `MC990986` (env secret) |
 | Password | staging secret `JAZZCASH_PASSWORD` |
 | Integrity Salt | staging secret `JAZZCASH_INTEGRITY_SALT` |
-| Return URL var | `JAZZCASH_RETURN_URL=https://jalwa-platform.codistan.org/callback` |
+| Return URL var | `JAZZCASH_RETURN_URL=https://watch-jalwa.com/callback` (merchant allowlist) |
 
 If hash still fails after field-set fix, re-confirm salt from JazzCash merchant Hash Calculator. Also allowlist staging callback if return fails after PIN.
 

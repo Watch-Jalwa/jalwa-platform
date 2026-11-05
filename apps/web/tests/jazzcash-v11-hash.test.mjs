@@ -4,7 +4,7 @@ import test from "node:test";
 process.env.JAZZCASH_INTEGRITY_SALT ??= "testsalt";
 process.env.JAZZCASH_MERCHANT_ID ??= "MC990986";
 process.env.JAZZCASH_PASSWORD ??= "test-password";
-process.env.JAZZCASH_RETURN_URL ??= "https://jalwa-platform.codistan.org/callback";
+process.env.JAZZCASH_RETURN_URL ??= "https://watch-jalwa.com/callback";
 
 const {
   buildJazzcashSecureHash,
