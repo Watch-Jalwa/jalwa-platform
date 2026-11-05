@@ -384,6 +384,15 @@ export async function processMediaJob({ database, job }) {
       },
     }).eq("id", job.id);
     if (jobUpdateError) throw jobUpdateError;
+
+    // Persist a stable catalogue poster URL so Explore/home cards show the FFmpeg frame.
+    if (thumbnailPath) {
+      await database.from("content_items").update({
+        thumbnail_url: `/api/catalogue/poster/${asset.content_id}`,
+        updated_at: new Date().toISOString(),
+      }).eq("id", asset.content_id);
+    }
+
     return { provider: "ffmpeg", deferred: false, mediaPath, thumbnailPath, format };
   } finally {
     await rm(root, { recursive: true, force: true });

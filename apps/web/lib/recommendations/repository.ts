@@ -1,6 +1,7 @@
 import { getActiveViewerProfile } from "@/lib/customer/active-profile";
 import { featuredContent } from "@/lib/catalogue/demo-data";
 import { annotateCatalogueAccess } from "@/lib/catalogue/free-tier-access.mjs";
+import { withCataloguePosterFallback } from "@/lib/catalogue/poster-core.mjs";
 import type { CatalogueItem } from "@/lib/catalogue/types";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import { createClient } from "@/lib/database/server";
@@ -8,7 +9,7 @@ import { createClient } from "@/lib/database/server";
 export type RecommendedItem = CatalogueItem & { recommendationReason?: string; recommendationScore?: number };
 
 function mapRow(row: Record<string, unknown>): RecommendedItem {
-  return {
+  return withCataloguePosterFallback({
     id: typeof row.id === "string" ? row.id : undefined,
     slug: typeof row.slug === "string" ? row.slug : "unavailable",
     title: typeof row.title === "string" ? row.title : "Untitled",
@@ -23,7 +24,7 @@ function mapRow(row: Record<string, unknown>): RecommendedItem {
     thumbnailUrl: typeof row.thumbnail_url === "string" ? row.thumbnail_url : null,
     recommendationReason: typeof row.recommendation_reason === "string" ? row.recommendation_reason : undefined,
     recommendationScore: typeof row.recommendation_score === "number" ? row.recommendation_score : undefined,
-  };
+  });
 }
 
 function demoRecommendations(limit: number, contextSlug?: string | null): RecommendedItem[] {
