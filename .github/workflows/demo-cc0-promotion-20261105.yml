@@ -1,0 +1,86 @@
+name: Jalwa demo promote one CC0 clip with automatic rollback on QA failure
+
+on:
+  push:
+    branches: ["ops/jalwa-demo-source-reencode-pilot-20261105"]
+    paths: [".github/workflows/demo-cc0-promotion-20261105.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-demo-cc0-promotion
+  cancel-in-progress: false
+
+jobs:
+  activate-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+      DEMO_SHA: ec0a76f8efd3d9cf0a64e864d264be6d274deb34
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Gate by exact demo runtime on both domains
+        run: |
+          set -Eeuo pipefail
+          for domain in watch-jalwa.com jalwa-platform.codistan.org; do
+            curl -fsS --max-time 15 "https://$domain/api/health" |
+              jq -e --arg sha "$DEMO_SHA" '.status=="ready" and .version==$sha' >/dev/null
+            echo "Verified expected demo SHA on $domain"
+          done
+      - name: Configure pinned staging SSH credentials
+        run: |
+          set -Eeuo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          for key in HOST USER APP_DIR KNOWN_HOSTS SSH_KEY; do test -n "${!key:-}"; done
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+      - name: Promote only the verified immutable Baking Cookies CC0 MP4
+        id: promote
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" \
+            'docker exec -i jalwa-worker-staging node --input-type=module -' \
+            < scripts/demo-promote-cc0-pilot-20261105.mjs | tee demo-cc0-promote.log
+          grep -F 'PILOT_PROMOTED ' demo-cc0-promote.log
+      - name: Install pinned browser QA harness
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/jalwa-demo-browser"
+          npm install --prefix "$RUNNER_TEMP/jalwa-demo-browser" --no-save --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          "$RUNNER_TEMP/jalwa-demo-browser/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Verify actual playback and frame geometry on both demo domains
+        id: browserQA
+        env:
+          JALWA_PLAYWRIGHT_PATH: ${{ runner.temp }}/jalwa-demo-browser/node_modules/@playwright/test
+        run: node qa/demo-cc0-activation-acceptance-20261105.cjs
+      - name: Roll back this one media pointer if any post-promotion check failed
+        if: failure() && steps.promote.outcome == 'success'
+        run: |
+          set -Eeuo pipefail
+          echo "Browser acceptance failed; restoring the previous Baking Cookies source"
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" \
+            'docker exec -i jalwa-worker-staging node --input-type=module -' \
+            < scripts/demo-rollback-cc0-pilot-20261105.mjs | tee demo-cc0-rollback.log
+      - name: Retain browser screenshots and atomic switch evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: demo-cc0-activation-evidence-${{ github.sha }}
+          path: |
+            demo-cc0-activation-evidence/
+            demo-cc0-promote.log
+            demo-cc0-rollback.log
+          retention-days: 30
+          if-no-files-found: warn
