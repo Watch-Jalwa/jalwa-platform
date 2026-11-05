@@ -33,7 +33,7 @@ export function LandingSubscribe({
   ctaLabel?: string;
 }) {
   const [msisdn, setMsisdn] = useState("");
-  const [consent, setConsent] = useState(false);
+  const [consent, setConsent] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const attribution = useMemo(() => attributionForBilling(campaign), [campaign]);

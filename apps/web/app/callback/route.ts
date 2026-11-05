@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { completeJazzcashLandingLink } from "@/lib/payments/jazzcash-landing-billing.mjs";
+import { publicAppOrigin } from "@/lib/public-app-origin.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,8 +38,9 @@ async function handle(request: Request) {
     ok = false;
   }
 
-  const next = new URL("/callback/result", url.origin);
-  next.searchParams.set("status", ok ? "ok" : "failed");
+  // Home + toast — not /callback/result. Rewrite 0.0.0.0 bind hosts to localhost.
+  const next = new URL("/", publicAppOrigin(request.url));
+  next.searchParams.set("premium", ok ? "enabled" : "failed");
   if (signInHint) next.searchParams.set("msisdn", signInHint);
   return NextResponse.redirect(next, 303);
 }

@@ -7,8 +7,10 @@ import { ErrorMonitor } from "@/components/error-monitor";
 import { JalwaAdSlot } from "@/components/jalwa-ad-slot";
 import { PreviewBanner } from "@/components/preview-banner";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
+import { PremiumStatusToast } from "@/components/premium-status-toast";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { Suspense } from "react";
 import { documentDirection, documentLanguage, LOCALE_COOKIE, normalizeLocale } from "@/lib/customer/locale";
 import "./globals.css";
 import "./phase2.css";
@@ -51,6 +53,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <main className={campaignShell ? "site-main site-main-campaign" : "site-main"}>{children}</main>
         {campaignShell ? null : <SiteFooter />}
         {campaignShell ? null : <BottomNav />}
+        <Suspense fallback={null}>
+          <PremiumStatusToast />
+        </Suspense>
         <ServiceWorkerRegister />
         <ErrorMonitor />
         {campaignShell || isFrontendPreview ? null : <DeviceHeartbeat />}

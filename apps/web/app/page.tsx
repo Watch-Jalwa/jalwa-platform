@@ -5,7 +5,13 @@ import { getCategories, searchCatalogue } from "@/lib/catalogue/repository";
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [categories, featuredContent] = await Promise.all([getCategories(), searchCatalogue({ limit: 8 })]);
+  let categories: Awaited<ReturnType<typeof getCategories>> = [];
+  let featuredContent: Awaited<ReturnType<typeof searchCatalogue>> = [];
+  try {
+    [categories, featuredContent] = await Promise.all([getCategories(), searchCatalogue({ limit: 8 })]);
+  } catch {
+    // Keep home reachable for post-JazzCash toast even when catalogue DB is offline locally.
+  }
   return (
     <div className="page-shell">
       <section className="hero" aria-labelledby="hero-title">
