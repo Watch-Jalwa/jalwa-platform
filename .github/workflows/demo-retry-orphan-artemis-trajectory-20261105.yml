@@ -1,0 +1,64 @@
+name: Jalwa - guarded recovery of Artemis II Trajectory interrupted FFmpeg job
+
+on:
+  push:
+    branches: ["ops/jalwa-fourteen-media-ingest-20261105"]
+    paths: [".github/workflows/demo-retry-orphan-artemis-trajectory-20261105.yml"]
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Exact shared demo preflight, pinned SSH and no writes until host ready
+        run: |
+          set -Eeuo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          for k in HOST USER APP_DIR KNOWN_HOSTS SSH_KEY; do test -n "${!k:-}"; done
+          first=""
+          for domain in watch-jalwa.com jalwa-platform.codistan.org; do
+            json="$(curl -fsS --max-time 13 "https://$domain/api/health")"
+            test "$(jq -r '.status' <<<"$json")" = ready
+            revision="$(jq -r '.version' <<<"$json")"
+            [[ "$revision" =~ ^[a-f0-9]{40}$ ]]
+            if [ -z "$first" ]; then first="$revision"; else test "$revision" = "$first"; fi
+            echo "MEDIA_RETRY_DEMO_READY $domain"
+          done
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+      - name: Requeue only exact previously uploaded Artemis II Trajectory source
+        run: |
+          set -Eeuo pipefail
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 -i ~/.ssh/jalwa "$USER@$HOST" 'bash -s' \
+            < scripts/demo-retry-orphan-artemis-trajectory-20261105.sh | tee stale-job-recovery.log
+          grep -q '^ARTEMIS_JOB_RECOVERED ' stale-job-recovery.log
+      - name: Verify both demos remain ready after recovery
+        run: |
+          for domain in watch-jalwa.com jalwa-platform.codistan.org; do
+            curl -fsS --max-time 14 "https://$domain/api/health" |
+              jq -e '.status=="ready"' >/dev/null
+          done
+      - name: Save recoverability audit evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jalwa-exact-orphan-media-recovery-${{ github.sha }}
+          path: stale-job-recovery.log
+          retention-days: 30
+          if-no-files-found: warn
