@@ -92,3 +92,29 @@ SELECT 'JALWA_INVENTORY ' || jsonb_build_object(
 FROM wanted w LEFT JOIN public.content_items c ON c.slug=w.slug ORDER BY w.grp,w.slug;
 ROLLBACK;
 SQL
+
+printf '\n===== Jalwa host capacity (read-only) =====\n'
+uptime || true
+df -hP / || true
+free -m || true
+docker stats --no-stream --format '{{.Name}} | cpu={{.CPUPerc}} | memory={{.MemUsage}}' jalwa-web-staging jalwa-worker-staging jalwa-postgres-staging || true
+printf '\n===== Jalwa worker active FFmpeg processes (read-only) =====\n'
+docker top jalwa-worker-staging -eo pid,etime,comm 2>/dev/null || true
+printf '\n===== Current long-running media job locks (read-only) =====\n'
+cat <<'SQL' | docker exec -i jalwa-postgres-staging sh -lc 'exec psql -X -A -t -v ON_ERROR_STOP=1 -P pager=off -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}"'
+BEGIN TRANSACTION READ ONLY;
+SELECT 'JALWA_LONGJOB ' || jsonb_build_object(
+ 'slug',c.slug,'assetStatus',a.status::text,'jobStatus',j.status::text,
+ 'jobType',j.job_type::text,'attempts',j.attempts,'maxAttempts',j.max_attempts,
+ 'lockedAt',j.locked_at,'lockedBy',j.locked_by,'createdAt',j.created_at,
+ 'updatedAt',j.updated_at,'elapsedSinceLockSeconds',floor(extract(epoch from now()-j.locked_at)),
+ 'availableAt',j.available_at,'error',left(coalesce(j.error_message,''),200)
+)::text
+FROM public.media_jobs j
+JOIN public.media_assets a ON a.id=j.media_asset_id
+JOIN public.content_items c ON c.id=a.content_id
+WHERE c.slug IN ('sintel','vhs-static-cc0-clip','tears-of-steel',
+  'house-sparrow-tschilp-cc0','huamei-bird-calling-cc0','abrasive-bird-debate-cc0')
+ORDER BY j.created_at DESC LIMIT 20;
+ROLLBACK;
+SQL
