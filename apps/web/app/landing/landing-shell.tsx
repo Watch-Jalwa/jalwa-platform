@@ -75,18 +75,15 @@ export function LandingShell({
       <div className="landing-above-fold">
         <section className="landing-hero" aria-label="Jalwa campaign">
           <Link className="landing-hero-link" href={ctaHref} aria-label="Watch Now — explore Jalwa">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              className="landing-hero-image landing-hero-image-desktop"
-              src={webBannerSrc}
-              alt="Jalwa — Scroll se aagay. Jalwa dekho."
-            />
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              className="landing-hero-image landing-hero-image-mobile"
-              src={mobileBannerSrc}
-              alt="Jalwa — Scroll se aagay. Jalwa dekho."
-            />
+            <picture className="landing-hero-picture">
+              <source media="(max-width: 720px)" srcSet={mobileBannerSrc} />
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                className="landing-hero-image"
+                src={webBannerSrc}
+                alt="Jalwa — Scroll se aagay. Jalwa dekho."
+              />
+            </picture>
           </Link>
         </section>
 

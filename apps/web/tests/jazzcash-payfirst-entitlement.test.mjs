@@ -12,10 +12,18 @@ test("pay-first complete path charges via token then grants local Premium", asyn
   assert.match(billing, /grantPremiumForJazzcashIntent/);
   assert.match(billing, /chargeAndGrantJazzcashIntent/);
   assert.match(billing, /reconcileJazzcashPremiumForUser/);
+  assert.match(billing, /mockJazzcashChargeAllowed/);
+  assert.match(billing, /transferJazzcashSubscriptionToUser/);
   assert.match(billing, /insert into public\.subscriptions/);
   assert.match(billing, /insert into public\.entitlements/);
   assert.match(billing, /Premium activated for this JazzCash number/);
   assert.doesNotMatch(billing, /For direct JazzCash v11 sandbox returns we mark the intent completed/);
+});
+
+test("profile reloads reconcile JazzCash Premium onto the signed-in account", async () => {
+  const profileUrl = new URL("../app/profile/page.tsx", import.meta.url);
+  const profile = await readFile(profileUrl, "utf8");
+  assert.match(profile, /reconcileJazzcashPremiumForUser/);
 });
 
 test("PayViaToken helper posts signed m-wallet payload without MPIN", async () => {

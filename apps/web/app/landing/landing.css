@@ -64,20 +64,17 @@ body.campaign-shell .site-main-campaign,
   overflow: hidden;
 }
 
+.landing-hero-picture {
+  display: block;
+  width: 100%;
+}
+
 .landing-hero-image {
   width: 100%;
   height: auto;
   display: block;
   aspect-ratio: auto;
   object-fit: contain;
-}
-
-.landing-hero-image-mobile {
-  display: none;
-}
-
-.landing-hero-image-desktop {
-  display: block;
 }
 
 /* JazzCash in the middle — stacked form, a little narrower than banner */
@@ -530,14 +527,6 @@ body.campaign-shell .site-main-campaign,
     width: 100%;
   }
 
-  .landing-hero-image-desktop {
-    display: none;
-  }
-
-  .landing-hero-image-mobile {
-    display: block;
-  }
-
   /* 4:3 fold creatives — edge-to-edge, full graphic, no crop */
   .landing-hero-link {
     width: 100%;
@@ -548,7 +537,6 @@ body.campaign-shell .site-main-campaign,
   .landing-hero-image {
     width: 100%;
     height: auto;
-    display: block;
     object-fit: contain;
     object-position: center top;
     background: #000;

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/database/server";
+import { reconcileJazzcashPremiumForUser } from "@/lib/payments/jazzcash-landing-billing.mjs";
 import { getUserMembership } from "@/lib/profile/membership.mjs";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import {
@@ -65,6 +66,7 @@ export default async function ProfilePage({ searchParams }: { searchParams: Sear
     const { data: { user } } = await database.auth.getUser();
     if (!user) redirect("/login?next=/profile");
     identity = user.email ?? user.phone ?? "Jalwa user";
+    await reconcileJazzcashPremiumForUser(user.id).catch(() => undefined);
     const [profileResult, requestResult, nextMembership] = await Promise.all([
       database.from("profiles").select("display_name,preferred_language").eq("id", user.id).maybeSingle(),
       database

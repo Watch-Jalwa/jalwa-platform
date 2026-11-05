@@ -3,11 +3,12 @@ import {
   buildLinkWalletForm,
   isValidJazzcashRequestId,
   jazzcashV11Configured,
+  newJazzcashPayTxnRef,
   newJazzcashRequestId,
   payViaJazzcashToken,
   verifyJazzcashSecureHash,
 } from "./jazzcash-v11.mjs";
-import { resolveOrCreatePhoneLearnerForCheckout } from "./phone-checkout-user.mjs";
+import { nationalMsisdn, resolveOrCreatePhoneLearnerForCheckout } from "./phone-checkout-user.mjs";
 import { paymentServiceEnabled, linkPaymentServiceWallet } from "./payment-service";
 
 function sanitizeAttribution(raw) {
@@ -20,6 +21,20 @@ function sanitizeAttribution(raw) {
     }
   }
   return out;
+}
+
+function mockJazzcashChargeAllowed() {
+  return process.env.ALLOW_MOCK_PAYMENTS === "true"
+    || process.env.JAZZCASH_MOCK_CHARGE === "true";
+}
+
+function extractJazzcashPaymentToken(fields) {
+  if (!fields || typeof fields !== "object") return "";
+  for (const key of ["pp_PaymentToken", "pp_AuthToken", "pp_Token", "PaymentToken"]) {
+    const value = String(fields[key] ?? "").trim();
+    if (value) return value;
+  }
+  return "";
 }
 
 async function loadPriceForPlanCode(planCode) {
@@ -45,12 +60,47 @@ async function loadPriceForPlanCode(planCode) {
   return result.rows[0] ?? null;
 }
 
+async function transferJazzcashSubscriptionToUser(subscriptionId, fromUserId, toUserId) {
+  if (!subscriptionId || !toUserId || fromUserId === toUserId) return;
+  const client = await databasePool.connect();
+  try {
+    await client.query("begin");
+    await client.query(
+      `update public.subscriptions set user_id = $2, updated_at = now() where id = $1::uuid and user_id = $3`,
+      [subscriptionId, toUserId, fromUserId],
+    );
+    await client.query(
+      `update public.entitlements set user_id = $2, updated_at = now()
+       where source_type = 'subscription' and source_id = $1::uuid and user_id = $3`,
+      [subscriptionId, toUserId, fromUserId],
+    );
+    await client.query(
+      `update public.jazzcash_wallet_link_intents
+       set user_id = $2, updated_at = now()
+       where subscription_id = $1::uuid`,
+      [subscriptionId, toUserId],
+    );
+    await client.query("commit");
+  } catch (error) {
+    await client.query("rollback").catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
 /**
  * Charge a stored/returned JazzCash payment token then grant Premium on the phone-bound user.
  * Idempotent when intent.subscription_id is already set. Skips re-charge when a prior charge succeeded.
+ * Staging may fall back to a local mock charge when ALLOW_MOCK_PAYMENTS / JAZZCASH_MOCK_CHARGE is true.
  */
-export async function chargeAndGrantJazzcashIntent(intent, paymentToken) {
+export async function chargeAndGrantJazzcashIntent(intent, paymentToken, { userId } = {}) {
+  const targetUserId = userId || intent.user_id;
+
   if (intent.subscription_id) {
+    if (targetUserId && intent.user_id && String(intent.user_id) !== String(targetUserId)) {
+      await transferJazzcashSubscriptionToUser(intent.subscription_id, intent.user_id, targetUserId);
+    }
     return {
       ok: true,
       alreadyGranted: true,
@@ -61,19 +111,14 @@ export async function chargeAndGrantJazzcashIntent(intent, paymentToken) {
 
   const token = String(paymentToken ?? intent.payment_token ?? "").trim();
   const priorChargeOk = Boolean(intent.charge_txn_ref)
-    && ["000", "121", "200", "0"].includes(String(intent.charge_response_code ?? "").trim());
+    && (
+      ["000", "121", "200", "0"].includes(String(intent.charge_response_code ?? "").trim())
+      || String(intent.charge_response_code ?? "").startsWith("mock")
+    );
 
   let chargeTxnRef = priorChargeOk ? intent.charge_txn_ref : null;
 
   if (!priorChargeOk) {
-    if (!token) {
-      return {
-        ok: false,
-        status: "failed",
-        message: "JazzCash did not return a payment token. Premium was not activated.",
-      };
-    }
-
     const price = await loadPriceForPlanCode(intent.plan_code);
     if (!price) {
       return {
@@ -85,65 +130,106 @@ export async function chargeAndGrantJazzcashIntent(intent, paymentToken) {
 
     const trialMinor = Number(process.env.JAZZCASH_TRIAL_AMOUNT_MINOR ?? "0");
     const amountMinor = trialMinor > 0 ? trialMinor : Number(price.amount_minor);
+    let usedMock = false;
 
-    let charge;
-    try {
-      charge = await payViaJazzcashToken({
-        paymentToken: token,
-        amountMinor,
-        billReference: String(intent.request_id).slice(0, 20),
-        description: `Jalwa ${price.plan_name}`,
-      });
-    } catch (error) {
+    if (token) {
+      const billReference = String(intent.request_id).slice(0, 20);
+      const description = `Jalwa ${price.plan_name}`;
+      let charge;
+      try {
+        charge = await payViaJazzcashToken({
+          paymentToken: token,
+          amountMinor,
+          billReference,
+          description,
+        });
+        // Some merchant configs expect whole rupees instead of paisa.
+        if (!charge.ok && Number(amountMinor) >= 100 && Number(amountMinor) % 100 === 0) {
+          charge = await payViaJazzcashToken({
+            paymentToken: token,
+            amountMinor: Math.trunc(Number(amountMinor) / 100),
+            billReference,
+            description,
+            txnRefNo: newJazzcashPayTxnRef(),
+          });
+        }
+      } catch (error) {
+        charge = {
+          ok: false,
+          responseCode: "charge_error",
+          responseMessage: String(error instanceof Error ? error.message : error).slice(0, 200),
+          txnRefNo: newJazzcashPayTxnRef(),
+        };
+      }
+
+      if (!charge.ok && mockJazzcashChargeAllowed()) {
+        usedMock = true;
+        charge = {
+          ok: true,
+          responseCode: "mock",
+          responseMessage: charge.responseMessage || "Mock JazzCash charge (staging).",
+          txnRefNo: `mock${String(intent.request_id).replace(/\W/g, "").slice(-16)}`.slice(0, 20),
+        };
+      }
+
       await databasePool.query(
         `update public.jazzcash_wallet_link_intents
          set payment_token = coalesce(payment_token, $2),
-             charge_response_code = $3,
-             response_message = $4,
+             charge_txn_ref = $3,
+             charge_response_code = $4,
+             response_message = $5,
+             charged_at = case when $6 then now() else charged_at end,
              updated_at = now()
          where request_id = $1`,
         [
           intent.request_id,
           token,
-          "charge_error",
-          String(error instanceof Error ? error.message : error).slice(0, 200),
+          charge.txnRefNo,
+          String(charge.responseCode).slice(0, 40) || null,
+          charge.responseMessage || null,
+          charge.ok,
         ],
       );
+
+      if (!charge.ok) {
+        return {
+          ok: false,
+          status: "failed",
+          message: charge.responseMessage || "JazzCash charge failed. Premium was not activated.",
+        };
+      }
+
+      chargeTxnRef = charge.txnRefNo;
+      if (usedMock) {
+        // keep going to local grant
+      }
+    } else if (mockJazzcashChargeAllowed() && (intent.payment_token_present || intent.status === "completed")) {
+      chargeTxnRef = `mock${String(intent.request_id).replace(/\W/g, "").slice(-16)}`.slice(0, 20);
+      await databasePool.query(
+        `update public.jazzcash_wallet_link_intents
+         set charge_txn_ref = $2,
+             charge_response_code = 'mock',
+             response_message = $3,
+             charged_at = now(),
+             updated_at = now()
+         where request_id = $1`,
+        [intent.request_id, chargeTxnRef, "Mock JazzCash charge without retained token (staging)."],
+      );
+    } else {
       return {
         ok: false,
         status: "failed",
-        message: "JazzCash charge could not be started. Premium was not activated.",
+        message: "JazzCash did not return a payment token. Premium was not activated.",
       };
     }
+  }
 
+  if (targetUserId && String(intent.user_id) !== String(targetUserId)) {
     await databasePool.query(
-      `update public.jazzcash_wallet_link_intents
-       set payment_token = coalesce(payment_token, $2),
-           charge_txn_ref = $3,
-           charge_response_code = $4,
-           response_message = $5,
-           charged_at = case when $6 then now() else charged_at end,
-           updated_at = now()
-       where request_id = $1`,
-      [
-        intent.request_id,
-        token,
-        charge.txnRefNo,
-        charge.responseCode.slice(0, 40) || null,
-        charge.responseMessage || null,
-        charge.ok,
-      ],
+      `update public.jazzcash_wallet_link_intents set user_id = $2, updated_at = now() where request_id = $1`,
+      [intent.request_id, targetUserId],
     );
-
-    if (!charge.ok) {
-      return {
-        ok: false,
-        status: "failed",
-        message: charge.responseMessage || "JazzCash charge failed. Premium was not activated.",
-      };
-    }
-
-    chargeTxnRef = charge.txnRefNo;
+    intent = { ...intent, user_id: targetUserId };
   }
 
   const granted = await grantPremiumForJazzcashIntent(intent, {
@@ -161,39 +247,60 @@ export async function chargeAndGrantJazzcashIntent(intent, paymentToken) {
 }
 
 /**
- * After phone signup/signin, finish any completed JazzCash links that still lack Premium.
- * Safe to call on every login; never throws to the auth caller.
+ * After phone signup/signin/profile load, finish any completed JazzCash links for this number.
+ * Matches by user id or MSISDN so Premium follows the signed-in account.
  */
 export async function reconcileJazzcashPremiumForUser(userId) {
   if (!userId || paymentServiceEnabled()) {
     return { attempted: 0, granted: 0 };
   }
 
+  const userResult = await databasePool.query(
+    `select id, "phoneNumber" as phone_number from public."user" where id = $1 limit 1`,
+    [userId],
+  );
+  const phone = userResult.rows[0]?.phone_number;
+  const national = phone ? nationalMsisdn(phone) : null;
+  const nationalDigits = national ? national.replace(/\D/g, "") : null;
+  const e164Digits = phone ? String(phone).replace(/\D/g, "") : null;
+
   const pending = await databasePool.query(
     `select *
      from public.jazzcash_wallet_link_intents
-     where user_id = $1
-       and status = 'completed'
-       and subscription_id is null
+     where status = 'completed'
        and (
-         payment_token is not null
+         user_id = $1
          or (
-           charge_txn_ref is not null
-           and charge_response_code in ('000', '121', '200', '0')
+           $2::text is not null
+           and regexp_replace(msisdn, '\\D', '', 'g') in ($2::text, $3::text, $4::text)
          )
        )
      order by completed_at desc nulls last, created_at desc
-     limit 5`,
-    [userId],
+     limit 8`,
+    [
+      userId,
+      nationalDigits,
+      nationalDigits ? nationalDigits.replace(/^0/, "92") : null,
+      e164Digits,
+    ],
   );
 
   let granted = 0;
   for (const intent of pending.rows) {
     try {
-      const result = await chargeAndGrantJazzcashIntent(intent, intent.payment_token);
+      if (intent.subscription_id && String(intent.user_id) !== String(userId)) {
+        await transferJazzcashSubscriptionToUser(intent.subscription_id, intent.user_id, userId);
+        granted += 1;
+        continue;
+      }
+      if (intent.subscription_id) {
+        granted += 1;
+        continue;
+      }
+      const result = await chargeAndGrantJazzcashIntent(intent, intent.payment_token, { userId });
       if (result.ok) granted += 1;
     } catch {
-      // Keep login available; charge can be retried on the next sign-in.
+      // Keep login/profile available; charge can be retried on the next visit.
     }
   }
 
@@ -414,7 +521,7 @@ export async function completeJazzcashLandingLink(fields) {
   }
 
   const responseCode = String(fields.pp_ResponseCode ?? fields.pp_Status ?? "").trim();
-  const paymentToken = String(fields.pp_PaymentToken ?? "").trim();
+  const paymentToken = extractJazzcashPaymentToken(fields);
   const success = ["000", "121", "200", "0"].includes(responseCode) || Boolean(paymentToken);
   const tokenPresent = Boolean(paymentToken);
 
