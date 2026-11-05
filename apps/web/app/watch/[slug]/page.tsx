@@ -93,7 +93,9 @@ export default async function WatchPage({ params }: { params: Params }) {
       {liveSource ? <p className="live-non-endorsement">This source is presented for public information. The source institution does not sponsor or endorse Jalwa or its advertisers.</p> : null}
       <div className="watch-actions">
         <Link className="button button-secondary" href="/history">Watch history</Link>
-        {item.sourceUrl ? <Link className="button button-secondary" href={item.sourceUrl} rel="noreferrer" target="_blank">View original source ↗</Link> : null}
+        {playbackAllowed && item.sourceUrl ? (
+          <Link className="button button-secondary" href={item.sourceUrl} rel="noreferrer" target="_blank">View original source ↗</Link>
+        ) : null}
       </div>
       {liveSource ? null : <SocialActions contentId={item.id} title={item.title} />}
     </article>

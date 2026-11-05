@@ -40,6 +40,20 @@ test("content cards only badge Free on gated videos, not live streams", async ()
   assert.doesNotMatch(source, /free-tier-access-core\.mjs/);
 });
 
+test("shorts feed does not embed locked YouTube outside the free 10", async () => {
+  const source = await readFile(new URL("../components/shorts-feed.tsx", import.meta.url), "utf8");
+  assert.match(source, /lockedForViewer === false/);
+  assert.match(source, /View Premium/);
+  assert.match(source, /Free accounts can watch 10 videos/);
+});
+
+test("recommendation rail sends locked videos to pricing", async () => {
+  const source = await readFile(new URL("../components/recommendation-rail.tsx", import.meta.url), "utf8");
+  assert.match(source, /lockedForViewer !== false/);
+  assert.match(source, /\/pricing\?next=/);
+  assert.match(source, /"Premium"/);
+});
+
 test("premium signed-in viewers can play any video", () => {
   const access = { signedIn: true, premium: true, freeUnlockedIds: new Set(["a"]) };
   assert.equal(canPlayVideoContent(access, { contentId: "z", contentType: "video" }), true);
