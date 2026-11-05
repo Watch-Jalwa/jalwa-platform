@@ -1,0 +1,192 @@
+name: Jalwa finish six outstanding approved media titles with stale-worker recovery
+
+on:
+  push:
+    branches: ["ops/jalwa-fourteen-media-ingest-20261105"]
+    paths:
+      - ".github/workflows/demo-14-approved-resume-six-20261105.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-14-approved-source-ingest
+  cancel-in-progress: true
+
+jobs:
+  serial-title:
+    name: Ingest and verify ${{ matrix.slug }}
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        slug:
+          - grca-south-rim-winter-scenic
+          - caminandes-llamigos
+          - apollo-11-eagle-has-landed
+          - spring-blender
+          - sprite-fright
+          - cosmos-laundromat
+    runs-on: ubuntu-latest
+    timeout-minutes: 95
+    environment: staging
+    env:
+      DEMO_14_SLUG: ${{ matrix.slug }}
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Validate scripts and complete pinned 14-source official manifest
+        run: |
+          set -Eeuo pipefail
+          bash -n scripts/demo-fourteen-requeue-stale-one-20261105.sh
+          bash -n scripts/demo-fourteen-refresh-release-20261105.sh
+          node --check scripts/demo-fourteen-ingest-20261105.mjs
+          node --check qa/demo-fourteen-guest-playback-20261105.cjs
+          node -e 'const m=require("./ops/jalwa-14-approved-official-sources-20261105.json");if(m.schemaVersion!==1||m.titles.length!==14||new Set(m.titles.map(x=>x.slug)).size!==14)process.exit(1);console.log("MANIFEST_14_VALID")'
+      - name: Confirm both domains ready on same exact code SHA and pinned SSH
+        run: |
+          set -Eeuo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          for k in HOST USER APP_DIR KNOWN_HOSTS SSH_KEY; do test -n "${!k:-}"; done
+          sha=""
+          for domain in watch-jalwa.com jalwa-platform.codistan.org; do
+            body="$(curl -fsS --max-time 14 "https://$domain/api/health")"
+            ver="$(jq -r '.version' <<<"$body")"
+            test "$(jq -r '.status' <<<"$body")" = ready
+            [[ "$ver" =~ ^[a-f0-9]{40}$ ]]
+            if [ -z "$sha" ]; then sha="$ver"; else test "$sha" = "$ver"; fi
+            echo "DEMO_14_READY_DOMAIN $domain $ver"
+          done
+          echo "DEMO_14_EXPECTED_SHA=$sha" >> "$GITHUB_ENV"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -i ~/.ssh/jalwa "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -Eeuo pipefail
+          test "$(docker inspect -f '{{.State.Health.Status}}' jalwa-web-staging)" = healthy
+          test "$(docker inspect -f '{{.State.Health.Status}}' jalwa-worker-staging)" = healthy
+          disk="$(df -P / | awk 'NR==2 {print $4}')"
+          mem="$(awk '/^MemAvailable:/ {print $2}' /proc/meminfo)"
+          test "$disk" -ge 8388608 && test "$mem" -ge 3145728
+          docker exec jalwa-worker-staging node -e 'const e=process.env;if(e.DEPLOYMENT_ENVIRONMENT!=="staging"||e.MEDIA_BACKEND!=="r2"||e.PAYMENT_PROVIDER!=="mock")process.exit(1);console.log("DEMO_14_WORKER_BOUNDARY_OK",e.GIT_SHA)'
+          REMOTE
+      - name: Reconcile only this stale source job after confirming no FFmpeg is running
+        if: matrix.slug == 'grca-south-rim-winter-scenic' || matrix.slug == 'caminandes-llamigos'
+        run: |
+          set -Eeuo pipefail
+          source scripts/demo-fourteen-refresh-release-20261105.sh
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -i ~/.ssh/jalwa \
+            "$USER@$HOST" "DEMO_14_RECOVER_SLUG=$DEMO_14_SLUG bash -s" \
+            < scripts/demo-fourteen-requeue-stale-one-20261105.sh | tee media-recovery.log
+          grep -Eq '^DEMO_14_STALE_(JOB_REQUEUED|NOT_NEEDED) ' media-recovery.log
+      - name: Ingest only this approved publisher original into R2 and queue FFmpeg
+        run: |
+          set -Eeuo pipefail
+          source scripts/demo-fourteen-refresh-release-20261105.sh
+          { node -e 'const fs=require("fs");process.stdout.write("process.env.DEMO_14_MANIFEST="+JSON.stringify(fs.readFileSync("ops/jalwa-14-approved-official-sources-20261105.json","utf8"))+";\n")'; cat scripts/demo-fourteen-ingest-20261105.mjs; } |
+            ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -i ~/.ssh/jalwa "$USER@$HOST" "docker exec -i -e DEMO_14_MODE=ingest -e DEMO_14_SLUG=$DEMO_14_SLUG -e DEMO_14_EXPECTED_SHA=$DEMO_14_EXPECTED_SHA jalwa-worker-staging node --input-type=module -" | tee media-ingest.log
+          grep -Eq '^DEMO_14_(QUEUED|ALREADY_INGESTED|ALREADY_PUBLISHED) ' media-ingest.log
+      - name: Confirm full worker output and R2 processed object
+        run: |
+          set -Eeuo pipefail
+          source scripts/demo-fourteen-refresh-release-20261105.sh
+          for attempt in $(seq 1 240); do
+            if [ "$((attempt % 4))" -eq 1 ]; then
+              if ! source scripts/demo-fourteen-refresh-release-20261105.sh; then
+                echo "DEMO_14_HEALTH_WAIT attempt=$attempt"
+                sleep 8
+                continue
+              fi
+            fi
+            if { node -e 'const fs=require("fs");process.stdout.write("process.env.DEMO_14_MANIFEST="+JSON.stringify(fs.readFileSync("ops/jalwa-14-approved-official-sources-20261105.json","utf8"))+";\n")'; cat scripts/demo-fourteen-ingest-20261105.mjs; } |
+              ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -i ~/.ssh/jalwa "$USER@$HOST" "docker exec -i -e DEMO_14_MODE=ready -e DEMO_14_SLUG=$DEMO_14_SLUG -e DEMO_14_EXPECTED_SHA=$DEMO_14_EXPECTED_SHA jalwa-worker-staging node --input-type=module -" > media-ready.log 2>&1; then
+              cat media-ready.log
+              grep -Eq '^DEMO_14_(READY|ALREADY_PUBLISHED) ' media-ready.log
+              break
+            fi
+            if grep -Fq 'Runtime release changed' media-ready.log; then
+              echo "DEMO_14_RELEASE_SHIFT_DETECTED attempt=$attempt"
+              continue
+            fi
+            if grep -Fq 'DEMO_14_ERROR ' media-ready.log || grep -Fq '"asset":"failed"' media-ready.log; then cat media-ready.log >&2; exit 1; fi
+            if [ "$((attempt % 40))" -eq 0 ] && grep -Fq 'DEMO_14_NOT_READY ' media-ready.log; then
+              echo "DEMO_14_CHECK_STALE_AFTER_WAIT attempt=$attempt"
+              if ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 \
+                -o ServerAliveInterval=15 -o ServerAliveCountMax=5 -i ~/.ssh/jalwa \
+                "$USER@$HOST" "DEMO_14_RECOVER_SLUG=$DEMO_14_SLUG bash -s" \
+                < scripts/demo-fourteen-requeue-stale-one-20261105.sh > media-recovery-retry.log 2>&1; then
+                cat media-recovery-retry.log
+              else
+                echo "DEMO_14_RECOVERY_GUARD_REFUSED_OR_ACTIVE; continuing without any forced reset"
+              fi
+            fi
+            if [ "$attempt" -eq 240 ]; then cat media-ready.log >&2; echo "MEDIA_14_READY_TIMEOUT" >&2; exit 1; fi
+            sleep 8
+          done
+      - name: Decode actual private R2 MP4 or HLS transport segment
+        run: |
+          set -Eeuo pipefail
+          source scripts/demo-fourteen-refresh-release-20261105.sh
+          { node -e 'const fs=require("fs");process.stdout.write("process.env.DEMO_14_MANIFEST="+JSON.stringify(fs.readFileSync("ops/jalwa-14-approved-official-sources-20261105.json","utf8"))+";\n")'; cat scripts/demo-fourteen-ingest-20261105.mjs; } |
+            ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -i ~/.ssh/jalwa "$USER@$HOST" "docker exec -i -e DEMO_14_MODE=verify -e DEMO_14_SLUG=$DEMO_14_SLUG -e DEMO_14_EXPECTED_SHA=$DEMO_14_EXPECTED_SHA jalwa-worker-staging node --input-type=module -" | tee media-decode.log
+          grep -q '^DEMO_14_MEDIA_DECODE_OK ' media-decode.log
+      - name: Publish only when same approved rights and R2 output are verified
+        id: publish
+        run: |
+          set -Eeuo pipefail
+          source scripts/demo-fourteen-refresh-release-20261105.sh
+          { node -e 'const fs=require("fs");process.stdout.write("process.env.DEMO_14_MANIFEST="+JSON.stringify(fs.readFileSync("ops/jalwa-14-approved-official-sources-20261105.json","utf8"))+";\n")'; cat scripts/demo-fourteen-ingest-20261105.mjs; } |
+            ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -i ~/.ssh/jalwa "$USER@$HOST" "docker exec -i -e DEMO_14_MODE=publish -e DEMO_14_SLUG=$DEMO_14_SLUG -e DEMO_14_EXPECTED_SHA=$DEMO_14_EXPECTED_SHA jalwa-worker-staging node --input-type=module -" | tee media-publish.log
+          grep -Eq '^DEMO_14_(PUBLISHED|ALREADY_PUBLISHED) ' media-publish.log
+      - name: Install real Chromium QA runner
+        run: |
+          set -Eeuo pipefail
+          mkdir -p "$RUNNER_TEMP/jalwa-14-guest"
+          npm install --prefix "$RUNNER_TEMP/jalwa-14-guest" --no-save --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          "$RUNNER_TEMP/jalwa-14-guest/node_modules/.bin/playwright" install --with-deps chromium
+      - name: Four-way guest publication and entitlement QA (playback only when authorized)
+        id: browser
+        env:
+          JALWA_PLAYWRIGHT_PATH: ${{ runner.temp }}/jalwa-14-guest/node_modules/@playwright/test
+        run: |
+          set -Eeuo pipefail
+          source scripts/demo-fourteen-refresh-release-20261105.sh
+          node qa/demo-fourteen-guest-playback-20261105.cjs
+      - name: Roll back only this title publication if browser QA fails
+        if: failure() && (steps.publish.outcome == 'success' || steps.publish.outcome == 'failure')
+        run: |
+          set -Eeuo pipefail
+          source scripts/demo-fourteen-refresh-release-20261105.sh
+          for attempt in 1 2 3; do
+            if { node -e 'const fs=require("fs");process.stdout.write("process.env.DEMO_14_MANIFEST="+JSON.stringify(fs.readFileSync("ops/jalwa-14-approved-official-sources-20261105.json","utf8"))+";\n")'; cat scripts/demo-fourteen-ingest-20261105.mjs; } |
+              ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=12 -o ServerAliveInterval=15 -o ServerAliveCountMax=6 -i ~/.ssh/jalwa "$USER@$HOST" "docker exec -i -e DEMO_14_MODE=rollback -e DEMO_14_SLUG=$DEMO_14_SLUG -e DEMO_14_EXPECTED_SHA=$DEMO_14_EXPECTED_SHA jalwa-worker-staging node --input-type=module -" | tee media-rollback.log; then
+              grep -Eq '^DEMO_14_(UNPUBLISHED|ALREADY_UNPUBLISHED) ' media-rollback.log
+              exit 0
+            fi
+            sleep 7
+          done
+          exit 1
+      - name: Retain source, encoder and browser evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jalwa-14-resume-${{ matrix.slug }}-${{ github.sha }}
+          path: |
+            media-recovery.log
+            media-recovery-retry.log
+            media-ingest.log
+            media-ready.log
+            media-decode.log
+            media-publish.log
+            media-rollback.log
+            jalwa-14-guest-media-evidence/
+          retention-days: 30
+          if-no-files-found: warn
