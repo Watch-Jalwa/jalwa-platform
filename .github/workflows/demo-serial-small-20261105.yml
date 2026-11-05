@@ -1,4 +1,4 @@
-name: Jalwa demo - serial safe repairs for five small source clips
+name: Jalwa demo - serial repairs for remaining four small clips
 
 on:
   push:
@@ -22,7 +22,6 @@ jobs:
       max-parallel: 1
       matrix:
         slug:
-          - counting-chisenbop-cc0
           - vanellus-vanellus-cc0
           - tiny-waterfall-cc0
           - tree-trimmer-cc0
