@@ -1,0 +1,38 @@
+name: Jalwa cancel superseded six-title media waiter
+
+on:
+  push:
+    branches: ["ops/jalwa-fourteen-media-ingest-20261105"]
+    paths: [".github/workflows/demo-14-cancel-superseded-20261105.yml"]
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  stop-old-waiter:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Cancel only exact obsolete 13-title run (current SHA wait, no active FFmpeg)
+        run: |
+          set -Eeuo pipefail
+          repo="Watch-Jalwa/jalwa-platform"
+          id="42010983410"
+          gh api "repos/$repo/actions/runs/$id" > old-run.json
+          test "$(jq -r '.head_branch' old-run.json)" = ops/jalwa-fourteen-media-ingest-20261105
+          test "$(jq -r '.head_sha' old-run.json)" = 0d2b33be0ae3b29e124c0dfed0b1dd58a324b3e2
+          test "$(jq -r '.name' old-run.json)" = "Jalwa approved 13-title serial official media ingest and entitlement QA"
+          status="$(jq -r '.status' old-run.json)"
+          if [ "$status" = completed ]; then
+            echo "OLD_WAIT_ALREADY_FINISHED"
+            exit 0
+          fi
+          if [ "$status" != in_progress ] && [ "$status" != queued ] && [ "$status" != pending ]; then
+            echo "REFUSE unexpected old run state $status" >&2
+            exit 1
+          fi
+          gh api --method POST "repos/$repo/actions/runs/$id/cancel"
+          echo "OLD_READINESS_WAITER_CANCEL_REQUESTED id=$id"
