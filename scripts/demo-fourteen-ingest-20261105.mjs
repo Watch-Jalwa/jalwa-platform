@@ -1,6 +1,6 @@
 (async function jalwaFourteenOperator() {
  const assert = (await import("node:assert/strict")).default;
- const { mkdtemp, rm, stat, open }=await import("node:fs/promises");
+ const { mkdtemp, rm, stat, open, readFile }=await import("node:fs/promises");
  const { createWriteStream, createReadStream }=await import("node:fs");
  const { Readable, Transform }=await import("node:stream");
  const { pipeline }=await import("node:stream/promises");
@@ -9,9 +9,9 @@
  const { createHash,randomUUID }=await import("node:crypto");
  const { execFileSync }=await import("node:child_process");
  const { createPool }=await import("/app/packages/postgres/index.mjs");
- const { uploadSourceFile,verifyObject }=await import("/app/apps/worker/src/storage.mjs");
+ const { uploadSourceFile,verifyObject,downloadObject }=await import("/app/apps/worker/src/storage.mjs");
  const mode=process.env.DEMO_14_MODE, slug=process.env.DEMO_14_SLUG;
- assert.ok(["ingest","ready","publish","rollback"].includes(mode));
+ assert.ok(["ingest","ready","verify","publish","rollback"].includes(mode));
  assert.equal(process.env.DEPLOYMENT_ENVIRONMENT,"staging");
  assert.equal(process.env.MEDIA_BACKEND,"r2");
  assert.equal(process.env.PAYMENT_PROVIDER,"mock");
@@ -167,6 +167,46 @@
   assert.ok(head.sizeBytes>1000,"Missing processed object");
   console.log("DEMO_14_READY "+JSON.stringify({slug,asset:a.asset_id,format:a.format,bytes:head.sizeBytes,mediaPath:expected}));
  }
+ async function verifyMedia(){
+  const row=await getRow(),a=row.asset;
+  assert.equal(a?.asset_status,"ready","Media asset has not finished encoding");
+  assert.equal(a.job_status,"completed");
+  assert.ok(a.is_primary&&a.media_url.startsWith("processed/"+row.id+"/"+a.asset_id+"/"));
+  const root=await mkdtemp(join(tmpdir(),"jalwa-14-verify-"));
+  try{
+    let key=a.media_url;
+    if(a.format==="hls"){
+      const master=join(root,"master.m3u8");
+      await downloadObject(key,master,"processed");
+      const raw=await readFile(master,"utf8");
+      const lines=raw.split(/\r?\n/).map(x=>x.trim()).filter(x=>x&&!x.startsWith("#"));
+      const variant=lines.find(x=>/^(360p|480p|720p)\/index\.m3u8$/.test(x));
+      assert.ok(variant,"No supported HLS variant in private master");
+      const prefix="processed/"+row.id+"/"+a.asset_id+"/";
+      const index=join(root,"index.m3u8");
+      await downloadObject(prefix+variant,index,"processed");
+      const playlist=await readFile(index,"utf8");
+      const segment=playlist.split(/\r?\n/).map(x=>x.trim()).find(x=>/^segment-[0-9]{5}\.ts$/.test(x));
+      assert.ok(segment,"No HLS transport segment");
+      key=prefix+variant.split("/")[0]+"/"+segment;
+    } else {
+      assert.equal(a.format,"mp4");
+      assert.ok(key.endsWith("/short-720.mp4"));
+    }
+    const destination=join(root,a.format==="hls"?"segment.ts":"short.mp4");
+    await downloadObject(key,destination,"processed");
+    const fileStat=await stat(destination);
+    assert.ok(fileStat.size>1024);
+    const decoded=JSON.parse(execFileSync("ffprobe",[
+      "-v","error","-show_entries","stream=codec_type,codec_name,width,height:format=duration","-of","json",destination
+    ],{encoding:"utf8",timeout:60000,maxBuffer:5000000}));
+    const video=decoded.streams?.find(x=>x.codec_type==="video");
+    assert.ok(video?.width>=100&&video?.height>=100,"Encoded R2 output lacks decodable video");
+    console.log("DEMO_14_MEDIA_DECODE_OK "+JSON.stringify({slug,format:a.format,bytes:fileStat.size,
+      video:{width:video.width,height:video.height,codec:video.codec_name},
+      segmentVerified:a.format==="hls",privateR2:true}));
+  } finally{await rm(root,{force:true,recursive:true});}
+ }
  async function publish(){
   let row=await getRow(),a=row.asset;
   if(row.status==="published"&&row.is_available){console.log("DEMO_14_ALREADY_PUBLISHED "+JSON.stringify({slug}));return;}
@@ -213,6 +253,7 @@
  try{
   if(mode==="ingest")await ingest();
   else if(mode==="ready")await ready();
+  else if(mode==="verify")await verifyMedia();
   else if(mode==="publish")await publish();
   else await rollback();
  }catch(e){console.error("DEMO_14_ERROR "+String(e?.message||e));process.exitCode=1}
