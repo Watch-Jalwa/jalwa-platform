@@ -76,3 +76,37 @@ else
   echo "STAGING_DB_NOT_PRESENT"
 fi
 section "Audit completed without writes"
+
+section "Precise Jalwa Nginx vhost route comparison (read-only, no TLS keys)"
+for vhost in /etc/nginx/sites-enabled/watch-jalwa.com /etc/nginx/sites-enabled/jalwa-platform.codistan.org; do
+  if [ ! -r "$vhost" ]; then
+    echo "$vhost NOT_READABLE"
+    continue
+  fi
+  echo "VHOST: $vhost"
+  grep -nE '^[[:space:]]*(server_name|location|proxy_pass|root|try_files|rewrite|return|include|listen|upstream)[[:space:]]|127[.]0[.]0[.]1:3001|localhost:3001' "$vhost" | head -50 || true
+done
+section "Per-title rights flag counts (read-only, no object keys)"
+docker exec -i jalwa-postgres-staging sh -lc 'exec psql -X -A -F "|" -t -v ON_ERROR_STOP=1 -U "${POSTGRES_USER:-postgres}" -d "${POSTGRES_DB:-postgres}"' <<'SQL' || true
+BEGIN TRANSACTION READ ONLY;
+WITH wanted(slug) AS (
+  VALUES ('mossy-tree-cc0'),('baking-cookies-cc0'),('ocean-surface-waves-cc0'),
+  ('tiny-waterfall-cc0'),('tree-trimmer-cc0'),('counting-chisenbop-cc0'),
+  ('vanellus-vanellus-cc0'),('how-fossils-form-cc-by'),('eso-cast-254-light'),
+  ('eso-cast-265-light'),('proxima-centauri-flythrough-cc-by'),
+  ('invitation-to-pakistan-nara'),('promise-of-pakistan-geography'),
+  ('wikipedia-science-comms-cc-by'),('big-buck-bunny'),('elephants-dream')
+)
+SELECT 'RIGHTS|'||w.slug||'|status='||coalesce(r.status::text,'missing')||
+ '|hold='||coalesce(r.rights_hold::text,'null')||
+ '|self_hosting='||coalesce(r.self_hosting_confirmed::text,'null')||
+ '|modification='||coalesce(r.modification_confirmed::text,'null')||
+ '|commercial='||coalesce(r.commercial_use_confirmed::text,'null')||
+ '|expires='||coalesce(to_char(r.expires_at at time zone 'UTC','YYYY-MM-DD'),'none')
+FROM wanted w
+LEFT JOIN public.content_items c ON c.slug=w.slug
+LEFT JOIN public.rights_records r ON r.content_id=c.id
+ORDER BY w.slug;
+ROLLBACK;
+SQL
+section "Routing and rights read-only check complete"
