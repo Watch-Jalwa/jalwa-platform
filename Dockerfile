@@ -75,7 +75,7 @@ ARG SHAKA_PACKAGER_VERSION=3.7.2
 LABEL org.opencontainers.image.source="https://github.com/Watch-Jalwa/jalwa-platform" \
       org.opencontainers.image.revision="$GIT_SHA" \
       com.watch-jalwa.build-run-id="$BUILD_RUN_ID"
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl ffmpeg && rm -rf /var/lib/apt/lists/* \
+RUN apt-get update && apt-get install -y --no-install-recommends apt libapt-pkg6.0 ca-certificates curl ffmpeg && rm -rf /var/lib/apt/lists/* \
   && case "$TARGETARCH" in \
        amd64) binary_arch=x64; checksum=88b022b8cb12602ddb539972efd07a3496ea64f8662a484798c96e95afa41fd8 ;; \
        arm64) binary_arch=arm64; checksum=e4a43aaa8fdb87d0306876bc41581b371d7082e9b8469aef06a4e74004fd69 ;; \

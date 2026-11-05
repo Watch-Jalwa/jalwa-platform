@@ -33,6 +33,19 @@ export function buildShortArgs(input, output) {
   ];
 }
 
+export function buildAudioArgs(input, output) {
+  return [
+    "-y",
+    ...inputArgs(input),
+    "-map", "0:a:0",
+    "-vn",
+    "-c:a", "aac",
+    "-b:a", "128k",
+    "-movflags", "+faststart",
+    output,
+  ];
+}
+
 export function buildThumbnailArgs(input, output) {
   return [
     "-y",
@@ -176,7 +189,7 @@ function ffprobeArgs(input, entries, format = "json") {
   ];
 }
 
-export async function probeMedia(input) {
+export async function probeMedia(input, allowAudioOnly = false) {
   const raw = await capture(
     process.env.FFPROBE_PATH ?? "ffprobe",
     ffprobeArgs(input, "format=duration,format_name:stream=codec_type,codec_name,width,height"),
@@ -185,7 +198,11 @@ export async function probeMedia(input) {
   const result = parsed && typeof parsed === "object" ? parsed : {};
   const duration = Number(result.format?.duration ?? 0);
   const streams = Array.isArray(result.streams) ? result.streams : [];
-  if (!streams.some((stream) => stream?.codec_type === "video")) throw new Error("Uploaded media contains no video stream.");
+  const hasVideo = streams.some((stream) => stream?.codec_type === "video");
+  const hasAudio = streams.some((stream) => stream?.codec_type === "audio");
+  if (!hasVideo && !(allowAudioOnly && hasAudio)) {
+    throw new Error(allowAudioOnly ? "Uploaded audio contains no audio stream." : "Uploaded media contains no video stream.");
+  }
   if (streams.length > 32) throw new Error("Uploaded media contains too many streams.");
   if (Number.isFinite(duration) && duration > Number(process.env.MEDIA_MAX_DURATION_SECONDS ?? 43_200)) {
     throw new Error("Uploaded media exceeds the maximum duration.");
@@ -260,8 +277,13 @@ export async function processMediaJob({ database, job }) {
     .eq("id", job.media_asset_id)
     .single();
   if (error || !asset) throw error ?? new Error("Source asset missing");
+  const { data: content, error: contentError } = await database.from("content_items")
+    .select("content_type").eq("id", asset.content_id).single();
+  if (contentError || !content) throw contentError ?? new Error("Media content missing");
+  const audioOnly = content.content_type === "audio";
 
   if (transcodeBackend() === "mediaconvert") {
+    if (audioOnly) throw new Error("Audio-only media requires the FFmpeg backend.");
     return dispatchMediaConvertJob({ database, job, asset });
   }
   if (transcodeBackend() !== "ffmpeg") throw new Error("Unsupported transcode backend.");
@@ -274,18 +296,29 @@ export async function processMediaJob({ database, job }) {
   try {
     await assertJobStillAllowed(database, job.id, asset.content_id);
     await downloadObject(asset.storage_key, source, "incoming");
-    const probe = await probeMedia(source);
+    const probe = await probeMedia(source, audioOnly);
     const hasAudio = await hasAudioStream(source);
+    if (audioOnly && !hasAudio) throw new Error("Audio-only source has no playable audio stream.");
     const ffmpeg = process.env.FFMPEG_PATH ?? "ffmpeg";
     const prefix = `processed/${asset.content_id}/${asset.id}/`;
-    const thumbnailPath = `${prefix}thumbnail.jpg`;
+    const thumbnailPath = audioOnly ? null : `${prefix}thumbnail.jpg`;
     let format;
     let mediaPath;
 
-    await run(ffmpeg, buildThumbnailArgs(source, join(output, "thumbnail.jpg")));
-    await assertJobStillAllowed(database, job.id, asset.content_id);
+    if (!audioOnly) {
+      await run(ffmpeg, buildThumbnailArgs(source, join(output, "thumbnail.jpg")));
+      await assertJobStillAllowed(database, job.id, asset.content_id);
+    }
 
-    if (job.job_type === "short_mp4") {
+    if (audioOnly) {
+      if (job.job_type !== "short_mp4") throw new Error("Audio-only content requires the short media pipeline.");
+      const target = join(output, "audio.m4a");
+      await run(ffmpeg, buildAudioArgs(source, target));
+      mediaPath = `${prefix}audio.m4a`;
+      // The existing playback format enum accepts MP4 (container family) but no audio-only variant.
+      // The web player selects an <audio> element using content_type=audio, not this format field.
+      format = "mp4";
+    } else if (job.job_type === "short_mp4") {
       const target = join(output, "short-720.mp4");
       await run(ffmpeg, buildShortArgs(source, target));
       mediaPath = `${prefix}short-720.mp4`;
@@ -299,7 +332,7 @@ export async function processMediaJob({ database, job }) {
 
     await assertJobStillAllowed(database, job.id, asset.content_id);
     const uploaded = await uploadDirectory(output, prefix);
-    if (!uploaded.includes(thumbnailPath) || !uploaded.includes(mediaPath)) {
+    if ((thumbnailPath && !uploaded.includes(thumbnailPath)) || !uploaded.includes(mediaPath)) {
       throw new Error("Required processed media output was not uploaded.");
     }
 

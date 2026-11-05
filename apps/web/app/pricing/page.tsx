@@ -40,7 +40,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Sear
           </Link>
         </article>
 
-        <article className="price-card price-card-soon" aria-disabled="true">
+        <article className="price-card price-card-soon">
           <span className="eyebrow">Best value</span>
           <h2>Annual</h2>
           <p className="price">Coming soon</p>

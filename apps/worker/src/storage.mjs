@@ -86,6 +86,7 @@ function contentType(path) {
   if (path.endsWith(".mpd")) return "application/dash+xml";
   if (path.endsWith(".m4s")) return "video/iso.segment";
   if (path.endsWith(".ts")) return "video/mp2t";
+  if (path.endsWith(".m4a")) return "audio/mp4";
   if (path.endsWith(".mp4")) return "video/mp4";
   if (path.endsWith(".vtt")) return "text/vtt";
   if (path.endsWith(".webp")) return "image/webp";
