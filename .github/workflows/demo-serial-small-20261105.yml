@@ -1,4 +1,4 @@
-name: Jalwa demo - serial repairs for remaining four small clips
+name: Jalwa demo - source-aware repair for Tree Trimmer and Ocean Waves
 
 on:
   push:
@@ -22,8 +22,6 @@ jobs:
       max-parallel: 1
       matrix:
         slug:
-          - vanellus-vanellus-cc0
-          - tiny-waterfall-cc0
           - tree-trimmer-cc0
           - ocean-surface-waves-cc0
     runs-on: ubuntu-latest
