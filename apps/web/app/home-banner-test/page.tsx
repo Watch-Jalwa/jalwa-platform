@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import "../home-hero.css";
 
@@ -19,7 +20,9 @@ export default function HomeBannerTestPage() {
 
       <section className="home-banner-hero" aria-labelledby="home-banner-title">
         <div className="home-banner-media" aria-hidden="true">
-          <img
+          <Image
+            unoptimized
+            loading="eager"
             className="home-banner-image"
             src="/home/homepage-hero-banner.jpeg"
             alt=""

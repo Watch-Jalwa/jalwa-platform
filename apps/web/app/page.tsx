@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { ContentCard } from "@/components/content-card";
 import { FREE_UNLOCKED_VIDEO_LIMIT, summarizeVideoAccess } from "@/lib/catalogue/free-tier-access.mjs";
@@ -36,7 +37,9 @@ export default async function HomePage() {
     <div className="page-shell">
       <section className="home-banner-hero" aria-labelledby="hero-title">
         <div className="home-banner-media" aria-hidden="true">
-          <img
+          <Image
+            unoptimized
+            loading="eager"
             className="home-banner-image"
             src="/home/homepage-hero-banner.jpeg"
             alt=""

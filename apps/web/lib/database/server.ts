@@ -19,8 +19,8 @@ export async function createClient() {
     session = await auth.api.getSession({ headers: requestHeaders });
   } catch (error) {
     // Unreachable DB (local without Docker DNS) — fail closed quietly.
-    // Transient lookup failures still get one silent retry.
     if (!isUnreachableDatabaseError(error)) {
+      console.warn("auth_session_lookup_retry");
       try {
         session = await auth.api.getSession({ headers: requestHeaders });
       } catch {
