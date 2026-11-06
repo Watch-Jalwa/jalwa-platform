@@ -1,0 +1,41 @@
+name: Repair Sintel AAC configuration with retained original audio and copied video
+on:
+  push:
+    branches: [ops/retained-media-repair-20261106]
+    paths: [.github/workflows/retained-repair-audio-20261106.yml, ops/retained-repair-20261106/audio-repair.mjs, ops/retained-repair-20261106/hls-audio-configuration.test.mjs]
+permissions:
+  contents: read
+concurrency:
+  group: jalwa-staging
+  cancel-in-progress: false
+jobs:
+  audio:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 25
+    env:
+      RELEASE_SHA: 0c8f09c0a59d0e98d9725c40c7bdffa8a989eb44
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      STAGE_USER: ${{ vars.STAGING_USER || 'codistan' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Test six-channel AAC configuration and timestamp preservation
+        run: |
+          if ! command -v ffmpeg >/dev/null; then sudo apt-get -qq update && sudo apt-get -qq install ffmpeg >/dev/null; fi
+          node --check ops/retained-repair-20261106/audio-repair.mjs
+          node --test ops/retained-repair-20261106/hls-audio-configuration.test.mjs
+      - name: Repair only the unavailable Sintel output
+        run: |
+          set -Eeuo pipefail
+          source ops/retained-repair-20261106/connection.sh
+          mkdir -p evidence
+          { node -e 'process.stdout.write("process.env.JALWA_REPAIR_ORIGINALS="+JSON.stringify(require("node:fs").readFileSync("ops/retained-repair-20261106/originals.json","utf8"))+";\n")'
+            cat ops/retained-repair-20261106/audio-repair.mjs
+          } | staging_ssh "docker exec -i -e RELEASE_SHA=$release -e JALWA_REPAIR_RUN=$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT jalwa-worker-staging node --input-type=module -" | tee evidence/audio-repair.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: retained-audio-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/
