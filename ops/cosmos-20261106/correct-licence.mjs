@@ -51,7 +51,7 @@ try {
     assert.equal(before.licence_code, "CC-BY-3.0");
     const note = "Exact official original closing credit frame credit-028.jpg states Creative Commons Attribution 4.0. Verified in GitHub run 42188424728, artifact 13489052274. The older Gooseberry website default was CC BY 3.0. Owner-authorized completion and editorial review on 2026-11-06.";
     const after = await one(`update public.rights_records set licence_code=$2, attribution_text=$3,
-      evidence_url=$4, evidence_note=concat_ws(E'\\n', nullif(evidence_note,''), $5)
+      evidence_url=$4, evidence_note=concat_ws(E'\\n', nullif(evidence_note,''), $5::text)
       where id=$1 and licence_code='CC-BY-3.0' and status='approved' and not rights_hold
       and source_url=$6 and xmin::text=$7 returning *, xmin::text as revision`,
       [before.id, review.licenceCode, review.attributionText, review.licenceEvidence, note, before.source_url, before.revision]);
