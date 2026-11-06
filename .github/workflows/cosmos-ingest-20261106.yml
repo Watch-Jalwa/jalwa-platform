@@ -1,0 +1,36 @@
+name: Ingest and encode approved Cosmos Laundromat original
+on:
+  push:
+    branches: [ops/cosmos-completion-20261106]
+    paths: [.github/workflows/cosmos-ingest-20261106.yml, ops/cosmos-20261106/ingest.sh, ops/cosmos-20261106/state.mjs]
+permissions:
+  contents: read
+concurrency:
+  group: jalwa-staging
+  cancel-in-progress: false
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    environment: staging
+    env:
+      RELEASE_SHA: 0c8f09c0a59d0e98d9725c40c7bdffa8a989eb44
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      STAGE_USER: ${{ vars.STAGING_USER || 'codistan' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Validate scoped ingestion scripts
+        run: |
+          bash -n ops/cosmos-20261106/ingest.sh
+          node --check ops/cosmos-20261106/state.mjs
+          node --check scripts/demo-fourteen-ingest-20261105.mjs
+      - name: Download publisher original and wait for private HLS encoding
+        run: bash ops/cosmos-20261106/ingest.sh
+      - name: Preserve ingestion evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cosmos-ingest-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/
