@@ -20,4 +20,4 @@ jobs:
           SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
         run: |
           source ops/demo-four-20261106/connection.sh
-          staging_ssh 'docker exec -i -w /app jalwa-web-staging node --input-type=module -' < ops/demo-four-20261106/preflight.mjs
+          staging_ssh 'export STAGING_QA_ALLOWED_EMAILS="$(docker exec jalwa-web-staging printenv STAGING_QA_ALLOWED_EMAILS)"; docker exec -i -e STAGING_QA_ALLOWED_EMAILS jalwa-worker-staging node --input-type=module -' < ops/demo-four-20261106/preflight.mjs
