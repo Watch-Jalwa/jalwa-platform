@@ -1,0 +1,39 @@
+name: Four approved demo titles - Premium browser verification
+on:
+  push:
+    branches: [ops/demo-four-premium-20261106]
+    paths: [.github/workflows/demo-four-premium.yml, scripts/verify-four-premium.mjs, ops/demo-four-20261106/publish.mjs, ops/demo-four-20261106/review.json]
+permissions:
+  contents: read
+concurrency:
+  group: jalwa-staging
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+    env:
+      RELEASE_SHA: f6467289bef7a25b5a39a04f4ad0674eedeaaff1
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Install browser QA runner
+        run: |
+          echo "JALWA_PLAYWRIGHT_PATH=$RUNNER_TEMP/jalwa-four-browser/node_modules/@playwright/test" >> "$GITHUB_ENV"
+          npm install --prefix "$RUNNER_TEMP/jalwa-four-browser" --no-save --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          "$RUNNER_TEMP/jalwa-four-browser/node_modules/.bin/playwright" install chromium
+      - name: Check signed-in Premium access on both hosts
+        env:
+          STAGING_QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}
+          PREMIUM_QA_EMAIL: ${{ vars.STAGING_QA_CUSTOMER_EMAIL || 'acceptance+customer@watch-jalwa.com' }}
+          PREMIUM_QA_EVIDENCE: account-check.json
+          PREMIUM_QA_MODE: auth-only
+        run: node scripts/verify-four-premium.mjs
+      - name: Retain sanitized QA evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: demo-four-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            account-check.json
+            evidence/
