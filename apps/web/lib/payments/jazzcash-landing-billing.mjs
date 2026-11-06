@@ -1,6 +1,7 @@
 import { databasePool } from "@/lib/database/pool";
 import {
   buildLinkWalletForm,
+  inquireJazzcashPaymentStatus,
   isValidJazzcashRequestId,
   jazzcashV11Configured,
   newJazzcashPayTxnRef,
@@ -560,6 +561,114 @@ export async function startJazzcashLandingLink({ msisdn, planCode, consentToAuto
     actionUrl: form.actionUrl,
     fields: form.fields,
   };
+}
+
+/**
+ * Server Status Inquiry proxy helper.
+ * Resolve txn by charge_txn_ref or by wallet-link request_id → stored charge_txn_ref.
+ */
+export async function inquireJazzcashLandingStatus({ txnRefNo, requestId } = {}) {
+  if (!jazzcashV11Configured()) {
+    const error = new Error("jazzcash_unconfigured");
+    error.status = 503;
+    throw error;
+  }
+
+  let resolvedTxnRef = String(txnRefNo ?? "").trim();
+  let intent = null;
+
+  if (requestId) {
+    const intentResult = await databasePool.query(
+      `select request_id, charge_txn_ref, status, subscription_id, response_code, charge_response_code
+       from public.jazzcash_wallet_link_intents
+       where request_id = $1
+       limit 1`,
+      [String(requestId).trim()],
+    );
+    intent = intentResult.rows[0] ?? null;
+    if (!intent) {
+      const error = new Error("unknown_request");
+      error.status = 404;
+      throw error;
+    }
+    if (!resolvedTxnRef) resolvedTxnRef = String(intent.charge_txn_ref ?? "").trim();
+  }
+
+  if (!resolvedTxnRef) {
+    const error = new Error("missing_txn_ref");
+    error.status = 400;
+    throw error;
+  }
+
+  // Prefer known merchant txn refs so inquiry cannot be used as an open proxy.
+  if (!intent) {
+    const byCharge = await databasePool.query(
+      `select request_id, charge_txn_ref, status, subscription_id, response_code, charge_response_code
+       from public.jazzcash_wallet_link_intents
+       where charge_txn_ref = $1
+       limit 1`,
+      [resolvedTxnRef],
+    );
+    intent = byCharge.rows[0] ?? null;
+    if (!intent) {
+      const error = new Error("unknown_txn_ref");
+      error.status = 404;
+      throw error;
+    }
+  }
+
+  const inquiry = await inquireJazzcashPaymentStatus({ txnRefNo: resolvedTxnRef });
+  return {
+    ok: inquiry.ok,
+    requestId: intent.request_id,
+    txnRefNo: inquiry.txnRefNo,
+    responseCode: inquiry.responseCode,
+    responseMessage: inquiry.responseMessage,
+    intentStatus: intent.status,
+    subscriptionId: intent.subscription_id ?? null,
+    payload: inquiry.payload,
+  };
+}
+
+/**
+ * JazzCash IPN / server notify. Same settlement path as Return URL, always ACK-friendly.
+ */
+export async function handleJazzcashIpn(fields) {
+  if (!fields || typeof fields !== "object") {
+    return { httpStatus: 400, body: { ok: false, error: "invalid_fields" } };
+  }
+
+  const hasPp = Object.keys(fields).some((key) => key.startsWith("pp_"));
+  if (!hasPp) {
+    return { httpStatus: 400, body: { ok: false, error: "missing_pp_fields" } };
+  }
+
+  try {
+    const result = await completeJazzcashLandingLink(fields);
+    return {
+      httpStatus: 200,
+      body: {
+        ok: result.ok,
+        requestId: result.requestId,
+        status: result.status,
+        message: result.message,
+      },
+    };
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "ipn_failed";
+    // ACK 200 for known business misses so JazzCash does not storm retries on unknown RequestID;
+    // still surface parse/hash failures as 400.
+    if (code === "unknown_request" || code === "missing_request_id") {
+      console.error("jazzcash_ipn_unknown", code);
+      return { httpStatus: 200, body: { ok: false, error: code } };
+    }
+    if (code === "invalid_hash") {
+      console.error("jazzcash_ipn_invalid_hash");
+      return { httpStatus: 400, body: { ok: false, error: code } };
+    }
+    console.error("jazzcash_ipn_failed", code);
+    return { httpStatus: 200, body: { ok: false, error: code } };
+  }
 }
 
 export async function completeJazzcashLandingLink(fields) {

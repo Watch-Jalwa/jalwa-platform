@@ -42,3 +42,22 @@ export function completeJazzcashLandingLink(fields: Record<string, string>): Pro
   planCode?: string;
   subscriptionId?: string;
 }>;
+
+export function inquireJazzcashLandingStatus(input?: {
+  txnRefNo?: string;
+  requestId?: string;
+}): Promise<{
+  ok: boolean;
+  requestId: string;
+  txnRefNo: string;
+  responseCode: string;
+  responseMessage: string;
+  intentStatus: string;
+  subscriptionId: string | null;
+  payload: Record<string, unknown>;
+}>;
+
+export function handleJazzcashIpn(fields: Record<string, string>): Promise<{
+  httpStatus: number;
+  body: Record<string, unknown>;
+}>;

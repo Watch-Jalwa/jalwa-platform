@@ -41,6 +41,34 @@ test("PayViaToken helper posts signed m-wallet payload without MPIN", async () =
   assert.doesNotMatch(source, /pp_CNIC/);
 });
 
+test("Status Inquiry helper posts only MerchantID Password TxnRefNo SecureHash", async () => {
+  const source = await readFile(v11Url, "utf8");
+  assert.match(source, /inquireJazzcashPaymentStatus/);
+  assert.match(source, /jazzcashStatusInquiryUrl/);
+  assert.match(source, /payment-orchestrator\/api\/v2\/rest\/payments\/status\/inquiry/);
+  assert.match(source, /Do not send pp_Version/);
+  const inquiry = source.slice(source.indexOf("export async function inquireJazzcashPaymentStatus"));
+  const body = inquiry.slice(0, inquiry.indexOf("export async function payViaJazzcashToken"));
+  assert.match(body, /pp_MerchantID/);
+  assert.match(body, /pp_Password/);
+  assert.match(body, /pp_TxnRefNo/);
+  assert.match(body, /pp_SecureHash/);
+  assert.doesNotMatch(body, /pp_Version\s*:/);
+});
+
+test("IPN routes settle through the same complete path as Return URL", async () => {
+  const billing = await readFile(billingUrl, "utf8");
+  assert.match(billing, /handleJazzcashIpn/);
+  assert.match(billing, /inquireJazzcashLandingStatus/);
+  assert.match(billing, /completeJazzcashLandingLink/);
+  const ipn = await readFile(new URL("../app/jazzcash/ipn/route.ts", import.meta.url), "utf8");
+  const alias = await readFile(new URL("../app/account/jazzcash-ipn/route.ts", import.meta.url), "utf8");
+  const inquiryRoute = await readFile(new URL("../app/api/v1/premium/billing/jazzcash-v11/inquiry/route.ts", import.meta.url), "utf8");
+  assert.match(ipn, /respondToJazzcashIpn/);
+  assert.match(alias, /respondToJazzcashIpn/);
+  assert.match(inquiryRoute, /inquireJazzcashLandingStatus/);
+});
+
 test("migration tracks charge txn and aligns monthly price to Rs 599", async () => {
   const migration = await readFile(migrationUrl, "utf8");
   assert.match(migration, /payment_token/);

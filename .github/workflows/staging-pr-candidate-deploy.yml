@@ -95,6 +95,7 @@ jobs:
       JAZZCASH_INTEGRITY_SALT: ${{ secrets.JAZZCASH_INTEGRITY_SALT }}
       JAZZCASH_SECRET: ${{ secrets.JAZZCASH_SECRET }}
       JAZZCASH_RETURN_URL: ${{ vars.JAZZCASH_RETURN_URL || format('https://{0}/callback', vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org') }}
+      JAZZCASH_IPN_URL: ${{ vars.JAZZCASH_IPN_URL || format('https://{0}/jazzcash/ipn', vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org') }}
       JAZZCASH_HOST: ${{ vars.JAZZCASH_HOST || 'https://onlinepayments.jazzcash.com.pk' }}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
@@ -163,7 +164,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "APP_DIR='$APP_DIR' DOMAIN='$DOMAIN' RELEASE_SHA='$GITHUB_SHA' BUILD_RUN_ID='$GITHUB_RUN_ID' JAZZCASH_MERCHANT_ID='${JAZZCASH_MERCHANT_ID:-}' JAZZCASH_PASSWORD='${JAZZCASH_PASSWORD:-}' JAZZCASH_INTEGRITY_SALT='${JAZZCASH_INTEGRITY_SALT:-}' JAZZCASH_SECRET='${JAZZCASH_SECRET:-}' JAZZCASH_RETURN_URL='${JAZZCASH_RETURN_URL:-}' JAZZCASH_HOST='${JAZZCASH_HOST:-}' bash -s" <<'REMOTE'
+            "APP_DIR='$APP_DIR' DOMAIN='$DOMAIN' RELEASE_SHA='$GITHUB_SHA' BUILD_RUN_ID='$GITHUB_RUN_ID' JAZZCASH_MERCHANT_ID='${JAZZCASH_MERCHANT_ID:-}' JAZZCASH_PASSWORD='${JAZZCASH_PASSWORD:-}' JAZZCASH_INTEGRITY_SALT='${JAZZCASH_INTEGRITY_SALT:-}' JAZZCASH_SECRET='${JAZZCASH_SECRET:-}' JAZZCASH_RETURN_URL='${JAZZCASH_RETURN_URL:-}' JAZZCASH_IPN_URL='${JAZZCASH_IPN_URL:-}' JAZZCASH_HOST='${JAZZCASH_HOST:-}' bash -s" <<'REMOTE'
           set -Eeuo pipefail
           env_file="$APP_DIR/.env.staging"
           compose_file="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml"
@@ -190,6 +191,7 @@ jobs:
           if [[ -n "${JAZZCASH_INTEGRITY_SALT:-}" ]]; then upsert_env JAZZCASH_INTEGRITY_SALT "$JAZZCASH_INTEGRITY_SALT"; fi
           if [[ -n "${JAZZCASH_SECRET:-}" ]]; then upsert_env JAZZCASH_SECRET "$JAZZCASH_SECRET"; fi
           if [[ -n "${JAZZCASH_RETURN_URL:-}" ]]; then upsert_env JAZZCASH_RETURN_URL "$JAZZCASH_RETURN_URL"; fi
+          if [[ -n "${JAZZCASH_IPN_URL:-}" ]]; then upsert_env JAZZCASH_IPN_URL "$JAZZCASH_IPN_URL"; fi
           if [[ -n "${JAZZCASH_HOST:-}" ]]; then upsert_env JAZZCASH_HOST "$JAZZCASH_HOST"; fi
 
           export COMPOSE_PROJECT_NAME=jalwa-platform

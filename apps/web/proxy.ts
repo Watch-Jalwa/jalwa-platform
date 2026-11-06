@@ -6,6 +6,8 @@ function isCampaignPath(pathname: string) {
     pathname === "/landing1"
     || pathname === "/mainLanding"
     || pathname.startsWith("/callback")
+    || pathname.startsWith("/jazzcash/")
+    || pathname === "/account/jazzcash-ipn"
   );
 }
 

@@ -181,7 +181,7 @@ curl -s -X POST https://jalwa-platform.codistan.org/api/v1/premium/billing/jazzc
 4. Redeploy staging candidate from `fix/staging-certification-blockers`.  
 5. Retest Subscribe Now → expect JazzCash PIN/MPIN page, not SecureHash error.
 
-### After salt works — return URL allowlist
+### After salt works — return URL + IPN allowlist
 
 Staging currently returns:
 
@@ -197,6 +197,17 @@ JazzCash must **allowlist** the exact Return URL used in `pp_ReturnURL`, or link
 - Point `JAZZCASH_RETURN_URL` at an allowlisted URL that actually hits this app.
 
 Callback / complete path lives under app callback routes + `completeJazzcashLandingLink` in `jazzcash-landing-billing.mjs`.
+
+**IPN (implemented):**
+
+- Primary: `https://jalwa-platform.codistan.org/jazzcash/ipn`
+- Alias: `https://jalwa-platform.codistan.org/account/jazzcash-ipn`
+- Env: `JAZZCASH_IPN_URL` (defaults to `{APP_URL}/jazzcash/ipn`)
+
+**Status Inquiry (implemented):**
+
+- JazzCash: `POST …/payment-orchestrator/api/v2/rest/payments/status/inquiry` (no `pp_Version`)
+- Jalwa proxy: `POST /api/v1/premium/billing/jazzcash-v11/inquiry` with `{ txnRefNo }` or `{ requestId }`
 
 ### Optional polish (not blocking SecureHash)
 

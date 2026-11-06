@@ -1,16 +1,28 @@
 export function jazzcashV11Configured(): boolean;
 export function jazzcashReturnUrl(): string;
+export function jazzcashIpnUrl(): string;
 export function jazzcashHost(): string;
 export function jazzcashActionUrl(): string;
 export function jazzcashPayViaTokenUrl(): string;
+export function jazzcashStatusInquiryUrl(): string;
 export function jazzcashPktDateTime(date?: Date): string;
 export function newJazzcashPayTxnRef(): string;
 export function buildJazzcashSecureHash(fields: Record<string, string>, integritySalt?: string): string;
 export function verifyJazzcashSecureHash(fields: Record<string, string>): boolean;
+export function sanitizeJazzcashPublicPayload(payload: unknown): Record<string, unknown>;
 export function buildLinkWalletForm(input: {
   requestId: string;
   msisdn: string;
 }): { requestId: string; actionUrl: string; fields: Record<string, string> };
+export function inquireJazzcashPaymentStatus(input: {
+  txnRefNo: string;
+}): Promise<{
+  ok: boolean;
+  responseCode: string;
+  responseMessage: string;
+  txnRefNo: string;
+  payload: Record<string, unknown>;
+}>;
 export function payViaJazzcashToken(input: {
   paymentToken: string;
   amountMinor: number | string;

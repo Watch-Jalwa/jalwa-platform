@@ -13,6 +13,9 @@ const {
   jazzcashOfficialTestVectorHash,
   isValidJazzcashRequestId,
   newJazzcashRequestId,
+  jazzcashStatusInquiryUrl,
+  jazzcashIpnUrl,
+  sanitizeJazzcashPublicPayload,
 } = await import("../lib/payments/jazzcash-v11.mjs");
 
 test("JazzCash SecureHash matches official sample vector", () => {
@@ -87,6 +90,53 @@ test("JazzCash return URL follows the app origin when the configured host differ
     process.env.NEXT_PUBLIC_APP_URL = previousApp;
     process.env.JAZZCASH_RETURN_URL = previousReturn;
   }
+});
+
+test("Status Inquiry URL and hash omit pp_Version", () => {
+  assert.match(jazzcashStatusInquiryUrl(), /\/payment-orchestrator\/api\/v2\/rest\/payments\/status\/inquiry$/);
+  const fields = {
+    pp_MerchantID: "MC990986",
+    pp_Password: "secret",
+    pp_TxnRefNo: "Goo1234567890ab",
+  };
+  const hash = buildJazzcashSecureHash(fields, "testsalt");
+  assert.match(hash, /^[A-F0-9]{64}$/);
+  assert.equal(
+    hash,
+    buildJazzcashSecureHash({ ...fields, pp_Version: "" }, "testsalt"),
+  );
+  assert.notEqual(
+    hash,
+    buildJazzcashSecureHash({ ...fields, pp_Version: "2.0" }, "testsalt"),
+  );
+});
+
+test("JazzCash IPN URL follows the app origin when configured host differs", async () => {
+  const previousApp = process.env.NEXT_PUBLIC_APP_URL;
+  const previousIpn = process.env.JAZZCASH_IPN_URL;
+  process.env.NEXT_PUBLIC_APP_URL = "https://jalwa-platform.codistan.org";
+  process.env.JAZZCASH_IPN_URL = "https://watch-jalwa.com/jazzcash/ipn";
+  try {
+    const mod = await import(`../lib/payments/jazzcash-v11.mjs?stagingIpn=${Date.now()}`);
+    assert.equal(mod.jazzcashIpnUrl(), "https://jalwa-platform.codistan.org/jazzcash/ipn");
+  } finally {
+    process.env.NEXT_PUBLIC_APP_URL = previousApp;
+    process.env.JAZZCASH_IPN_URL = previousIpn;
+  }
+});
+
+test("sanitizeJazzcashPublicPayload strips secrets and tokens", () => {
+  assert.deepEqual(
+    sanitizeJazzcashPublicPayload({
+      pp_ResponseCode: "000",
+      pp_Password: "secret",
+      pp_SecureHash: "ABC",
+      pp_PaymentToken: "tok",
+      pp_TxnRefNo: "Goo1",
+    }),
+    { pp_ResponseCode: "000", pp_TxnRefNo: "Goo1" },
+  );
+  assert.equal(jazzcashIpnUrl().includes("/jazzcash/ipn"), true);
 });
 
 test("JazzCash RequestID stays short and rejects free-form landing keys", () => {
