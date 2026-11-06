@@ -29,7 +29,7 @@ jobs:
       - name: Exercise output validation and rejection cases
         run: |
           if ! command -v ffmpeg >/dev/null; then sudo apt-get -qq update && sudo apt-get -qq install ffmpeg >/dev/null; fi
-          node --test ops/retained-repair-20261106/media-validation.test.mjs
+          node --test ops/retained-repair-20261106/media-validation.test.mjs ops/retained-repair-20261106/capacity.test.mjs ops/retained-repair-20261106/hls-audio-configuration.test.mjs
       - name: Publish cleared repairs and prove signed-in Premium playback
         env:
           STAGING_QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}

@@ -32,6 +32,14 @@ try {
     assert.equal(r.duration_seconds,r.slug==='sintel'?888:45);
     assert.equal(r.thumbnail_url,'/api/catalogue/poster/'+r.id);
     assert.equal(r.licence_code,r.slug==='sintel'?'CC-BY-3.0':'CC0-1.0');
+    if(r.slug==='sintel') {
+      assert.equal(r.repair.audioPackaging.sourceSha256,source.checksum);
+      assert.equal(r.repair.audioPackaging.channels,6);
+      assert.equal(r.repair.audioPackaging.channelLayout,'5.1');
+      assert(r.repair.audioPackaging.videoCopied);
+      assert.equal(r.repair.audioPackaging.evidence.length,3);
+      assert(r.repair.audioPackaging.evidence.every(item=>item.independentlyDecoded.length===3));
+    }
   }
   console.log(JSON.stringify({release:process.env.GIT_SHA,titles:q.rows},null,2));
 } finally {await db.end();}

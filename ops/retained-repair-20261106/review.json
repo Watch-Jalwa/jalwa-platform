@@ -35,8 +35,55 @@
         "sintel-credit-030.jpg"
       ],
       "sourceDurationSeconds": 888.032,
-      "outputDurationSeconds": 888.000007,
-      "finding": "Complete retained source was transcoded without trimming. Original closing credits visibly confirm Creative Commons Attribution 3.0 and www.sintel.org."
+      "outputDurationSeconds": 888.0000099999993,
+      "finding": "Complete retained source was transcoded without trimming. Original closing credits visibly confirm Creative Commons Attribution 3.0 and www.sintel.org.",
+      "audioPackagingRun": "https://github.com/Watch-Jalwa/jalwa-platform/actions/runs/42201453626",
+      "audioPackaging": {
+        "scope": "retained-audio-packaging-20261106",
+        "run": "42201453626-1",
+        "sourceSha256": "60cff51761641626e82eeb4e1c248c471375b2536bb1089f49825b7fb58d8723",
+        "channels": 6,
+        "channelLayout": "5.1",
+        "videoCopied": true,
+        "evidence": [
+          {
+            "size": 360,
+            "duration": 888.0000119999994,
+            "videoPacketHash": "SHA256=ece6d70f660eda216327e60e5387cef4491be266c5a4354a8d8febc77a481096",
+            "sourceRelativeSync": 0,
+            "outputRelativeSync": 0.021333000000000046,
+            "independentlyDecoded": [
+              "segment-00000.ts",
+              "segment-00070.ts",
+              "segment-00140.ts"
+            ]
+          },
+          {
+            "size": 480,
+            "duration": 888.0000139999993,
+            "videoPacketHash": "SHA256=5bad09121a11baf79f865d4303b97cbd196fb5fe76a6ddb8e8af0c41cd207fd9",
+            "sourceRelativeSync": 0,
+            "outputRelativeSync": 0.021333000000000046,
+            "independentlyDecoded": [
+              "segment-00000.ts",
+              "segment-00070.ts",
+              "segment-00140.ts"
+            ]
+          },
+          {
+            "size": 720,
+            "duration": 888.0000099999993,
+            "videoPacketHash": "SHA256=942006657b577b075bef89b6f6830423ebc6c6dae6e7efee2fc1e0ae1fa34f0d",
+            "sourceRelativeSync": 0,
+            "outputRelativeSync": 0.021333000000000046,
+            "independentlyDecoded": [
+              "segment-00000.ts",
+              "segment-00070.ts",
+              "segment-00140.ts"
+            ]
+          }
+        ]
+      }
     },
     "licenceEvidence": "https://durian.blender.org/sharing/"
   },

@@ -73,6 +73,64 @@ async function checkIdentity(ctx, origin) {
   } finally { await page.close(); }
 }
 
+async function checkSeekResume(ctx, page, video, origin, expected, prefix) {
+  const advance = async (target, minimumPosition = 0) => video.evaluate(async (v, options) => {
+    const playback = async () => {
+      v.muted = true;
+      if (options.target !== null) {
+        v.pause();
+        v.currentTime = options.target;
+      }
+      const deadline = performance.now() + 40000;
+      while ((v.readyState < 2 || v.seeking || v.currentTime < options.minimumPosition) && performance.now() < deadline) {
+        if (v.error) return null;
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      if (v.currentTime < options.minimumPosition || v.seeking) return null;
+      await v.play();
+      const start = v.currentTime;
+      const decoded = () => {
+        const quality = v.getVideoPlaybackQuality();
+        return quality.totalVideoFrames - quality.droppedVideoFrames;
+      };
+      const frames = decoded();
+      const wall = performance.now();
+      while (performance.now() < deadline) {
+        if (v.error) return null;
+        const seconds = v.currentTime - start;
+        const decodedFrames = decoded() - frames;
+        if (!v.paused && !v.seeking && performance.now() - wall >= 3000 && seconds >= 3 && decodedFrames >= 24) {
+          return {start: Number(start.toFixed(3)), seconds: Number(seconds.toFixed(3)), decodedFrames};
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return null;
+    };
+    return await Promise.race([playback().catch(() => null), new Promise(resolve => setTimeout(() => resolve(null), 45000))]);
+  }, {target, minimumPosition});
+  const midpoint = Math.floor(expected.duration / 2);
+  const middle = await advance(midpoint, midpoint - 1);
+  requireThat(middle, "middle seek did not decode");
+  const save = page.waitForResponse(response => new URL(response.url()).pathname === "/api/history" && response.request().method() === "POST", {timeout:15000});
+  await video.evaluate(v => v.pause());
+  requireThat((await save).ok(), "resume position was not saved");
+  const history = await ctx.request.get(origin + "/api/history?contentId=" + expected.id);
+  const position = Number((await history.json()).positionSeconds);
+  requireThat(history.ok() && position >= midpoint && position < midpoint + 20, "saved resume position differs from the middle seek");
+  const token = page.waitForResponse(response => new URL(response.url()).pathname === "/api/playback/" + expected.id + "/token" && response.request().method() === "POST", {timeout:35000});
+  await page.reload({waitUntil:"domcontentloaded"});
+  const response = await token;
+  const body = await response.json();
+  const gate = new URL(body.url, origin);
+  requireThat(response.ok() && body.qualityTier === "enhanced" && body.delivery === "r2_gateway" && body.format === "hls" && gate.origin === origin && gate.pathname.startsWith(prefix) && gate.searchParams.has("token"), "fresh player lost enhanced authorization");
+  await video.waitFor({state:"visible"});
+  const resumed = await advance(null, position - 2);
+  requireThat(resumed && resumed.start < position + 10, "fresh player did not resume and decode");
+  const closing = await advance(expected.duration - 8, expected.duration - 9);
+  requireThat(closing, "closing-credit seek did not decode");
+  return {middle, resumed, closing};
+}
+
 async function check(ctx, origin, slug) {
   const page = await ctx.newPage();
   let phase = "watch page";
@@ -181,13 +239,15 @@ async function check(ctx, origin, slug) {
     );
     const hits = mediaHits.filter(x => x.path.startsWith(prefix));
     requireThat(hits.length, "no successful browser requests for this title's playable media");
+    phase = "seek and fresh-player resume";
+    const seekResume = slug === "sintel" ? await checkSeekResume(ctx, page, video, origin, expected, prefix) : undefined;
     if (process.env.PREMIUM_QA_SCREENSHOT_DIR) {
       mkdirSync(process.env.PREMIUM_QA_SCREENSHOT_DIR, {recursive:true});
       await page.locator('[data-testid="self-hosted-media-frame"]').screenshot({
         path: join(process.env.PREMIUM_QA_SCREENSHOT_DIR, new URL(origin).hostname + "-" + slug + ".png"),
       });
     }
-    return { origin, slug, title, pass: true, tokenStatus, enhanced: true, poster: true, format:expected.format, mediaResponses: hits.length, ...played, sourceAspect:expected.sourceAspect, aspectPreserved:true, ...layout, at: stamp() };
+    return { origin, slug, title, pass: true, tokenStatus, enhanced: true, poster: true, format:expected.format, mediaResponses: hits.length, ...played, sourceAspect:expected.sourceAspect, aspectPreserved:true, ...layout, seekResume, at: stamp() };
   } catch (ex) {
     return { origin, slug, pass: false, phase, tokenStatus, mediaOrigin, mediaResponses: mediaHits.length, transport: [...transport], error: safeError(ex), at: stamp() };
   } finally { await page.close(); }

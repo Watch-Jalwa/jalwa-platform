@@ -76,21 +76,27 @@ async function loadCandidate() {
   return {c,r,p,a};
 }
 
-function inspectVideo(file, expectedDuration) {
+function inspectVideo(file, expectedDuration, expectedAudioChannels) {
   const probe = JSON.parse(execFileSync("ffprobe", ["-v", "error", "-show_entries",
-    "stream=codec_type,codec_name,width,height:format=duration", "-of", "json", file],
+    "stream=codec_type,codec_name,width,height,channels,channel_layout,sample_rate:format=duration", "-of", "json", file],
     {encoding:"utf8", timeout:30000, maxBuffer:1000000}));
   const video = probe.streams?.find(stream => stream.codec_type === "video");
   assert(video?.width > 0 && video?.height > 0, "Decoded video stream missing");
   assert(Math.abs(video.width / video.height - sourceAspect) < 0.015, "Source display aspect was changed");
-  assert(probe.streams.some(stream => stream.codec_type === "audio"), "Source audio was lost");
+  const audio = probe.streams.find(stream => stream.codec_type === "audio");
+  assert(audio, "Source audio was lost");
+  if (expectedAudioChannels !== undefined) {
+    assert.equal(audio.channels, expectedAudioChannels, "Audio channel configuration missing or changed");
+    assert.equal(audio.channel_layout, "5.1");
+    assert.equal(audio.sample_rate, "48000");
+  }
   if (expectedDuration !== undefined) {
     assert(Math.abs(Number(probe.format.duration) - expectedDuration) <= 0.5, "Output duration mismatch");
   }
   execFileSync("ffmpeg", ["-nostdin", "-v", "error", "-xerror", "-i", file,
     "-map", "0:v:0", "-map", "0:a:0", "-f", "null", "-"],
     {timeout:90000, stdio:["ignore", "ignore", "pipe"]});
-  return {width:video.width, height:video.height, duration:Number(probe.format.duration)};
+  return {width:video.width, height:video.height, duration:Number(probe.format.duration), audioChannels:audio.channels, audioLayout:audio.channel_layout};
 }
 
 async function decodeMedia({a,p}) {
@@ -127,10 +133,12 @@ async function decodeMedia({a,p}) {
       assert(Math.abs(duration - outputDuration) <= 1, "Full Sintel duration or closing credits missing");
       const segment = join(work,"sample.ts");
       await downloadObject(dir+variant.split("/")[0]+"/"+segments[0],segment,"processed");
-      const decoded = inspectVideo(segment);
+      const decoded = inspectVideo(segment, undefined, 6);
+      await downloadObject(dir+variant.split("/")[0]+"/"+segments[Math.floor(segments.length/2)],segment,"processed");
+      inspectVideo(segment, undefined, 6);
       await downloadObject(dir+variant.split("/")[0]+"/"+segments.at(-1),segment,"processed");
-      inspectVideo(segment);
-      console.log("HLS_VARIANT_VERIFIED", JSON.stringify({slug,variant,duration,width:decoded.width,height:decoded.height}));
+      inspectVideo(segment, undefined, 6);
+      console.log("HLS_VARIANT_VERIFIED", JSON.stringify({slug,variant,duration,width:decoded.width,height:decoded.height,audioChannels:decoded.audioChannels,audioLayout:decoded.audioLayout,independentSegments:3}));
     }
     console.log("MEDIA_VERIFIED", JSON.stringify({slug,format:"hls",variants:variants.length,assetId:a.id,sourceAspect,duration:outputDuration}));
   } finally { await rm(work,{recursive:true,force:true}); }
