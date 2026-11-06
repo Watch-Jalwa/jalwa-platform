@@ -9,22 +9,26 @@ jobs:
   credits:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    environment: staging
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - name: Read full closing credits of the selected Blender release
+        env:
+          HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+          STAGE_USER: ${{ vars.STAGING_USER || 'codistan' }}
+          KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
         shell: bash
         run: |
           set -Eeuo pipefail
           sudo apt-get -qq update && sudo apt-get -qq install ffmpeg tesseract-ocr >/dev/null
-          url="$(jq -er '.titles[] | select(.slug=="sprite-fright") | .uri' ops/jalwa-14-approved-official-sources-20261105.json)"
-          [[ "$url" == 'https://video.blender.org/download/web-videos/a69d68a5-a0e0-4a80-9d66-49f093c97aaf-720.mp4' ]]
-          curl -fsSL --retry 2 --max-time 120 --max-filesize 367001600 "$url" -o "$RUNNER_TEMP/source.mp4"
-          curl -fsSL --retry 2 'https://video.blender.org/api/v1/videos/a69d68a5-a0e0-4a80-9d66-49f093c97aaf/description' | jq -r '.description' | head -c 6000
+          source ops/demo-four-20261106/connection.sh
+          staging_ssh 'docker exec -i jalwa-worker-staging node --input-type=module -' < ops/demo-four-20261106/read-credits-source.mjs > "$RUNNER_TEMP/source.mp4"
           mkdir evidence
           ffmpeg -hide_banner -loglevel error -sseof -95 -i "$RUNNER_TEMP/source.mp4" -vf 'fps=1/2' -q:v 2 evidence/credit-%03d.jpg
           for frame in evidence/*.jpg; do
             echo "FRAME ${frame##*/}"
-            tesseract "$frame" stdout --psm 6 2>/dev/null
+            tesseract "$frame" stdout --psm 11 2>/dev/null
           done | tee evidence/credits.txt
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
