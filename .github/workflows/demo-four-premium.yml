@@ -2,7 +2,7 @@ name: Four approved demo titles - Premium browser verification
 on:
   push:
     branches: [ops/demo-four-premium-20261106]
-    paths: [.github/workflows/demo-four-premium.yml, scripts/verify-four-premium.mjs, ops/demo-four-20261106/publish.mjs, ops/demo-four-20261106/review.json, ops/demo-four-20261106/execute.sh]
+    paths: [.github/workflows/demo-four-premium.yml, scripts/verify-four-premium.mjs, ops/demo-four-20261106/publish.mjs, ops/demo-four-20261106/review.json, ops/demo-four-20261106/execute.sh, ops/demo-four-20261106/connection.sh]
 permissions:
   contents: read
 concurrency:
