@@ -1,0 +1,40 @@
+name: Verify exact Cosmos Laundromat film credits
+on:
+  push:
+    branches: [ops/cosmos-completion-20261106]
+    paths: [.github/workflows/cosmos-credits-20261106.yml, ops/cosmos-20261106/credits.mjs]
+permissions:
+  contents: read
+concurrency:
+  group: jalwa-staging
+  cancel-in-progress: false
+jobs:
+  credits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: staging
+    env:
+      RELEASE_SHA: 0c8f09c0a59d0e98d9725c40c7bdffa8a989eb44
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      STAGE_USER: ${{ vars.STAGING_USER || 'codistan' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Extract retained-original closing credits and inspect
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get -qq update && sudo apt-get -qq install tesseract-ocr >/dev/null
+          source ops/demo-four-20261106/connection.sh
+          mkdir -p evidence
+          staging_ssh "docker exec -i -e RELEASE_SHA=$release jalwa-worker-staging node --input-type=module -" < ops/cosmos-20261106/credits.mjs > "$RUNNER_TEMP/credits.tar.gz"
+          tar -xzf "$RUNNER_TEMP/credits.tar.gz" -C evidence
+          for frame in evidence/*.jpg; do
+            echo "FRAME ${frame##*/}"
+            tesseract "$frame" stdout --psm 11 2>/dev/null
+          done | tee evidence/credits.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: cosmos-film-credits-${{ github.run_id }}
+          path: evidence/
