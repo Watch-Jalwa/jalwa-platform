@@ -14,7 +14,8 @@ staging_ssh() {
   ssh -o ControlMaster=auto -o ControlPersist=120s -o ControlPath="$dir/control" -i "$dir/key" -o BatchMode=yes -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$dir/hosts" \
     -o ConnectTimeout=12 -o ServerAliveInterval=12 -o ServerAliveCountMax=4 "$STAGE_USER@$HOST" "$@"
 }
-release=f6467289bef7a25b5a39a04f4ad0674eedeaaff1
+release=${RELEASE_SHA:-f6467289bef7a25b5a39a04f4ad0674eedeaaff1}
+[[ "$release" =~ ^[0-9a-f]{40}$ ]]
 for domain in watch-jalwa.com jalwa-platform.codistan.org; do
   curl -fsS --retry 2 --max-time 20 "https://$domain/api/health" |
     jq -e --arg sha "$release" '.status == "ready" and .version == $sha' >/dev/null

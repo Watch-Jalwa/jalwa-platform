@@ -14,7 +14,7 @@ jobs:
     environment: staging
     timeout-minutes: 20
     env:
-      RELEASE_SHA: f6467289bef7a25b5a39a04f4ad0674eedeaaff1
+      RELEASE_SHA: 90f392d42a92c9db1da28bb20782d8a58ef8c1ed
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
       - name: Install browser QA runner

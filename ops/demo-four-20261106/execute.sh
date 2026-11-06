@@ -40,4 +40,9 @@ for slug in spring-blender caminandes-llamigos apollo-11-eagle-has-landed sprite
     fi
   fi
 done
+if [ "$failed" = 0 ]; then
+  staging_ssh "docker exec -i -e RELEASE_SHA=$release jalwa-worker-staging node --input-type=module -" < ops/demo-four-20261106/final-status.mjs | tee evidence/final-status.json
+  jq -s -e '[.[].playback[]] as $results | ($results | length) == 8 and all($results[]; .pass and .enhanced and .seconds >= 15 and .decodedFrames >= 15)' \
+    evidence/spring-blender.json evidence/sprite-fright.json evidence/caminandes-llamigos.json evidence/apollo-11-eagle-has-landed.json
+fi
 exit "$failed"
