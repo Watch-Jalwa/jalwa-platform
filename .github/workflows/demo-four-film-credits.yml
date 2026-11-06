@@ -1,0 +1,33 @@
+name: Inspect publisher credits for the exact Sprite Fright master
+on:
+  push:
+    branches: [ops/demo-four-premium-20261106]
+    paths: [.github/workflows/demo-four-film-credits.yml]
+permissions:
+  contents: read
+jobs:
+  credits:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Read full closing credits of the selected Blender release
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          sudo apt-get -qq update && sudo apt-get -qq install ffmpeg tesseract-ocr >/dev/null
+          url="$(jq -er '.titles[] | select(.slug=="sprite-fright") | .uri' ops/jalwa-14-approved-official-sources-20261105.json)"
+          [[ "$url" == 'https://video.blender.org/download/web-videos/a69d68a5-a0e0-4a80-9d66-49f093c97aaf-720.mp4' ]]
+          curl -fsSL --retry 2 --max-time 120 --max-filesize 367001600 "$url" -o "$RUNNER_TEMP/source.mp4"
+          curl -fsSL --retry 2 'https://video.blender.org/api/v1/videos/a69d68a5-a0e0-4a80-9d66-49f093c97aaf/description' | jq -r '.description' | head -c 6000
+          mkdir evidence
+          ffmpeg -hide_banner -loglevel error -sseof -95 -i "$RUNNER_TEMP/source.mp4" -vf 'fps=1/2' -q:v 2 evidence/credit-%03d.jpg
+          for frame in evidence/*.jpg; do
+            echo "FRAME ${frame##*/}"
+            tesseract "$frame" stdout --psm 6 2>/dev/null
+          done | tee evidence/credits.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: exact-publisher-closing-credits
+          path: evidence
