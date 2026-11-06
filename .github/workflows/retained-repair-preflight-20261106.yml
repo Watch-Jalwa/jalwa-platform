@@ -1,0 +1,35 @@
+name: Inspect retained Sintel and VHS originals
+on:
+  push:
+    branches: [ops/retained-media-repair-20261106]
+    paths: [.github/workflows/retained-repair-preflight-20261106.yml, ops/retained-repair-20261106/preflight.mjs, ops/retained-repair-20261106/connection.sh]
+permissions:
+  contents: read
+concurrency:
+  group: jalwa-staging
+  cancel-in-progress: false
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 8
+    env:
+      RELEASE_SHA: 0c8f09c0a59d0e98d9725c40c7bdffa8a989eb44
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      STAGE_USER: ${{ vars.STAGING_USER || 'codistan' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Verify retained original metadata and bounded source headers
+        run: |
+          set -Eeuo pipefail
+          node --check ops/retained-repair-20261106/preflight.mjs
+          source ops/retained-repair-20261106/connection.sh
+          mkdir -p evidence
+          staging_ssh "docker exec -i -e RELEASE_SHA=$release jalwa-worker-staging node --input-type=module -" < ops/retained-repair-20261106/preflight.mjs | tee evidence/preflight.log
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: retained-preflight-${{ github.run_id }}
+          path: evidence/
