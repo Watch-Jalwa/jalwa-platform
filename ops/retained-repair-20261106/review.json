@@ -1,0 +1,79 @@
+{
+  "sintel": {
+    "decision": "clear",
+    "sourcePage": "https://durian.blender.org/download/",
+    "licenceCode": "CC-BY-3.0",
+    "editorialEvidence": "https://github.com/Watch-Jalwa/jalwa-platform/actions/runs/42196689935",
+    "synopsisEvidence": "https://studio.blender.org/projects/sintel/",
+    "before": {
+      "title_ur": "تفریحی مواد",
+      "title_roman_ur": "Sintel",
+      "description_en": "Live-test candidate ITEM-032: Sintel by Blender Foundation / Durian Open Movie Project. Licence candidate CC-BY-3.0. Film-level CC BY; review original credit terms.",
+      "description_ur": "تفریحی مواد",
+      "description_roman_ur": "Sintel",
+      "audience": "general",
+      "duration_seconds": 888
+    },
+    "after": {
+      "title_ur": "سنٹل",
+      "title_roman_ur": "Sintel",
+      "description_en": "A young woman searches for the dragon she once rescued. An animated fantasy with fighting and themes of loss. © copyright Blender Foundation | www.sintel.org · CC BY 3.0 · https://creativecommons.org/licenses/by/3.0/",
+      "description_ur": "ایک نوجوان لڑکی اس ڈریگن کی تلاش میں نکلتی ہے جسے اس نے کبھی بچایا تھا۔ اس اینیمیٹڈ فینٹسی میں لڑائی کے مناظر اور بچھڑنے کا دکھ شامل ہے۔ © copyright Blender Foundation | www.sintel.org · CC BY 3.0 · https://creativecommons.org/licenses/by/3.0/",
+      "description_roman_ur": "Ek naujawan larki us dragon ki talash mein nikalti hai jisay us ne kabhi bachaya tha. Is animated fantasy mein larai ke manazir aur bichharne ka dukh shamil hai. © copyright Blender Foundation | www.sintel.org · CC BY 3.0 · https://creativecommons.org/licenses/by/3.0/",
+      "audience": "teens",
+      "duration_seconds": 888
+    },
+    "reviewedAt": "2026-11-06T09:58:48.390124+00:00",
+    "verifiedOriginalSha256": "60cff51761641626e82eeb4e1c248c471375b2536bb1089f49825b7fb58d8723",
+    "mediaReviewEvidence": {
+      "run": "https://github.com/Watch-Jalwa/jalwa-platform/actions/runs/42196689935",
+      "artifactId": 13492499027,
+      "artifactSha256": "b3b7ace290a0eb1221404321e9f150e79b4f75d39e9bf4b73aab07ebbff88c99",
+      "frames": [
+        "sintel-credit-027.jpg",
+        "sintel-credit-029.jpg",
+        "sintel-credit-030.jpg"
+      ],
+      "sourceDurationSeconds": 888.032,
+      "outputDurationSeconds": 888.000007,
+      "finding": "Complete retained source was transcoded without trimming. Original closing credits visibly confirm Creative Commons Attribution 3.0 and www.sintel.org."
+    },
+    "licenceEvidence": "https://durian.blender.org/sharing/"
+  },
+  "vhs-static-cc0-clip": {
+    "decision": "clear",
+    "sourcePage": "https://commons.wikimedia.org/wiki/File:FREE_real_VHS_static.webm",
+    "licenceCode": "CC0-1.0",
+    "editorialEvidence": "https://commons.wikimedia.org/w/index.php?title=File:FREE_real_VHS_static.webm&oldid=1259039302",
+    "before": {
+      "title_ur": "تعلیمی مواد",
+      "title_roman_ur": "Analog television static excerpt",
+      "description_en": "Live-test candidate ITEM-012: Analog television static excerpt by Caleb Minear. Licence candidate CC0-1.0. Import a short editorial trim only after rights OK — do not count multiple trims as separate items.",
+      "description_ur": "تعلیمی مواد",
+      "description_roman_ur": "Analog television static excerpt",
+      "audience": "general",
+      "duration_seconds": 45
+    },
+    "after": {
+      "title_ur": "وی ایچ ایس اسٹیٹک",
+      "title_roman_ur": "VHS Static",
+      "description_en": "An analog television static sample with rapidly changing black-and-white patterns and a continuous hiss. Caleb Minear · CC0 1.0 · https://creativecommons.org/publicdomain/zero/1.0/",
+      "description_ur": "اینالاگ ٹیلی وژن کی اسٹیٹک کا ایک نمونہ۔ اس میں تیزی سے بدلتے سیاہ و سفید نقش اور مسلسل سرسراہٹ ہے۔ Caleb Minear · CC0 1.0 · https://creativecommons.org/publicdomain/zero/1.0/",
+      "description_roman_ur": "Analog television ki static ka ek namoona. Is mein tezi se badalte siyah-o-safaid naqsh aur musalsal sarsarahat hai. Caleb Minear · CC0 1.0 · https://creativecommons.org/publicdomain/zero/1.0/",
+      "audience": "general",
+      "duration_seconds": 45
+    },
+    "reviewedAt": "2026-11-06T09:58:48.390136+00:00",
+    "verifiedOriginalSha256": "fbebfa29cfc663d981b12b1f13e92d96e5c4806fe705f54a5d670133b0de7b86",
+    "mediaReviewEvidence": {
+      "run": "https://github.com/Watch-Jalwa/jalwa-platform/actions/runs/42196689935",
+      "artifactId": 13492499027,
+      "artifactSha256": "b3b7ace290a0eb1221404321e9f150e79b4f75d39e9bf4b73aab07ebbff88c99",
+      "frames": [
+        "vhs-static-output.jpg"
+      ],
+      "outputDurationSeconds": 45.012,
+      "finding": "The planned 45-second 640x480 excerpt preserves audio and original display shape. The retained full source checksum matches."
+    }
+  }
+}

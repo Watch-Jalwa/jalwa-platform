@@ -1,0 +1,46 @@
+name: Publish repaired Sintel and VHS Static and verify both demo domains
+on:
+  push:
+    branches: [ops/retained-media-repair-20261106]
+    paths: [.github/workflows/retained-repair-publish-20261106.yml, ops/retained-repair-20261106/publish.sh, ops/retained-repair-20261106/publish.mjs, ops/retained-repair-20261106/review.json, ops/retained-repair-20261106/verify-premium.mjs, ops/retained-repair-20261106/qa-auth.mjs, ops/retained-repair-20261106/final-status.mjs, ops/retained-repair-20261106/media-validation.test.mjs, ops/retained-repair-20261106/synthetic-regression.mjs]
+permissions:
+  contents: read
+concurrency:
+  group: jalwa-staging
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+    env:
+      RELEASE_SHA: 0c8f09c0a59d0e98d9725c40c7bdffa8a989eb44
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Validate scoped publication and browser scripts
+        run: |
+          bash -n ops/retained-repair-20261106/publish.sh
+          for script in publish final-status verify-premium qa-auth; do node --check "ops/retained-repair-20261106/$script.mjs"; done
+      - name: Install browser QA runner
+        run: |
+          echo "JALWA_PLAYWRIGHT_PATH=$RUNNER_TEMP/jalwa-retained-browser/node_modules/@playwright/test" >> "$GITHUB_ENV"
+          npm install --prefix "$RUNNER_TEMP/jalwa-retained-browser" --no-save --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          "$RUNNER_TEMP/jalwa-retained-browser/node_modules/.bin/playwright" install chromium
+      - name: Exercise output validation and rejection cases
+        run: |
+          if ! command -v ffmpeg >/dev/null; then sudo apt-get -qq update && sudo apt-get -qq install ffmpeg >/dev/null; fi
+          node --test ops/retained-repair-20261106/media-validation.test.mjs
+      - name: Publish cleared repairs and prove signed-in Premium playback
+        env:
+          STAGING_QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}
+          PREMIUM_QA_EMAIL: ${{ vars.STAGING_QA_CUSTOMER_EMAIL || 'acceptance+customer@watch-jalwa.com' }}
+          HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+          STAGE_USER: ${{ vars.STAGING_USER || 'codistan' }}
+          KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        run: bash ops/retained-repair-20261106/publish.sh
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: retained-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/

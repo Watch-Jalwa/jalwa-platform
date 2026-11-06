@@ -1,0 +1,118 @@
+const required = (name) => {
+  const value = (process.env[name] ?? "").trim();
+  if (!value) throw new Error(`Missing required staging QA setting: ${name}`);
+  return value;
+};
+
+const retryableQaStatuses = new Set([429, 502, 503, 504]);
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const qaSessionCookies = new Map();
+
+const signedSessionCookies = (cookies) => cookies.filter(
+  (cookie) => cookie.name.includes("better-auth.session_token") && cookie.value,
+);
+
+function qaSessionKey(config, email) {
+  return `${new URL(config.baseUrl).origin}|${email.trim().toLowerCase()}`;
+}
+
+async function rememberQaSession(page, config, key) {
+  const cookies = await page.context().cookies(config.baseUrl);
+  if (signedSessionCookies(cookies).length === 0) return false;
+  qaSessionCookies.set(key, cookies);
+  return true;
+}
+
+async function restoreQaSession(page, config, email, nextPath) {
+  const key = qaSessionKey(config, email);
+  const cached = qaSessionCookies.get(key);
+  if (!cached?.length) return false;
+
+  await page.context().addCookies(cached);
+  const target = new URL(nextPath.startsWith("/") ? nextPath : "/", config.baseUrl);
+  const response = await page.goto(target.toString(), { waitUntil: "domcontentloaded" });
+  if (!response || response.status() >= 500 || new URL(page.url()).pathname === "/login") {
+    qaSessionCookies.delete(key);
+    return false;
+  }
+
+  if (await rememberQaSession(page, config, key)) return true;
+  qaSessionCookies.delete(key);
+  return false;
+}
+
+export function qaConfig() {
+  return {
+    baseUrl: ((process.env.STAGING_BASE_URL ?? process.env.JALWA_BROWSER_BASE_URL ?? "").trim() || required("STAGING_BASE_URL")).replace(/\/$/, ""),
+    qaSecret: ((process.env.STAGING_QA_SECRET ?? process.env.JALWA_STAGING_QA_SECRET ?? "").trim() || required("STAGING_QA_SECRET")),
+    qaRunId: (process.env.QA_RUN_ID ?? `qa-${Date.now()}`).slice(0, 160),
+  };
+}
+
+async function qaPost(config, body) {
+  const payload = JSON.stringify(body);
+  let lastTransportError = null;
+
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
+    try {
+      const response = await fetch(`${config.baseUrl}/api/internal/qa/session`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-jalwa-qa-token": config.qaSecret },
+        body: payload,
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!retryableQaStatuses.has(response.status) || attempt === 8) return response;
+      const retryAfter = Number(response.headers.get("retry-after") ?? 0);
+      const retryDelay = Number.isFinite(retryAfter) && retryAfter > 0
+        ? Math.min(15_000, retryAfter * 1_000)
+        : Math.min(8_000, 750 * (2 ** (attempt - 1)));
+      await sleep(retryDelay);
+      continue;
+    } catch (error) {
+      lastTransportError = error;
+      if (attempt === 8) throw error;
+    }
+
+    await sleep(Math.min(8_000, 750 * (2 ** (attempt - 1))));
+  }
+
+  throw lastTransportError ?? new Error("Jalwa QA session request did not complete.");
+}
+
+export async function ensureQaUser(config, email, role = null) {
+  const normalizedEmail = email.trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(normalizedEmail)) throw new Error("Invalid staging QA email address.");
+  const response = await qaPost(config, { email: normalizedEmail, role, issueLink: false, qaRunId: config.qaRunId });
+  if (!response.ok) throw new Error(`Jalwa QA identity setup failed with HTTP ${response.status}.`);
+  const payload = await response.json();
+  if (!payload?.user?.id) throw new Error("Jalwa QA user ID was not returned.");
+  return payload.user;
+}
+
+export async function generateMagicLink(config, email, nextPath = "/") {
+  const response = await qaPost(config, { email: email.trim().toLowerCase(), nextPath, qaRunId: `${config.qaRunId}-${crypto.randomUUID()}` });
+  if (!response.ok) throw new Error(`Jalwa QA magic-link generation failed with HTTP ${response.status}.`);
+  const payload = await response.json();
+  if (!payload?.actionLink || !/^https?:\/\//.test(payload.actionLink)) throw new Error("Jalwa QA magic link was not returned.");
+  return payload.actionLink;
+}
+
+export async function authenticatePage(page, config, email, nextPath = "/") {
+  const key = qaSessionKey(config, email);
+  if (await restoreQaSession(page, config, email, nextPath)) return;
+
+  const actionLink = await generateMagicLink(config, email, nextPath);
+  const response = await page.goto(actionLink, { waitUntil: "domcontentloaded" });
+  if (!response || response.status() >= 500) throw new Error("Staging QA authentication navigation failed.");
+  if (new URL(page.url()).pathname === "/login") throw new Error("Staging QA authentication did not create a session.");
+
+  // Verify the signed Better Auth browser state directly. Polling the public session
+  // endpoint here can trip production-like auth rate limits during the full QA suite.
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    if (await rememberQaSession(page, config, key)) return;
+    await page.waitForTimeout(250);
+  }
+
+  throw new Error("Staging QA authentication did not establish a signed browser session cookie.");
+}
