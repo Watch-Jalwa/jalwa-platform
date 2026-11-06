@@ -1,0 +1,23 @@
+name: Four approved demo titles - editorial and QA account inventory
+on:
+  push:
+    branches: [ops/demo-four-premium-20261106]
+    paths: [.github/workflows/demo-four-profile.yml, ops/demo-four-20261106/preflight.mjs]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: staging
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Verify shared demo and inspect four title records
+        env:
+          HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+          STAGE_USER: ${{ vars.STAGING_USER || 'codistan' }}
+          KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        run: |
+          source ops/demo-four-20261106/connection.sh
+          staging_ssh 'docker exec -i -w /app jalwa-web-staging node --input-type=module -' < ops/demo-four-20261106/preflight.mjs
