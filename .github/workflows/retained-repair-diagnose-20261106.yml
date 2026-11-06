@@ -31,6 +31,7 @@ jobs:
           tar -xzf "$RUNNER_TEMP/credit-frames.tar.gz" -C evidence
       - name: Read retained-film credit frames
         run: |
+          [ -e evidence/sintel-credit-001.jpg ] || exit 0
           sudo apt-get -qq update && sudo apt-get -qq install tesseract-ocr >/dev/null
           for frame in evidence/sintel-credit-*.jpg; do
             echo "FRAME ${frame##*/}"
