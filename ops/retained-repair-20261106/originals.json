@@ -1,0 +1,187 @@
+[
+  {
+    "content_id": "19ab8da9-0748-4eb7-a7b6-9300221b0ebd",
+    "slug": "sintel",
+    "content_status": "editorial_review",
+    "is_available": false,
+    "rights_ok": true,
+    "processing_ok": true,
+    "asset_id": "5c5f576c-d1d6-4898-9bd5-2e3616fd0001",
+    "asset_status": "failed",
+    "size_bytes": "673935402",
+    "checksum": "60cff51761641626e82eeb4e1c248c471375b2536bb1089f49825b7fb58d8723",
+    "disabled_reason": "stale_worker_lock_reconciled_20261105",
+    "job_id": "640eb280-d1cb-49b0-95b8-4bbef9af7b8b",
+    "job_type": "hls",
+    "job_status": "failed",
+    "attempts": 1,
+    "max_attempts": 3,
+    "locked_at": null,
+    "locked_by": null,
+    "cancel_requested": false,
+    "error_message": "Orphaned on prior worker-7 session; owner-authorized demo recovery 2026-11-05. Original R2 source preserved.",
+    "source": {
+      "original_filename": "Sintel.2010.720p.mkv",
+      "source": "https://download.blender.org/demo/movies/Sintel.2010.720p.mkv.zip",
+      "wave": "live-test-50-wave4",
+      "pipeline": "hls"
+    },
+    "headerProbe": {
+      "programs": [],
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "h264",
+          "codec_type": "video",
+          "width": 1280,
+          "height": 544,
+          "tags": {
+            "language": "eng"
+          }
+        },
+        {
+          "index": 1,
+          "codec_name": "ac3",
+          "codec_type": "audio",
+          "tags": {
+            "language": "eng",
+            "title": "AC3 5.1 @ 640 Kbps"
+          }
+        },
+        {
+          "index": 2,
+          "codec_name": "subrip",
+          "codec_type": "subtitle",
+          "tags": {
+            "language": "ger"
+          }
+        },
+        {
+          "index": 3,
+          "codec_name": "subrip",
+          "codec_type": "subtitle",
+          "tags": {
+            "language": "eng"
+          }
+        },
+        {
+          "index": 4,
+          "codec_name": "subrip",
+          "codec_type": "subtitle",
+          "tags": {
+            "language": "spa"
+          }
+        },
+        {
+          "index": 5,
+          "codec_name": "subrip",
+          "codec_type": "subtitle",
+          "tags": {
+            "language": "fre"
+          }
+        },
+        {
+          "index": 6,
+          "codec_name": "subrip",
+          "codec_type": "subtitle",
+          "tags": {
+            "language": "ita"
+          }
+        },
+        {
+          "index": 7,
+          "codec_name": "subrip",
+          "codec_type": "subtitle",
+          "tags": {
+            "language": "dut"
+          }
+        },
+        {
+          "index": 8,
+          "codec_name": "subrip",
+          "codec_type": "subtitle",
+          "tags": {
+            "language": "pol"
+          }
+        },
+        {
+          "index": 9,
+          "codec_name": "subrip",
+          "codec_type": "subtitle",
+          "tags": {
+            "language": "por"
+          }
+        },
+        {
+          "index": 10,
+          "codec_name": "subrip",
+          "codec_type": "subtitle",
+          "tags": {
+            "language": "rus"
+          }
+        },
+        {
+          "index": 11,
+          "codec_name": "subrip",
+          "codec_type": "subtitle",
+          "tags": {
+            "language": "vie"
+          }
+        }
+      ],
+      "format": {
+        "duration": "888.032000"
+      }
+    }
+  },
+  {
+    "content_id": "b7faf770-bb91-4468-b869-edabe031fe16",
+    "slug": "vhs-static-cc0-clip",
+    "content_status": "editorial_review",
+    "is_available": false,
+    "rights_ok": true,
+    "processing_ok": true,
+    "asset_id": "301b706e-9bf9-437a-9506-6c1cf27754d6",
+    "asset_status": "failed",
+    "size_bytes": "1018579121",
+    "checksum": "fbebfa29cfc663d981b12b1f13e92d96e5c4806fe705f54a5d670133b0de7b86",
+    "disabled_reason": "stale_worker_lock_reconciled_20261105",
+    "job_id": "2a6ed13f-a7f3-48ef-a08d-d1491a6ca430",
+    "job_type": "short_mp4",
+    "job_status": "failed",
+    "attempts": 1,
+    "max_attempts": 3,
+    "locked_at": null,
+    "locked_by": null,
+    "cancel_requested": false,
+    "error_message": "Orphaned on prior worker-7 session; owner-authorized demo recovery 2026-11-05. Original R2 source preserved.",
+    "source": {
+      "original_filename": "FREE_real_VHS_static.webm",
+      "source": "wikimedia_commons",
+      "wave": "live-test-50-wave5",
+      "pipeline": "short_mp4"
+    },
+    "headerProbe": {
+      "programs": [],
+      "streams": [
+        {
+          "index": 0,
+          "codec_name": "vp9",
+          "codec_type": "video",
+          "width": 640,
+          "height": 480,
+          "tags": {}
+        },
+        {
+          "index": 1,
+          "codec_name": "opus",
+          "codec_type": "audio",
+          "tags": {}
+        }
+      ],
+      "format": {
+        "duration": "381.256000"
+      }
+    }
+  }
+]
