@@ -1,0 +1,47 @@
+name: Publish Cosmos Laundromat and verify Premium on both demo domains
+on:
+  push:
+    branches: [ops/cosmos-completion-20261106]
+    paths: [.github/workflows/cosmos-publish-20261106.yml, ops/cosmos-20261106/publish.sh, ops/cosmos-20261106/review.json, ops/cosmos-20261106/correct-licence.mjs, ops/cosmos-20261106/final-status.mjs, ops/demo-four-20261106/publish.mjs, scripts/verify-four-premium.mjs]
+permissions:
+  contents: read
+concurrency:
+  group: jalwa-staging
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: staging
+    timeout-minutes: 20
+    env:
+      RELEASE_SHA: 0c8f09c0a59d0e98d9725c40c7bdffa8a989eb44
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Validate scoped publication scripts
+        run: |
+          bash -n ops/cosmos-20261106/publish.sh
+          node --check ops/demo-four-20261106/publish.mjs
+          node --check ops/cosmos-20261106/final-status.mjs
+          node --check ops/cosmos-20261106/correct-licence.mjs
+          node --check scripts/verify-four-premium.mjs
+          node -e 'JSON.parse(require("node:fs").readFileSync("ops/cosmos-20261106/review.json","utf8"))'
+      - name: Install browser QA runner
+        run: |
+          echo "JALWA_PLAYWRIGHT_PATH=$RUNNER_TEMP/jalwa-cosmos-browser/node_modules/@playwright/test" >> "$GITHUB_ENV"
+          npm install --prefix "$RUNNER_TEMP/jalwa-cosmos-browser" --no-save --ignore-scripts --no-audit --no-fund @playwright/test@1.61.1
+          "$RUNNER_TEMP/jalwa-cosmos-browser/node_modules/.bin/playwright" install chromium
+      - name: Verify account, publish cleared Cosmos and prove signed-in playback
+        env:
+          STAGING_QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}
+          PREMIUM_QA_EMAIL: ${{ vars.STAGING_QA_CUSTOMER_EMAIL || 'acceptance+customer@watch-jalwa.com' }}
+          HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+          STAGE_USER: ${{ vars.STAGING_USER || 'codistan' }}
+          KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+          SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+        run: bash ops/cosmos-20261106/publish.sh
+      - name: Retain sanitized publication and Premium playback evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: cosmos-results-${{ github.run_id }}-${{ github.run_attempt }}
+          path: evidence/

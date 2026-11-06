@@ -8,7 +8,7 @@ import { downloadObject, verifyObject } from "/app/apps/worker/src/storage.mjs";
 
 const env = process.env;
 const slug = env.JALWA_FOUR_SLUG, mode = env.JALWA_FOUR_MODE, run = env.JALWA_FOUR_RUN;
-assert(["spring-blender","sprite-fright","caminandes-llamigos","apollo-11-eagle-has-landed"].includes(slug));
+assert(["spring-blender","sprite-fright","caminandes-llamigos","apollo-11-eagle-has-landed","cosmos-laundromat"].includes(slug));
 assert(["inspect","publish","rollback"].includes(mode));
 assert.match(run, /^[1-9]\d*-[1-9]\d*$/);
 assert.equal(env.DEPLOYMENT_ENVIRONMENT, "staging");
@@ -141,7 +141,7 @@ try {
     console.log("CANDIDATE",JSON.stringify({slug,status:c.status,title:c.title_en,licence:r.licence_code,media:p.format}));
     if (mode === "publish") {
       const {review,before,after}=editorial(c,r);
-      assert.equal(a.metadata?.sourcePage,review.sourcePage,"Original source provenance mismatch");
+      assert.equal(a.metadata?.sourcePage,review.originalSourcePage || review.sourcePage,"Original source provenance mismatch");
       await decodeMedia(data);
       if(c.status==="published"){
         assert(c.is_available && a.is_available && p.is_available);

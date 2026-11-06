@@ -1,0 +1,30 @@
+{
+  "cosmos-laundromat": {
+    "decision": "clear",
+    "sourcePage": "https://gooseberry.blender.org/download/",
+    "originalSourcePage": "https://gooseberry.blender.org/cosmos-laundromat-first-cycle/",
+    "licenceCode": "CC-BY-4.0",
+    "editorialEvidence": "https://github.com/Watch-Jalwa/jalwa-platform/actions/runs/42188424728",
+    "licenceEvidence": "https://github.com/Watch-Jalwa/jalwa-platform/actions/runs/42188424728/artifacts/13489052274",
+    "audienceEvidence": "https://gooseberry.blender.org/cosmos-laundromat-first-cycle/",
+    "before": {
+      "title_ur": "تفریحی مواد",
+      "title_roman_ur": "Cosmos Laundromat First Cycle",
+      "description_en": "Live-test candidate ITEM-043: Cosmos Laundromat: First Cycle by Blender Foundation / Gooseberry Open Movie Project. Licence candidate CC-BY-3.0. Distinct Gooseberry film; CC BY 3.0 per gooseberry.blender.org/license/; retain credits.",
+      "description_ur": "تفریحی مواد",
+      "description_roman_ur": "Cosmos Laundromat First Cycle",
+      "audience": "general",
+      "duration_seconds": 720
+    },
+    "after": {
+      "title_ur": "کوسموس لانڈرومیٹ — فرسٹ سائیکل",
+      "title_roman_ur": "Cosmos Laundromat First Cycle",
+      "description_en": "On a desolate island, Franck the sheep meets Victor, a peculiar salesman who offers him many lives in different worlds. An animated fantasy for viewers aged 13 and older, with suicide-related themes. (CC) Blender Foundation | gooseberry.blender.org · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/",
+      "description_ur": "ایک ویران جزیرے پر بھیڑ فرانک کی ملاقات وکٹر نامی ایک انوکھے سیلز مین سے ہوتی ہے، جو اسے مختلف دنیاؤں میں کئی زندگیاں گزارنے کی پیشکش کرتا ہے۔ خودکشی سے متعلق موضوعات پر مشتمل یہ اینیمیٹڈ فینٹسی ۱۳ سال یا اس سے زیادہ عمر کے ناظرین کے لیے ہے۔ (CC) Blender Foundation | gooseberry.blender.org · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/",
+      "description_roman_ur": "Ek veeran jazeere par bher Franck ki mulaqat Victor naami ek anokhe salesman se hoti hai, jo usay mukhtalif duniyaon mein kai zindagiyan guzarne ki peshkash karta hai. Khudkushi se mutalliq mauzuaat par mushtamil yeh animated fantasy 13 saal ya is se zyada umar ke nazreen ke liye hai. (CC) Blender Foundation | gooseberry.blender.org · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/",
+      "audience": "teens",
+      "duration_seconds": 731
+    },
+    "attributionText": "(CC) Blender Foundation | gooseberry.blender.org | www.cosmoslaundromat.org · Cosmos Laundromat First Cycle · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/"
+  }
+}

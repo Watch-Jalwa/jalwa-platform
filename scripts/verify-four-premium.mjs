@@ -4,7 +4,7 @@ import { generateMagicLink } from "./lib/staging-qa-auth.mjs";
 
 const { chromium } = createRequire(import.meta.url)(process.env.JALWA_PLAYWRIGHT_PATH || "@playwright/test");
 const origins = ["https://jalwa-platform.codistan.org", "https://watch-jalwa.com"];
-const allowed = ["spring-blender", "sprite-fright", "caminandes-llamigos", "apollo-11-eagle-has-landed"];
+const allowed = ["spring-blender", "sprite-fright", "caminandes-llamigos", "apollo-11-eagle-has-landed", "cosmos-laundromat"];
 const requested = process.argv.slice(2);
 const slugs = requested.length ? [...new Set(requested)] : allowed;
 const titles = new Map(readFileSync("content/live-test-50-launch-catalogue.jsonl", "utf8").trim().split("\n").map(line => {
