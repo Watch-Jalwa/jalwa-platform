@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "reviewId": "pakistan-documentary-shortlist-20261106",
-  "status": "review_open",
+  "status": "rights_owner_confirmation_received",
   "openedOn": "2026-11-06",
   "openedAfterRepairVerification": "https://github.com/Watch-Jalwa/jalwa-platform/actions/runs/42202699701",
   "scopeSource": "https://github.com/Watch-Jalwa/jalwa-platform/issues/157#issuecomment-6676883694",
@@ -50,7 +50,7 @@
         "Identify archive footage, photographs, music and dance-performance rights.",
         "Confirm creator authority and commissioning terms for this edition."
       ],
-      "status": "needs_evidence",
+      "status": "owner_rights_confirmed_pending_item_evidence",
       "sourcePage": "https://commons.wikimedia.org/wiki/File:Naheed_ki_katha,_20_min,_May_2001.webm",
       "sourceRevision": 1039915968,
       "sourceSnapshot": "https://commons.wikimedia.org/w/index.php?title=File%3ANaheed_ki_katha%2C_20_min%2C_May_2001.webm&oldid=1039915968",
@@ -61,7 +61,12 @@
       "clearanceExpiresAt": null,
       "nextReviewAt": null,
       "takedownContact": null,
-      "attributionDraft": "Naheed Ki Katha — Beena Sarwar. Licence claim recorded at the source snapshot. Exact credit wording and permitted use require reviewer confirmation."
+      "attributionDraft": "Naheed Ki Katha — Beena Sarwar. Licence claim recorded at the source snapshot. Exact credit wording and permitted use require reviewer confirmation.",
+      "priority": "P1",
+      "ownerRightsConfirmed": true,
+      "ownerRightsConfirmedOn": "2026-11-06",
+      "mediaIngestionAuthorized": false,
+      "publicationAuthorized": false
     },
     {
       "slug": "nahid-a-portrait",
@@ -77,7 +82,7 @@
         "Verify the camera contribution, performance footage and music rights.",
         "Confirm creator authority and commissioning terms for this edition."
       ],
-      "status": "needs_evidence",
+      "status": "owner_rights_confirmed_pending_item_evidence",
       "sourcePage": "https://commons.wikimedia.org/wiki/File:Nahid-_A_Portrait,_7_min,_2001.webm",
       "sourceRevision": 1037674006,
       "sourceSnapshot": "https://commons.wikimedia.org/w/index.php?title=File%3ANahid-_A_Portrait%2C_7_min%2C_2001.webm&oldid=1037674006",
@@ -88,7 +93,12 @@
       "clearanceExpiresAt": null,
       "nextReviewAt": null,
       "takedownContact": null,
-      "attributionDraft": "Nahid — A Portrait — Beena Sarwar. Licence claim recorded at the source snapshot. Exact credit wording and permitted use require reviewer confirmation."
+      "attributionDraft": "Nahid — A Portrait — Beena Sarwar. Licence claim recorded at the source snapshot. Exact credit wording and permitted use require reviewer confirmation.",
+      "priority": "P1",
+      "ownerRightsConfirmed": true,
+      "ownerRightsConfirmedOn": "2026-11-06",
+      "mediaIngestionAuthorized": false,
+      "publicationAuthorized": false
     },
     {
       "slug": "hina",
@@ -104,7 +114,7 @@
         "Document the Geo TV commissioning or distribution authority.",
         "Verify music, footage and subtitle permissions."
       ],
-      "status": "needs_evidence",
+      "status": "owner_rights_confirmed_pending_item_evidence",
       "sourcePage": "https://commons.wikimedia.org/wiki/File:'Hina',_documentary,_8_min,_2004_(English_version,_subtitled).webm",
       "sourceRevision": 1039623416,
       "sourceSnapshot": "https://commons.wikimedia.org/w/index.php?title=File%3A'Hina'%2C_documentary%2C_8_min%2C_2004_(English_version%2C_subtitled).webm&oldid=1039623416",
@@ -115,7 +125,12 @@
       "clearanceExpiresAt": null,
       "nextReviewAt": null,
       "takedownContact": null,
-      "attributionDraft": "Hina — Beena Sarwar. Licence claim recorded at the source snapshot. Exact credit wording and permitted use require reviewer confirmation."
+      "attributionDraft": "Hina — Beena Sarwar. Licence claim recorded at the source snapshot. Exact credit wording and permitted use require reviewer confirmation.",
+      "priority": "P1",
+      "ownerRightsConfirmed": true,
+      "ownerRightsConfirmedOn": "2026-11-06",
+      "mediaIngestionAuthorized": false,
+      "publicationAuthorized": false
     },
     {
       "slug": "milne-do-let-them-meet",
@@ -131,7 +146,7 @@
         "Document VJ Movement commissioning and distribution terms.",
         "Verify third-party footage, music and participant-related restrictions."
       ],
-      "status": "needs_evidence",
+      "status": "owner_rights_confirmed_pending_item_evidence",
       "sourcePage": "https://commons.wikimedia.org/wiki/File:'Milne_Do-_Let_Them_Meet',_7_min,_April_2009.webm",
       "sourceRevision": 1039568563,
       "sourceSnapshot": "https://commons.wikimedia.org/w/index.php?title=File%3A'Milne_Do-_Let_Them_Meet'%2C_7_min%2C_April_2009.webm&oldid=1039568563",
@@ -142,7 +157,12 @@
       "clearanceExpiresAt": null,
       "nextReviewAt": null,
       "takedownContact": null,
-      "attributionDraft": "Milne Do — Let Them Meet — Beena Sarwar. Licence claim recorded at the source snapshot. Exact credit wording and permitted use require reviewer confirmation."
+      "attributionDraft": "Milne Do — Let Them Meet — Beena Sarwar. Licence claim recorded at the source snapshot. Exact credit wording and permitted use require reviewer confirmation.",
+      "priority": "P1",
+      "ownerRightsConfirmed": true,
+      "ownerRightsConfirmedOn": "2026-11-06",
+      "mediaIngestionAuthorized": false,
+      "publicationAuthorized": false
     },
     {
       "slug": "aur-niklenge-ushhaq-ke-qafley",
@@ -217,7 +237,7 @@
         "Review the legal basis for commercial availability in Pakistan and intended overseas territories.",
         "Document the VOA policy and any programme-specific exceptions."
       ],
-      "status": "needs_evidence",
+      "status": "owner_rights_confirmed_pending_item_evidence",
       "sourcePage": "https://commons.wikimedia.org/wiki/File:Zindagi_360_-_Pakistani_Celebrities_(1).webm",
       "sourceRevision": 1072116986,
       "sourceSnapshot": "https://commons.wikimedia.org/w/index.php?title=File%3AZindagi_360_-_Pakistani_Celebrities_(1).webm&oldid=1072116986",
@@ -228,7 +248,12 @@
       "clearanceExpiresAt": null,
       "nextReviewAt": null,
       "takedownContact": null,
-      "attributionDraft": "Zindagi 360 — Pakistani Celebrities — Voice of America. Licence claim recorded at the source snapshot. Exact credit wording and permitted use require reviewer confirmation."
+      "attributionDraft": "Zindagi 360 — Pakistani Celebrities — Voice of America. Licence claim recorded at the source snapshot. Exact credit wording and permitted use require reviewer confirmation.",
+      "priority": "P1",
+      "ownerRightsConfirmed": true,
+      "ownerRightsConfirmedOn": "2026-11-06",
+      "mediaIngestionAuthorized": false,
+      "publicationAuthorized": false
     },
     {
       "slug": "memories-of-ramadan-khalid-masood-khan",
@@ -247,7 +272,7 @@
         "Identify rights for poetry, recitation, music, clips and photographs.",
         "Review the legal basis for commercial availability in Pakistan and intended overseas territories."
       ],
-      "status": "needs_evidence",
+      "status": "owner_rights_confirmed_pending_item_evidence",
       "sourcePage": "https://commons.wikimedia.org/wiki/File:Memories_of_Ramadan_-_Khalid_Masood_Khan.webm",
       "sourceRevision": 1063743778,
       "sourceSnapshot": "https://commons.wikimedia.org/w/index.php?title=File%3AMemories_of_Ramadan_-_Khalid_Masood_Khan.webm&oldid=1063743778",
@@ -258,7 +283,63 @@
       "clearanceExpiresAt": null,
       "nextReviewAt": null,
       "takedownContact": null,
-      "attributionDraft": "Memories of Ramadan — Khalid Masood Khan — Voice of America Urdu. Licence claim recorded at the source snapshot. Exact credit wording and permitted use require reviewer confirmation."
+      "attributionDraft": "Memories of Ramadan — Khalid Masood Khan — Voice of America Urdu. Licence claim recorded at the source snapshot. Exact credit wording and permitted use require reviewer confirmation.",
+      "priority": "P1",
+      "ownerRightsConfirmed": true,
+      "ownerRightsConfirmedOn": "2026-11-06",
+      "mediaIngestionAuthorized": false,
+      "publicationAuthorized": false
+    },
+    {
+      "slug": "birds-of-pakistan-part-3",
+      "title": "Birds of Pakistan – Part 3",
+      "duration": "1m 40s",
+      "resolution": "1280×720",
+      "creator": "Source creator to be confirmed from exact Commons revision",
+      "licenceClaim": "CC-BY-3.0",
+      "productionContext": "Pakistan wildlife video; technical POC already passed.",
+      "materialReview": [
+        "Confirm exact master identity and full credits.",
+        "Confirm original creator/uploader attribution and licence provenance.",
+        "Identify any embedded music or third-party material."
+      ],
+      "status": "owner_rights_confirmed_pending_item_evidence",
+      "sourcePage": "https://commons.wikimedia.org/wiki/File:Birds_of_Pakistan_-_Part_3.webm",
+      "sourceReviewedOn": "2026-11-06",
+      "fullMasterCreditsReviewed": false,
+      "rightsReviewer": null,
+      "rightsReviewerSignoff": "pending",
+      "clearanceExpiresAt": null,
+      "nextReviewAt": null,
+      "takedownContact": null,
+      "attributionDraft": "Birds of Pakistan – Part 3. Licence claim CC BY 3.0 recorded for review; exact creator attribution and permitted-use evidence require item-level confirmation.",
+      "priority": "P1",
+      "ownerRightsConfirmed": true,
+      "ownerRightsConfirmedOn": "2026-11-06",
+      "mediaIngestionAuthorized": false,
+      "publicationAuthorized": false
     }
-  ]
+  ],
+  "ownerRightsConfirmation": {
+    "receivedOn": "2026-11-06",
+    "source": "Project owner instruction in ChatGPT project workflow",
+    "statement": "I have rights for all of them.",
+    "scope": "P1 shortlist requested in Issue #171",
+    "legalEffect": "Recorded as owner/project-authority confirmation only; does not replace item-level evidence, third-party-material review, or independent reviewer sign-off."
+  },
+  "p1Review": {
+    "requestedTitles": [
+      "naheed-ki-katha",
+      "nahid-a-portrait",
+      "hina",
+      "milne-do-let-them-meet",
+      "birds-of-pakistan-part-3",
+      "zindagi-360-pakistani-celebrities",
+      "memories-of-ramadan-khalid-masood-khan"
+    ],
+    "ownerConfirmedCount": 7,
+    "individuallyApprovedCount": 0,
+    "ingestionAuthorizedCount": 0,
+    "state": "rights confirmation recorded; item-level evidence and independent reviewer decisions pending"
+  }
 }
