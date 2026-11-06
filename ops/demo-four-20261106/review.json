@@ -1,0 +1,91 @@
+{
+  "spring-blender": {
+    "decision": "clear",
+    "sourcePage": "https://studio.blender.org/films/spring/",
+    "licenceCode": "CC-BY-4.0",
+    "editorialEvidence": "https://studio.blender.org/projects/spring/pages/about/",
+    "before": {
+      "title_ur": "تفریحی مواد",
+      "title_roman_ur": "Spring",
+      "description_en": "Live-test candidate ITEM-042: Spring by Blender Studio. Licence candidate CC-BY-4.0. Verify current licence on film page; distinct from shorts trims.",
+      "description_ur": "تفریحی مواد",
+      "description_roman_ur": "Spring",
+      "audience": "general"
+    },
+    "after": {
+      "title_ur": "اسپرنگ",
+      "title_roman_ur": "Spring",
+      "description_en": "A young shepherd and her dog venture into the mountains to wake the spirits that bring back spring. A fantasy told without dialogue. © Blender Foundation | cloud.blender.org/spring · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/",
+      "description_ur": "ایک چرواہی اور اس کا کتا پہاڑوں میں ان قدیم روحوں کو جگانے نکلتے ہیں جن کے ساتھ بہار لوٹتی ہے۔ یہ کہانی بغیر مکالموں کے سنائی گئی ہے۔ © Blender Foundation | cloud.blender.org/spring · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/",
+      "description_roman_ur": "Ek charwahi aur us ka kutta paharon mein un qadeem roohon ko jagane nikalte hain jin ke saath bahaar lautti hai. Yeh kahani baghair mukalmon ke sunai gayi hai. © Blender Foundation | cloud.blender.org/spring · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/",
+      "audience": "family"
+    }
+  },
+  "sprite-fright": {
+    "decision": "hold",
+    "sourcePage": "https://studio.blender.org/films/sprite-fright/",
+    "licenceCode": "CC-BY-4.0",
+    "editorialEvidence": "https://studio.blender.org/projects/sprite-fright/pages/about/",
+    "before": {
+      "title_ur": "تفریحی مواد",
+      "title_roman_ur": "Sprite Fright",
+      "description_en": "Live-test candidate ITEM-034: Sprite Fright by Blender Studio. Licence candidate CC-BY-4.0. Verify current Blender Studio licence notice on film page.",
+      "description_ur": "تفریحی مواد",
+      "description_roman_ur": "Sprite Fright",
+      "audience": "general"
+    },
+    "after": {
+      "title_ur": "اسپرائٹ فرائٹ",
+      "title_roman_ur": "Sprite Fright",
+      "description_en": "A group of teenagers on a trip to the woods crosses paths with a colony of mushroom sprites. Animated horror comedy with violent scenes. (CC) Blender Foundation | studio.blender.org",
+      "description_ur": "سیر پر نکلے چند نوجوان جنگل میں کھمبیوں جیسی ننھی مخلوق سے جا ملتے ہیں۔ اس اینیمیٹڈ ہارر کامیڈی میں تشدد کے مناظر ہیں۔ (CC) Blender Foundation | studio.blender.org",
+      "description_roman_ur": "Sair par nikle chand naujawan jangal mein khumbiyon jaisi nanhi makhlooq se ja milte hain. Is animated horror comedy mein tashaddud ke manazir hain. (CC) Blender Foundation | studio.blender.org",
+      "audience": "adults"
+    },
+    "reason": "The current approved record says CC BY 4.0. The publisher’s project About page states CC BY 1.0. An exact finished-film 4.0 notice or independently re-approved corrected rights record is required."
+  },
+  "caminandes-llamigos": {
+    "decision": "clear",
+    "sourcePage": "https://studio.blender.org/films/caminandes-3/",
+    "licenceCode": "CC-BY-4.0",
+    "editorialEvidence": "https://studio.blender.org/projects/caminandes-3/?asset=2417",
+    "before": {
+      "title_ur": "تفریحی مواد",
+      "title_roman_ur": "Caminandes 3 Llamigos",
+      "description_en": "Live-test candidate ITEM-044: Caminandes 3: Llamigos by Blender Studio. Licence candidate CC-BY-4.0. Short-feature Blender film counted in long band per editorial class; verify CC BY on film page.",
+      "description_ur": "تفریحی مواد",
+      "description_roman_ur": "Caminandes 3 Llamigos",
+      "audience": "general"
+    },
+    "after": {
+      "title_ur": "کامیناندیس ۳ — لامیگوس",
+      "title_roman_ur": "Caminandes 3 Llamigos",
+      "description_en": "Winter has reached Patagonia. Koro the llama and Oti the penguin have both spotted the same berry, and neither wants to give it up. Blender Institute | caminandes.com · © Blender Foundation · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/",
+      "description_ur": "پیٹاگونیا میں سردی آ گئی ہے۔ کورو لاما اور اوٹی پینگوئن کی نظر ایک ہی بیری پر ہے اور کوئی اسے چھوڑنے کو تیار نہیں۔ Blender Institute | caminandes.com · © Blender Foundation · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/",
+      "description_roman_ur": "Patagonia mein sardi aa gayi hai. Koro lama aur Oti penguin ki nazar ek hi berry par hai aur koi usay chhorne ko tayyar nahin. Blender Institute | caminandes.com · © Blender Foundation · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/",
+      "audience": "family"
+    }
+  },
+  "apollo-11-eagle-has-landed": {
+    "decision": "clear",
+    "sourcePage": "https://images.nasa.gov/details/KSC-19690716-MH-NAS01-0001-The_Flight_of_Apollo_11_The_Eagle_Has_Landed_HS_from_Film_JSC-DVC_1928",
+    "licenceCode": "NASA-media-guidelines",
+    "editorialEvidence": "https://ntrs.nasa.gov/api/citations/19980202463/downloads/19980202463.pdf",
+    "before": {
+      "title_ur": "تعلیمی مواد",
+      "title_roman_ur": "Eagle Has Landed The Flight of Apollo 11",
+      "description_en": "Live-test candidate ITEM-045: Eagle Has Landed: The Flight of Apollo 11 by NASA. Licence candidate NASA-media-guidelines. HQ-194 NASA documentary (~28.5 min); distinct from SVS Earthrise ITEM-009; confirm no third-party music overlays on the selected master.",
+      "description_ur": "تعلیمی مواد",
+      "description_roman_ur": "Eagle Has Landed The Flight of Apollo 11",
+      "audience": "general"
+    },
+    "after": {
+      "title_ur": "ایگل اتر گیا — اپالو ۱۱ کی پرواز",
+      "title_roman_ur": "Eagle Utar Gaya — Apollo 11 Ki Parwaaz",
+      "description_en": "NASA follows the Apollo 11 crew from liftoff to their return to Earth, using footage and photographs from the first crewed Moon landing in 1969. NASA",
+      "description_ur": "ناسا کی اس دستاویزی فلم میں ۱۹۶۹ کے اپالو ۱۱ مشن کی اصل فلم بندی اور تصاویر ہیں۔ سفر راکٹ کی روانگی سے شروع ہوتا ہے اور خلابازوں کی زمین پر واپسی تک جاری رہتا ہے۔ NASA",
+      "description_roman_ur": "NASA ki is dastavezi film mein 1969 ke Apollo 11 mission ki asal filmbandi aur tasveerein hain. Safar rocket ki rawangi se shuru hota hai aur khalabazon ki zameen par wapsi tak jaari rehta hai. NASA",
+      "audience": "general"
+    }
+  }
+}
