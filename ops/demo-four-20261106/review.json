@@ -22,10 +22,10 @@
     }
   },
   "sprite-fright": {
-    "decision": "hold",
+    "decision": "clear",
     "sourcePage": "https://studio.blender.org/films/sprite-fright/",
     "licenceCode": "CC-BY-4.0",
-    "editorialEvidence": "https://studio.blender.org/projects/sprite-fright/pages/about/",
+    "editorialEvidence": "https://github.com/Watch-Jalwa/jalwa-platform/actions/runs/42173557017/job/127746717594",
     "before": {
       "title_ur": "تفریحی مواد",
       "title_roman_ur": "Sprite Fright",
@@ -37,12 +37,11 @@
     "after": {
       "title_ur": "اسپرائٹ فرائٹ",
       "title_roman_ur": "Sprite Fright",
-      "description_en": "A group of teenagers on a trip to the woods crosses paths with a colony of mushroom sprites. Animated horror comedy with violent scenes. (CC) Blender Foundation | studio.blender.org",
-      "description_ur": "سیر پر نکلے چند نوجوان جنگل میں کھمبیوں جیسی ننھی مخلوق سے جا ملتے ہیں۔ اس اینیمیٹڈ ہارر کامیڈی میں تشدد کے مناظر ہیں۔ (CC) Blender Foundation | studio.blender.org",
-      "description_roman_ur": "Sair par nikle chand naujawan jangal mein khumbiyon jaisi nanhi makhlooq se ja milte hain. Is animated horror comedy mein tashaddud ke manazir hain. (CC) Blender Foundation | studio.blender.org",
+      "description_en": "A group of teenagers on a trip to the woods crosses paths with a colony of mushroom sprites. Animated horror comedy with violent scenes. © Blender Foundation | studio.blender.org · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/",
+      "description_ur": "سیر پر نکلے چند نوجوان جنگل میں کھمبیوں جیسی ننھی مخلوق سے جا ملتے ہیں۔ اس اینیمیٹڈ ہارر کامیڈی میں تشدد کے مناظر ہیں۔ © Blender Foundation | studio.blender.org · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/",
+      "description_roman_ur": "Sair par nikle chand naujawan jangal mein khumbiyon jaisi nanhi makhlooq se ja milte hain. Is animated horror comedy mein tashaddud ke manazir hain. © Blender Foundation | studio.blender.org · CC BY 4.0 · https://creativecommons.org/licenses/by/4.0/",
       "audience": "adults"
-    },
-    "reason": "The current approved record says CC BY 4.0. The publisher’s project About page states CC BY 1.0. An exact finished-film 4.0 notice or independently re-approved corrected rights record is required."
+    }
   },
   "caminandes-llamigos": {
     "decision": "clear",

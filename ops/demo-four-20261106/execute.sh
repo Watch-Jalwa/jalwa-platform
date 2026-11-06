@@ -7,6 +7,10 @@ fi
 test -n "$STAGING_QA_SECRET"
 printf '::add-mask::%s\n' "$STAGING_QA_SECRET"
 export STAGING_QA_SECRET
+QA_SESSION_DIR="$(mktemp -d "$RUNNER_TEMP/qa-session-XXXXXX")"
+chmod 700 "$QA_SESSION_DIR"
+export QA_SESSION_DIR
+trap 'rm -rf -- "$QA_SESSION_DIR"' EXIT
 mkdir -p evidence
 PREMIUM_QA_MODE=auth-only PREMIUM_QA_EVIDENCE=evidence/account.json node scripts/verify-four-premium.mjs
 run="$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
@@ -30,6 +34,10 @@ for slug in spring-blender caminandes-llamigos apollo-11-eagle-has-landed sprite
   if ! PREMIUM_QA_EVIDENCE="evidence/$slug.json" node scripts/verify-four-premium.mjs "$slug"; then
     failed=1
     operate rollback | tee "evidence/$slug-rollback.log" || exit 1
+    if jq -e 'any(.playback[]; .pass == false and .mediaOrigin != null and .mediaOrigin != .origin and any(.transport[]?; contains("ERR_FAILED") or contains("no-cors-header")))' "evidence/$slug.json" >/dev/null; then
+      echo "SHARED_GATEWAY_ORIGIN_FAILURE"
+      break
+    fi
   fi
 done
 exit "$failed"

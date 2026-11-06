@@ -42,6 +42,10 @@ async function signIn(ctx, origin) {
   // Consume it on that alias so Better Auth sets its host-local cookie; never copy cookies.
   const verify = await ctx.request.get(origin + action.pathname + action.search, { maxRedirects: 0 });
   requireThat(verify.status() >= 200 && verify.status() < 400, "Better Auth verification HTTP " + verify.status());
+  await checkIdentity(ctx, origin);
+}
+
+async function checkIdentity(ctx, origin) {
   const session = await ctx.request.get(origin + "/api/auth/get-session", { maxRedirects: 0 });
   requireThat(session.ok(), "Better Auth session HTTP " + session.status());
   const account = (await session.json())?.user;
@@ -58,13 +62,20 @@ async function check(ctx, origin, slug) {
   const page = await ctx.newPage();
   let phase = "watch page";
   let tokenStatus = null;
+  let mediaOrigin = null;
+  const transport = new Set();
   const mediaHits = [];
   try {
     page.on("response", response => {
       const url = new URL(response.url());
+      if (url.pathname.startsWith("/api/media/")) transport.add(url.origin + " " + response.status() + " " + (response.headers()["access-control-allow-origin"] || "no-cors-header"));
       if (!origins.includes(url.origin) || !response.ok()) return;
       if (url.pathname.startsWith("/api/media/processed/") && /\.(ts|m4s|mp4)$/i.test(url.pathname))
         mediaHits.push({ path: url.pathname, status: response.status() });
+    });
+    page.on("requestfailed", request => {
+      const url = new URL(request.url());
+      if (url.pathname.startsWith("/api/media/")) transport.add(url.origin + " " + (request.failure()?.errorText || "failed").slice(0,90));
     });
     const tokenPromise = page.waitForResponse(r => {
       const url = new URL(r.url());
@@ -82,6 +93,7 @@ async function check(ctx, origin, slug) {
     const id = new URL(token.url()).pathname.split("/")[3];
     const body = await token.json();
     const gate = new URL(body.url, origin);
+    mediaOrigin = origins.includes(gate.origin) ? gate.origin : "unexpected origin";
     const prefix = "/api/media/processed/" + id + "/";
     requireThat(body.qualityTier === "enhanced" && body.delivery === "r2_gateway" && origins.includes(gate.origin) && gate.pathname.startsWith(prefix) && gate.searchParams.has("token"), "enhanced R2 playback authorization missing");
     phase = "15 seconds of decoded video";
@@ -92,15 +104,20 @@ async function check(ctx, origin, slug) {
       v.muted = true;
       const playback = async () => {
         await v.play();
-        const start = v.currentTime;
-        const frames = v.getVideoPlaybackQuality().totalVideoFrames;
-        const wall = performance.now();
-        let sought = false;
-        v.addEventListener("seeking", () => { sought = true; }, { once: true });
-        while (performance.now() - wall <= 49000) {
+        const decoded = () => {
+          const stats = v.getVideoPlaybackQuality();
+          return stats.totalVideoFrames - stats.droppedVideoFrames;
+        };
+        let start, frames, wall;
+        const reset = () => { start = v.currentTime; frames = decoded(); wall = performance.now(); };
+        reset();
+        // The product may resume the QA viewer's saved position on the second host.
+        v.addEventListener("seeking", reset);
+        const deadline = performance.now() + 49000;
+        while (performance.now() <= deadline) {
           if (v.error) return null;
-          const advance = v.currentTime - start, newFrames = v.getVideoPlaybackQuality().totalVideoFrames - frames;
-          if (performance.now() - wall >= 15000 && advance >= 15 && newFrames >= 15 && !sought && !v.paused && v.videoWidth && v.videoHeight) {
+          const advance = v.currentTime - start, newFrames = decoded() - frames;
+          if (performance.now() - wall >= 15000 && advance >= 15 && newFrames >= 15 && !v.seeking && !v.paused && v.videoWidth && v.videoHeight) {
             return { seconds: Number(advance.toFixed(2)), decodedFrames: newFrames, width: v.videoWidth, height: v.videoHeight };
           }
           await new Promise(resolve => setTimeout(resolve, 250));
@@ -114,7 +131,7 @@ async function check(ctx, origin, slug) {
     requireThat(hits.length, "no successful browser requests for this title's playable media");
     return { origin, slug, title, pass: true, tokenStatus, enhanced: true, mediaResponses: hits.length, ...played, at: stamp() };
   } catch (ex) {
-    return { origin, slug, pass: false, phase, tokenStatus, error: safeError(ex), at: stamp() };
+    return { origin, slug, pass: false, phase, tokenStatus, mediaOrigin, mediaResponses: mediaHits.length, transport: [...transport], error: safeError(ex), at: stamp() };
   } finally { await page.close(); }
 }
 
@@ -133,10 +150,16 @@ try {
   }
   browser = await chromium.launch({ headless: true });
   for (const origin of origins) {
-    const ctx = await browser.newContext();
+    const statePath = process.env.QA_SESSION_DIR + "/" + new URL(origin).hostname + ".json";
+    const ctx = await browser.newContext(authOnly ? {} : { storageState: statePath });
     try {
       stage = "QA sign-in and Premium " + origin;
-      await signIn(ctx, origin);
+      if (authOnly) {
+        await signIn(ctx, origin);
+        writeFileSync(statePath, JSON.stringify(await ctx.storageState()), { mode: 0o600 });
+      } else {
+        await checkIdentity(ctx, origin);
+      }
       if (!authOnly) for (const slug of slugs) {
         const result = await check(ctx, origin, slug);
         evidence.playback.push(result);
