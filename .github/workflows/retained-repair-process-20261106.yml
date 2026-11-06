@@ -2,7 +2,7 @@ name: Repair retained VHS Static and Sintel originals
 on:
   push:
     branches: [ops/retained-media-repair-20261106]
-    paths: [.github/workflows/retained-repair-process-20261106.yml, ops/retained-repair-20261106/repair.mjs, ops/retained-repair-20261106/process.sh]
+    paths: [.github/workflows/retained-repair-process-20261106.yml, ops/retained-repair-20261106/repair.mjs, ops/retained-repair-20261106/process.sh, ops/retained-repair-20261106/capacity.test.mjs]
 permissions:
   contents: read
 concurrency:
@@ -25,6 +25,7 @@ jobs:
         run: |
           bash -n ops/retained-repair-20261106/process.sh
           node --check ops/retained-repair-20261106/repair.mjs
+          node --test ops/retained-repair-20261106/capacity.test.mjs
           bash ops/retained-repair-20261106/process.sh
       - name: Read retained-film credit frames
         run: |

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { createReadStream } from "node:fs";
 import { createHash } from "node:crypto";
-import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, stat, statfs, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import { createPool } from "/app/packages/postgres/index.mjs";
@@ -118,6 +118,12 @@ function checkOutput(input, output, duration, tolerance = 1.5) {
   assert(Math.abs(output.durationSeconds-duration)<tolerance, "Output duration changed unexpectedly");
 }
 
+function checkCapacity(availableBytes, sourceBytes, cachedBytes, isShort) {
+  const requiredBytes = Math.max(0, sourceBytes - cachedBytes) + (isShort ? 256 : 1024) * 1024 * 1024;
+  assert(availableBytes >= requiredBytes, "Worker temporary storage has insufficient capacity");
+  return requiredBytes;
+}
+
 async function requireOwnedJob() {
   const fresh = await candidate(expected);
   assert.equal(fresh.content.status, "editorial_review");
@@ -157,6 +163,7 @@ try {
       assert.equal(initial.asset.metadata.retainedOriginalRepair?.sourceSha256, expected.checksum);
       const media = await verifyObject("processed",initial.job.output.mediaPath);
       assert(media.sizeBytes>0);
+      if (slug==="vhs-static-cc0-clip") await rm(join(cache,"source"),{force:true});
       await saveEvidence(cache,slug==="vhs-static-cc0-clip");
       console.log("REPAIR_ALREADY_READY",JSON.stringify({slug,assetId:expected.asset_id,jobId:expected.job_id}));
     } else {
@@ -182,6 +189,16 @@ try {
       const livePlayback=await one(`select count(*)::int count from public.playback_sources
         where content_id=$1 and is_available`,[expected.content_id]);
       assert.equal(livePlayback.count,0);
+      // Keep the verified original, reclaim only this failed attempt's output, and
+      // check the worker's actual tmpfs before consuming another job attempt.
+      await mkdir(cache,{recursive:true,mode:0o700});
+      await rm(join(cache,"output"),{recursive:true,force:true});
+      const cachedSource=await stat(join(cache,"source")).catch(()=>null);
+      const space=await statfs(cache);
+      const availableBytes=space.bavail*space.bsize;
+      const cachedBytes=cachedSource?.size===head.sizeBytes ? cachedSource.size : 0;
+      const requiredBytes=checkCapacity(availableBytes,head.sizeBytes,cachedBytes,slug==="vhs-static-cc0-clip");
+      console.log("REPAIR_TMP_CAPACITY",JSON.stringify({slug,availableBytes,requiredBytes,cachedBytes}));
       await one(`update public.media_jobs set status='processing',attempts=attempts+1,
         locked_by=$2,locked_at=now(),completed_at=null,error_message=null
         where id=$1 and status='failed' and xmin::text=$3 and attempts<max_attempts and not cancel_requested returning id`,
@@ -211,7 +228,6 @@ try {
       await writeFile(join(cache,"source-verified.json"),JSON.stringify({sourceKey:before.asset.storage_key,
         sourceSha256:expected.checksum,sourceBytes:head.sizeBytes,input,verifiedAt:new Date().toISOString()}),{mode:0o600});
       console.log("REPAIR_SOURCE_VERIFIED",JSON.stringify({slug,sourceSha256:expected.checksum,sourceBytes:head.sizeBytes,reused,input,cache}));
-      await rm(output,{recursive:true,force:true});
       await mkdir(output,{recursive:true});
       await run("ffmpeg",buildThumbnailArgs(source,join(output,"thumbnail.jpg")),120000);
       const isShort=slug==="vhs-static-cc0-clip";
@@ -271,6 +287,7 @@ try {
       await audit("retained_original_repair_completed",{owner,playbackId:playback.id,mediaPath,format,repair,sourcePreserved:true});
       await db.query("commit");
       claimed=false;
+      if (isShort) await rm(source,{force:true});
       console.log("REPAIR_READY",JSON.stringify({slug,assetId:expected.asset_id,jobId:expected.job_id,playbackId:playback.id,
         format,sourceSha256:expected.checksum,input,output:outputProbe,cache}));
     }
