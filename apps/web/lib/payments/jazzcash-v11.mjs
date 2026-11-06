@@ -50,6 +50,22 @@ export function jazzcashStatusInquiryUrl() {
   return `${jazzcashHost()}/payment-orchestrator/api/v2/rest/payments/status/inquiry`;
 }
 
+export function jazzcashTokenInquiryUrl() {
+  return `${jazzcashHost()}/payment-orchestrator/payment/api/v1/mobile-tokens/inquiry`;
+}
+
+export function jazzcashTokenDeleteUrl() {
+  return `${jazzcashHost()}/payment-orchestrator/payment/api/v1/mobile-tokens/delete`;
+}
+
+/** National JazzCash MSISDN: 03XXXXXXXXX. */
+export function normalizeJazzcashNationalMsisdn(msisdn) {
+  const digits = String(msisdn ?? "").replace(/\D/g, "");
+  if (digits.startsWith("92") && digits.length === 12) return `0${digits.slice(2)}`;
+  if (digits.startsWith("3") && digits.length === 10) return `0${digits}`;
+  return digits;
+}
+
 /**
  * Public IPN URL JazzCash must allowlist.
  * Prefer JAZZCASH_IPN_URL when it matches the live app host; else `{appOrigin}/jazzcash/ipn`.
@@ -140,6 +156,93 @@ export function sanitizeJazzcashPublicPayload(payload) {
     }
   }
   return out;
+}
+
+function jazzcashResponseMeta(response, payload) {
+  const responseCode = String(payload.pp_ResponseCode ?? payload.responseCode ?? "").trim();
+  const ok = response.ok && ["000", "121", "200", "0"].includes(responseCode);
+  return {
+    ok,
+    responseCode,
+    responseMessage: String(payload.pp_ResponseMessage ?? payload.responseMessage ?? "").slice(0, 200),
+    payload: sanitizeJazzcashPublicPayload(payload),
+  };
+}
+
+/**
+ * Token Inquiry — confirm whether an active payment token exists for an MSISDN.
+ * Fields: pp_RequestID, pp_MobileNumber, pp_MerchantID, pp_Password, pp_SecureHash
+ * Active token → 000; no token → 999.
+ */
+export async function inquireJazzcashPaymentToken({ msisdn, requestId }) {
+  const merchantId = requiredEnv("JAZZCASH_MERCHANT_ID");
+  const password = requiredEnv("JAZZCASH_PASSWORD");
+  const mobile = normalizeJazzcashNationalMsisdn(msisdn);
+  if (!/^03\d{9}$/.test(mobile)) {
+    const error = new Error("invalid_msisdn");
+    error.status = 400;
+    throw error;
+  }
+  const resolvedRequestId = isValidJazzcashRequestId(requestId) ? String(requestId).trim() : newJazzcashRequestId();
+  const fields = {
+    pp_RequestID: resolvedRequestId,
+    pp_MobileNumber: mobile,
+    pp_MerchantID: merchantId,
+    pp_Password: password,
+  };
+  fields.pp_SecureHash = buildJazzcashSecureHash(fields);
+
+  const response = await fetch(jazzcashTokenInquiryUrl(), {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(fields),
+    signal: AbortSignal.timeout(Number(process.env.JAZZCASH_TIMEOUT_MS ?? 30000)),
+  });
+  const payload = await response.json().catch(() => ({}));
+  const meta = jazzcashResponseMeta(response, payload);
+  return {
+    ...meta,
+    requestId: resolvedRequestId,
+    msisdn: mobile,
+    tokenPresent: meta.responseCode === "000",
+    tokenMissing: meta.responseCode === "999",
+  };
+}
+
+/**
+ * Delete Token — clear JazzCash payment token after unlink / unsubscribe.
+ * Fields: pp_RequestID, pp_MerchantID, pp_Password, pp_PaymentToken, pp_SecureHash
+ */
+export async function deleteJazzcashPaymentToken({ paymentToken, requestId }) {
+  const merchantId = requiredEnv("JAZZCASH_MERCHANT_ID");
+  const password = requiredEnv("JAZZCASH_PASSWORD");
+  const token = String(paymentToken ?? "").trim();
+  if (!token) {
+    const error = new Error("missing_payment_token");
+    error.status = 400;
+    throw error;
+  }
+  const resolvedRequestId = isValidJazzcashRequestId(requestId) ? String(requestId).trim() : newJazzcashRequestId();
+  const fields = {
+    pp_RequestID: resolvedRequestId,
+    pp_MerchantID: merchantId,
+    pp_Password: password,
+    pp_PaymentToken: token,
+  };
+  fields.pp_SecureHash = buildJazzcashSecureHash(fields);
+
+  const response = await fetch(jazzcashTokenDeleteUrl(), {
+    method: "POST",
+    headers: { "content-type": "application/json", accept: "application/json" },
+    body: JSON.stringify(fields),
+    signal: AbortSignal.timeout(Number(process.env.JAZZCASH_TIMEOUT_MS ?? 30000)),
+  });
+  const payload = await response.json().catch(() => ({}));
+  const meta = jazzcashResponseMeta(response, payload);
+  return {
+    ...meta,
+    requestId: resolvedRequestId,
+  };
 }
 
 /**

@@ -209,6 +209,12 @@ Callback / complete path lives under app callback routes + `completeJazzcashLand
 - JazzCash: `POST …/payment-orchestrator/api/v2/rest/payments/status/inquiry` (no `pp_Version`)
 - Jalwa proxy: `POST /api/v1/premium/billing/jazzcash-v11/inquiry` with `{ txnRefNo }` or `{ requestId }`
 
+**Token Inquiry / Delete Token (implemented):**
+
+- Inquiry: `POST …/payment-orchestrator/payment/api/v1/mobile-tokens/inquiry`
+- Delete: `POST …/payment-orchestrator/payment/api/v1/mobile-tokens/delete`
+- Wired into profile Unsubscribe + billing Unlink via `unlinkJazzcashWalletForUser`
+
 ### Optional polish (not blocking SecureHash)
 
 - Align staging return URL strategy with production domain cutover.  

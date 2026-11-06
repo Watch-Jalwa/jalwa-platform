@@ -10,6 +10,7 @@ import {
   getPaymentServiceStatus,
   paymentServiceEnabled,
 } from "@/lib/payments/payment-service";
+import { unlinkJazzcashWalletForUser } from "@/lib/payments/jazzcash-landing-billing.mjs";
 
 async function authenticatedUser() {
   const database = await createClient();
@@ -81,6 +82,16 @@ export async function unsubscribePremium(): Promise<{ ok: true } | { ok: false; 
     } catch {
       // Still revoke local entitlements below so access stops even if the remote cancel fails.
     }
+  }
+
+  // Clear JazzCash payment token so recurring debit cannot continue after unsubscribe.
+  try {
+    await unlinkJazzcashWalletForUser(user.id);
+  } catch (unlinkError) {
+    console.warn("premium_unsubscribe_jazzcash_token_delete_failed", {
+      userId: user.id,
+      error: unlinkError instanceof Error ? unlinkError.message : String(unlinkError),
+    });
   }
 
   try {

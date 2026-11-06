@@ -12,7 +12,12 @@ test("profile unsubscribe returns ok and refreshes Free plan without hard redire
   assert.match(actions, /return \{ ok: true \}/);
   assert.match(actions, /auto_renew_consented = false/);
   assert.match(actions, /USER_UNSUBSCRIBED/);
+  assert.match(actions, /unlinkJazzcashWalletForUser/);
   assert.doesNotMatch(actions, /redirect\("\/profile\?unsubscribed=1"\)/);
+
+  const billingActions = await readFile(new URL("../app/billing/actions.ts", import.meta.url), "utf8");
+  assert.match(billingActions, /unlinkJazzcashWalletForUser/);
+  assert.match(billingActions, /jazzcashV11Configured/);
 
   assert.match(page, /UnsubscribePremiumButton/);
   assert.match(page, /if \(!params\.unsubscribed\)/);

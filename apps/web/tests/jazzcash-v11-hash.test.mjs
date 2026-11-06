@@ -92,6 +92,19 @@ test("JazzCash return URL follows the app origin when the configured host differ
   }
 });
 
+test("Token Inquiry SecureHash covers RequestID MobileNumber MerchantID Password only", async () => {
+  const { buildJazzcashSecureHash: hash } = await import("../lib/payments/jazzcash-v11.mjs");
+  const fields = {
+    pp_RequestID: "ReqIdabc123",
+    pp_MobileNumber: "03123456789",
+    pp_MerchantID: "MC990986",
+    pp_Password: "secret",
+  };
+  const digest = hash(fields, "testsalt");
+  assert.match(digest, /^[A-F0-9]{64}$/);
+  assert.notEqual(digest, hash({ ...fields, pp_Version: "1.1" }, "testsalt"));
+});
+
 test("Status Inquiry URL and hash omit pp_Version", () => {
   assert.match(jazzcashStatusInquiryUrl(), /\/payment-orchestrator\/api\/v2\/rest\/payments\/status\/inquiry$/);
   const fields = {

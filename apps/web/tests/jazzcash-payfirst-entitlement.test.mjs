@@ -48,12 +48,27 @@ test("Status Inquiry helper posts only MerchantID Password TxnRefNo SecureHash",
   assert.match(source, /payment-orchestrator\/api\/v2\/rest\/payments\/status\/inquiry/);
   assert.match(source, /Do not send pp_Version/);
   const inquiry = source.slice(source.indexOf("export async function inquireJazzcashPaymentStatus"));
-  const body = inquiry.slice(0, inquiry.indexOf("export async function payViaJazzcashToken"));
+  const body = inquiry.slice(0, inquiry.indexOf("export function sanitizeJazzcashPublicPayload"));
   assert.match(body, /pp_MerchantID/);
   assert.match(body, /pp_Password/);
   assert.match(body, /pp_TxnRefNo/);
   assert.match(body, /pp_SecureHash/);
   assert.doesNotMatch(body, /pp_Version\s*:/);
+});
+
+test("Token Inquiry and Delete Token use SkillUp mobile-tokens field sets", async () => {
+  const source = await readFile(v11Url, "utf8");
+  assert.match(source, /jazzcashTokenInquiryUrl/);
+  assert.match(source, /jazzcashTokenDeleteUrl/);
+  assert.match(source, /payment-orchestrator\/payment\/api\/v1\/mobile-tokens\/inquiry/);
+  assert.match(source, /payment-orchestrator\/payment\/api\/v1\/mobile-tokens\/delete/);
+  assert.match(source, /inquireJazzcashPaymentToken/);
+  assert.match(source, /deleteJazzcashPaymentToken/);
+  assert.match(source, /pp_MobileNumber/);
+  const billing = await readFile(billingUrl, "utf8");
+  assert.match(billing, /unlinkJazzcashWalletForUser/);
+  assert.match(billing, /deleteJazzcashPaymentToken/);
+  assert.match(billing, /inquireJazzcashPaymentToken/);
 });
 
 test("IPN routes settle through the same complete path as Return URL", async () => {

@@ -61,3 +61,11 @@ export function handleJazzcashIpn(fields: Record<string, string>): Promise<{
   httpStatus: number;
   body: Record<string, unknown>;
 }>;
+
+export function unlinkJazzcashWalletForUser(userId: string): Promise<{
+  attempted: number;
+  deleted: number;
+  skipped: boolean;
+  reason?: string;
+  results?: Array<Record<string, unknown>>;
+}>;

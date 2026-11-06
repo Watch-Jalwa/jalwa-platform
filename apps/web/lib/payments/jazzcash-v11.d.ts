@@ -5,6 +5,9 @@ export function jazzcashHost(): string;
 export function jazzcashActionUrl(): string;
 export function jazzcashPayViaTokenUrl(): string;
 export function jazzcashStatusInquiryUrl(): string;
+export function jazzcashTokenInquiryUrl(): string;
+export function jazzcashTokenDeleteUrl(): string;
+export function normalizeJazzcashNationalMsisdn(msisdn: unknown): string;
 export function jazzcashPktDateTime(date?: Date): string;
 export function newJazzcashPayTxnRef(): string;
 export function buildJazzcashSecureHash(fields: Record<string, string>, integritySalt?: string): string;
@@ -21,6 +24,29 @@ export function inquireJazzcashPaymentStatus(input: {
   responseCode: string;
   responseMessage: string;
   txnRefNo: string;
+  payload: Record<string, unknown>;
+}>;
+export function inquireJazzcashPaymentToken(input: {
+  msisdn: string;
+  requestId?: string;
+}): Promise<{
+  ok: boolean;
+  responseCode: string;
+  responseMessage: string;
+  requestId: string;
+  msisdn: string;
+  tokenPresent: boolean;
+  tokenMissing: boolean;
+  payload: Record<string, unknown>;
+}>;
+export function deleteJazzcashPaymentToken(input: {
+  paymentToken: string;
+  requestId?: string;
+}): Promise<{
+  ok: boolean;
+  responseCode: string;
+  responseMessage: string;
+  requestId: string;
   payload: Record<string, unknown>;
 }>;
 export function payViaJazzcashToken(input: {

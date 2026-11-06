@@ -1,11 +1,14 @@
 import { databasePool } from "@/lib/database/pool";
 import {
   buildLinkWalletForm,
+  deleteJazzcashPaymentToken,
   inquireJazzcashPaymentStatus,
+  inquireJazzcashPaymentToken,
   isValidJazzcashRequestId,
   jazzcashV11Configured,
   newJazzcashPayTxnRef,
   newJazzcashRequestId,
+  normalizeJazzcashNationalMsisdn,
   payViaJazzcashToken,
   verifyJazzcashSecureHash,
 } from "./jazzcash-v11.mjs";
@@ -627,6 +630,98 @@ export async function inquireJazzcashLandingStatus({ txnRefNo, requestId } = {})
     intentStatus: intent.status,
     subscriptionId: intent.subscription_id ?? null,
     payload: inquiry.payload,
+  };
+}
+
+/**
+ * Delete JazzCash payment token(s) for a user during unsubscribe / wallet unlink.
+ * Best-effort against JazzCash; always clears local stored tokens afterward when delete succeeds
+ * or when no remote token was present.
+ */
+export async function unlinkJazzcashWalletForUser(userId) {
+  if (!userId) {
+    const error = new Error("missing_user");
+    error.status = 400;
+    throw error;
+  }
+  if (!jazzcashV11Configured()) {
+    return { attempted: 0, deleted: 0, skipped: true, reason: "jazzcash_unconfigured" };
+  }
+
+  const intents = await databasePool.query(
+    `select request_id, msisdn, payment_token
+     from public.jazzcash_wallet_link_intents
+     where user_id = $1
+       and payment_token is not null
+       and length(trim(payment_token)) > 0
+     order by updated_at desc nulls last, created_at desc
+     limit 5`,
+    [userId],
+  );
+
+  let deleted = 0;
+  const results = [];
+  const seenTokens = new Set();
+
+  for (const intent of intents.rows) {
+    const token = String(intent.payment_token ?? "").trim();
+    if (!token || seenTokens.has(token)) continue;
+    seenTokens.add(token);
+
+    try {
+      const deletedRemote = await deleteJazzcashPaymentToken({
+        paymentToken: token,
+        requestId: newJazzcashRequestId(),
+      });
+      results.push({
+        requestId: intent.request_id,
+        ok: deletedRemote.ok,
+        responseCode: deletedRemote.responseCode,
+        responseMessage: deletedRemote.responseMessage,
+      });
+      if (deletedRemote.ok || deletedRemote.responseCode === "999") {
+        deleted += 1;
+        // Confirm teardown when we still know the MSISDN.
+        const mobile = normalizeJazzcashNationalMsisdn(intent.msisdn);
+        if (/^03\d{9}$/.test(mobile)) {
+          await inquireJazzcashPaymentToken({ msisdn: mobile }).catch(() => undefined);
+        }
+      }
+    } catch (error) {
+      results.push({
+        requestId: intent.request_id,
+        ok: false,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      console.error("jazzcash_token_delete_failed", {
+        userId,
+        requestId: intent.request_id,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  await databasePool.query(
+    `update public.jazzcash_wallet_link_intents
+     set payment_token = null,
+         payment_token_present = false,
+         status = case
+           when status in ('started', 'returned', 'completed') then 'failed'
+           else status
+         end,
+         response_code = coalesce(nullif(response_code, ''), 'TOKEN_DELETED'),
+         response_message = coalesce(nullif(response_message, ''), 'JazzCash payment token cleared on unlink/unsubscribe'),
+         updated_at = now()
+     where user_id = $1
+       and payment_token is not null`,
+    [userId],
+  );
+
+  return {
+    attempted: seenTokens.size,
+    deleted,
+    skipped: false,
+    results,
   };
 }
 
