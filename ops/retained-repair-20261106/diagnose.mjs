@@ -21,6 +21,12 @@ for(const relative of ['master.m3u8','360p/index.m3u8','480p/index.m3u8','720p/i
     } catch(error) {
       console.log('SEGMENT_INVALID',JSON.stringify({relative,segment,bytes:(await stat(join(directory,segment))).size,status:error.status}));
     }
+    try {
+      execFileSync('ffmpeg',['-nostdin','-v','warning','-xerror','-i',join(directory,segment),'-map','0:v:0','-map','0:a:0','-f','null','-'],{timeout:90000,stdio:['ignore','ignore','pipe']});
+      console.log('SEGMENT_DECODE_OK',JSON.stringify({relative,segment}));
+    } catch(error) {
+      console.log('SEGMENT_DECODE_FAILED',JSON.stringify({relative,segment,status:error.status,signal:error.signal,stderr:error.stderr?.toString().slice(-16000),message:error.message?.slice(-2000)}));
+    }
   }
 }
 const evidence='/tmp/jalwa-retained-inspection-'+process.env.GITHUB_RUN_ID;
