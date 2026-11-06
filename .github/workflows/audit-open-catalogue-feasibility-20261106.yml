@@ -1,0 +1,40 @@
+name: Pakistan open video sources - actual downloads and HLS technical proof
+on:
+  push:
+    branches:
+      - audit/jalwa-pakistan-open-catalogue-poc-20261106
+    paths:
+      - .github/workflows/audit-open-catalogue-feasibility-20261106.yml
+permissions:
+  contents: read
+jobs:
+  technical-proof:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - name: Check tools and install FFmpeg only when missing
+        run: |
+          set -Eeuo pipefail
+          node --version
+          node --check scripts/audit-open-catalogue-feasibility-20261106.mjs
+          if ! command -v ffprobe >/dev/null || ! command -v ffmpeg >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
+          ffmpeg -version | head -1
+          ffprobe -version | head -1
+      - name: Execute real Commons and Internet Archive source/codec/HLS tests
+        run: |
+          set -Eeuo pipefail
+          node scripts/audit-open-catalogue-feasibility-20261106.mjs | tee open-source-poc.log
+      - name: Retain evidence and short HLS samples (no source originals)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: jalwa-pakistan-open-video-technical-evidence-${{ github.sha }}
+          path: |
+            audit-evidence/pakistan-technical-poc/
+            open-source-poc.log
+          retention-days: 21
+          if-no-files-found: warn
