@@ -77,7 +77,6 @@ export function LandingShell({
           <Link className="landing-hero-link" href={ctaHref} aria-label="Watch Now — explore Jalwa">
             <picture className="landing-hero-picture">
               <source media="(max-width: 720px)" srcSet={mobileBannerSrc} />
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 className="landing-hero-image"
                 src={webBannerSrc}
