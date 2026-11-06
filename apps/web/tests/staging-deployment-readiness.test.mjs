@@ -6,6 +6,10 @@ import { reportWorkerError } from "../../worker/src/observability.mjs";
 const paths = {
   bootstrap: new URL("../../../.github/workflows/bootstrap-staging.yml", import.meta.url),
   deploy: new URL("../../../.github/workflows/deploy-staging.yml", import.meta.url),
+  candidateDeploy: new URL("../../../.github/workflows/staging-pr-candidate-deploy.yml", import.meta.url),
+  capacityMaintenance: new URL("../../../.github/workflows/staging-host-capacity-maintenance.yml", import.meta.url),
+  reclaimScript: new URL("../../../infrastructure/production/scripts/reclaim-staging-host-capacity.sh", import.meta.url),
+  diagnostics: new URL("../../../infrastructure/production/scripts/collect-staging-diagnostics.sh", import.meta.url),
   acceptance: new URL("../../../.github/workflows/staging-acceptance.yml", import.meta.url),
   releaseAcceptance: new URL("../../../infrastructure/production/scripts/production-acceptance.sh", import.meta.url),
   hostAcceptance: new URL("../../../infrastructure/production/scripts/host-acceptance.sh", import.meta.url),
@@ -122,4 +126,28 @@ test("worker captures handled job failures and fatal process failures", async ()
   assert.match(source, /process\.once\("uncaughtException"/);
   assert.match(source, /process\.once\("unhandledRejection"/);
   assert.match(source, /mechanism: "worker_tick"/);
+});
+
+test("PR staging candidate deploy applies the full migration set including launch live refresh", async () => {
+  const [candidate, reclaim, capacity, diagnostics] = await Promise.all([
+    readFile(paths.candidateDeploy, "utf8"),
+    readFile(paths.reclaimScript, "utf8"),
+    readFile(paths.capacityMaintenance, "utf8"),
+    readFile(paths.diagnostics, "utf8"),
+  ]);
+  assert.match(candidate, /database\/migrations\/\*\.sql/);
+  assert.match(candidate, /202609290001_live_catalogue_upstream_refresh\.sql/);
+  assert.match(candidate, /MIGRATIONS_DIR='\$APP_DIR\/migrations'/);
+  assert.match(candidate, /reclaim-staging-host-capacity\.sh' pre-cutover/);
+  assert.match(candidate, /reclaim-staging-host-capacity\.sh' post-cutover/);
+  assert.match(candidate, /seed-public-domain-live-sources\.sql/);
+  assert.match(candidate, /recertify-approved-live-catalogue-reviews-staging\.sql/);
+  assert.doesNotMatch(candidate, /MIGRATIONS_DIR='\$remote_db\/migrations'/);
+  assert.match(reclaim, /jalwa-platform_jalwa_staging_pgdata/);
+  assert.match(reclaim, /test "\$usage" -lt 85/);
+  assert.doesNotMatch(reclaim, /docker system prune|docker volume prune/);
+  assert.doesNotMatch(reclaim, /^\s*docker logout\b/m);
+  assert.match(capacity, /reclaim-staging-host-capacity\.sh/);
+  assert.match(diagnostics, /current_images/);
+  assert.match(diagnostics, /launch_refresh_migration_applied/);
 });

@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { AnalyticsBeacon } from "@/components/analytics-beacon";
 import { BottomNav } from "@/components/bottom-nav";
 import { DeviceHeartbeat } from "@/components/device-heartbeat";
@@ -7,8 +7,10 @@ import { ErrorMonitor } from "@/components/error-monitor";
 import { JalwaAdSlot } from "@/components/jalwa-ad-slot";
 import { PreviewBanner } from "@/components/preview-banner";
 import { ServiceWorkerRegister } from "@/components/service-worker-register";
+import { PremiumStatusToast } from "@/components/premium-status-toast";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { Suspense } from "react";
 import { documentDirection, documentLanguage, LOCALE_COOKIE, normalizeLocale } from "@/lib/customer/locale";
 import "./globals.css";
 import "./phase2.css";
@@ -38,6 +40,33 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, them
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const cookieStore = await cookies();
+  const headerStore = await headers();
   const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE)?.value);
-  return <html lang={documentLanguage(locale)} dir={documentDirection(locale)} data-release={releaseSha} suppressHydrationWarning><body><PreviewBanner /><SiteHeader /><JalwaAdSlot /><main className="site-main">{children}</main><SiteFooter /><BottomNav /><ServiceWorkerRegister /><ErrorMonitor />{isFrontendPreview ? null : <DeviceHeartbeat />}{isFrontendPreview || isStaging ? null : <AnalyticsBeacon />}</body></html>;
+  const campaignShell = headerStore.get("x-jalwa-campaign") === "1";
+
+  return (
+    <html
+      lang={documentLanguage(locale)}
+      dir={documentDirection(locale)}
+      data-release={releaseSha}
+      data-scroll-behavior="smooth"
+      suppressHydrationWarning
+    >
+      <body className={campaignShell ? "campaign-shell" : undefined} suppressHydrationWarning>
+        {campaignShell ? null : <PreviewBanner />}
+        {campaignShell ? null : <SiteHeader />}
+        {campaignShell ? null : <JalwaAdSlot />}
+        <main className={campaignShell ? "site-main site-main-campaign" : "site-main"}>{children}</main>
+        {campaignShell ? null : <SiteFooter />}
+        {campaignShell ? null : <BottomNav />}
+        <Suspense fallback={null}>
+          <PremiumStatusToast />
+        </Suspense>
+        <ServiceWorkerRegister />
+        <ErrorMonitor />
+        {campaignShell || isFrontendPreview ? null : <DeviceHeartbeat />}
+        {campaignShell || isFrontendPreview || isStaging ? null : <AnalyticsBeacon />}
+      </body>
+    </html>
+  );
 }

@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/database/server";
-import { hasBackendConfiguration } from "@/lib/runtime";
+import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 
 export type PremiumBenefitCode =
   | "premium_catalogue"
@@ -10,7 +10,9 @@ export type PremiumBenefitCode =
   | "premium_collections";
 
 export async function getPremiumBenefitState() {
-  if (!hasBackendConfiguration()) return { signedIn: false, benefits: new Set<PremiumBenefitCode>() };
+  if (!hasBackendConfiguration() || canUseDemoData()) {
+    return { signedIn: false, benefits: new Set<PremiumBenefitCode>() };
+  }
   try {
     const database = await createClient();
     const { data: { user } } = await database.auth.getUser();

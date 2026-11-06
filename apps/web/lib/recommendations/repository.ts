@@ -1,5 +1,8 @@
 import { getActiveViewerProfile } from "@/lib/customer/active-profile";
 import { featuredContent } from "@/lib/catalogue/demo-data";
+import { annotateCatalogueAccess } from "@/lib/catalogue/free-tier-access.mjs";
+import { withCataloguePosterFallback } from "@/lib/catalogue/poster-core.mjs";
+import { filterVisibleCatalogueItems } from "@/lib/catalogue/temporarily-hidden-slugs.mjs";
 import type { CatalogueItem } from "@/lib/catalogue/types";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import { createClient } from "@/lib/database/server";
@@ -7,7 +10,7 @@ import { createClient } from "@/lib/database/server";
 export type RecommendedItem = CatalogueItem & { recommendationReason?: string; recommendationScore?: number };
 
 function mapRow(row: Record<string, unknown>): RecommendedItem {
-  return {
+  return withCataloguePosterFallback({
     id: typeof row.id === "string" ? row.id : undefined,
     slug: typeof row.slug === "string" ? row.slug : "unavailable",
     title: typeof row.title === "string" ? row.title : "Untitled",
@@ -22,15 +25,22 @@ function mapRow(row: Record<string, unknown>): RecommendedItem {
     thumbnailUrl: typeof row.thumbnail_url === "string" ? row.thumbnail_url : null,
     recommendationReason: typeof row.recommendation_reason === "string" ? row.recommendation_reason : undefined,
     recommendationScore: typeof row.recommendation_score === "number" ? row.recommendation_score : undefined,
-  };
+  });
 }
 
 function demoRecommendations(limit: number, contextSlug?: string | null): RecommendedItem[] {
-  return featuredContent.filter((item) => item.slug !== contextSlug).slice(0, limit).map((item, index) => ({
-    ...item,
-    recommendationReason: index < 2 ? "Popular with Jalwa viewers" : "Fresh on Jalwa",
-    recommendationScore: 10 - index,
-  }));
+  return filterVisibleCatalogueItems(featuredContent)
+    .filter((item) => item.slug !== contextSlug)
+    .slice(0, limit)
+    .map((item, index) => ({
+      ...item,
+      recommendationReason: index < 2 ? "Popular with Jalwa viewers" : "Fresh on Jalwa",
+      recommendationScore: 10 - index,
+    }));
+}
+
+async function annotateVisibleRecommendations(items: RecommendedItem[]): Promise<RecommendedItem[]> {
+  return annotateCatalogueAccess(filterVisibleCatalogueItems(items)) as Promise<RecommendedItem[]>;
 }
 
 function recommendationFailure(error: unknown): never {
@@ -39,7 +49,9 @@ function recommendationFailure(error: unknown): never {
 }
 
 export async function getRecommendations({ limit = 24, contextContentId = null, contextSlug = null }: { limit?: number; contextContentId?: string | null; contextSlug?: string | null } = {}): Promise<RecommendedItem[]> {
-  if (canUseDemoData()) return demoRecommendations(limit, contextSlug);
+  if (canUseDemoData()) {
+    return annotateVisibleRecommendations(demoRecommendations(limit, contextSlug));
+  }
   if (!hasBackendConfiguration()) return recommendationFailure(new Error("Database backend is not configured."));
   try {
     const database = await createClient();
@@ -47,19 +59,25 @@ export async function getRecommendations({ limit = 24, contextContentId = null, 
     if (!user) {
       const { data, error } = await database.rpc("search_catalogue", { p_query: null, p_category: null, p_limit: limit });
       if (error) throw error;
-      return ((data ?? []) as Record<string, unknown>[]).map((row) => ({ ...mapRow(row), recommendationReason: "Trending on Jalwa" }));
+      return annotateVisibleRecommendations(
+        ((data ?? []) as Record<string, unknown>[]).map((row) => ({ ...mapRow(row), recommendationReason: "Trending on Jalwa" })),
+      );
     }
     const profile = await getActiveViewerProfile(user.id);
     if (!profile) {
       const { data, error } = await database.rpc("search_catalogue", { p_query: null, p_category: null, p_limit: limit });
       if (error) throw error;
-      return ((data ?? []) as Record<string, unknown>[]).map((row) => ({ ...mapRow(row), recommendationReason: "Popular on Jalwa" }));
+      return annotateVisibleRecommendations(
+        ((data ?? []) as Record<string, unknown>[]).map((row) => ({ ...mapRow(row), recommendationReason: "Popular on Jalwa" })),
+      );
     }
     const { data, error } = await database.rpc("get_recommendations", { p_viewer_profile_id: profile.id, p_limit: limit, p_context_content_id: contextContentId });
     if (error) throw error;
-    return ((data ?? []) as Record<string, unknown>[]).map(mapRow);
+    return annotateVisibleRecommendations(((data ?? []) as Record<string, unknown>[]).map(mapRow));
   } catch (error) {
-    if (canUseDemoData()) return demoRecommendations(limit, contextSlug);
+    if (canUseDemoData()) {
+      return annotateVisibleRecommendations(demoRecommendations(limit, contextSlug));
+    }
     return recommendationFailure(error);
   }
 }

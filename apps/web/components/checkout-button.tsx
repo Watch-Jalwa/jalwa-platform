@@ -1,21 +1,23 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export function CheckoutButton({ priceId, priceCode, preview = false, children }: { priceId: string; priceCode?: string; preview?: boolean; children: React.ReactNode }) {
+  const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function checkout() {
     setBusy(true); setError(null);
     if (preview) {
-      window.location.href = `/checkout/preview?plan=${encodeURIComponent(priceCode ?? priceId)}`;
+      router.push(`/checkout/preview?plan=${encodeURIComponent(priceCode ?? priceId)}`);
       return;
     }
     const response = await fetch("/api/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ priceId, idempotencyKey: crypto.randomUUID() }) });
     const data = await response.json();
     if (response.status === 401) {
-      window.location.href = `/signup?next=${encodeURIComponent("/pricing")}&plan=${encodeURIComponent(priceCode ?? "premium-monthly-pkr")}`;
+      router.push(`/login?next=${encodeURIComponent("/pricing")}&plan=${encodeURIComponent(priceCode ?? "premium-monthly-pkr")}`);
       return;
     }
     if (!response.ok) { setError(data.error ?? "Checkout failed."); setBusy(false); return; }

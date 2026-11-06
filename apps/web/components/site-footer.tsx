@@ -18,7 +18,7 @@ export function SiteFooter() {
         <p>Useful content, positive entertainment and AI-powered discovery for Pakistan.</p>
       </div>
       <nav aria-label="Legal and support">{links.map(([href, label]) => <Link href={href} key={href}>{label}</Link>)}</nav>
-      <small>© {new Date().getFullYear()} Jalwa. Third-party content remains subject to its source terms.</small>
+      <small suppressHydrationWarning>© {new Date().getFullYear()} Jalwa. Third-party content remains subject to its source terms.</small>
     </footer>
   );
 }

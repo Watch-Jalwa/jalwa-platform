@@ -48,14 +48,15 @@ export class QueryBuilder<T extends DatabaseRow = any, C extends Cardinality = "
 }
 
 export class DatabaseClient {
-  constructor(pool: Pool, options?: { userId?: string | null; role?: string; auth?: AuthFacade });
+  constructor(pool: Pool, options?: { userId?: string | null; role?: string; auth?: AuthFacade; client?: import("pg").PoolClient });
   auth: AuthFacade;
   from<T extends DatabaseRow = any>(table: string): QueryBuilder<T>;
   rpc(name: string, args?: Record<string, unknown>): Promise<DbResult<any>>;
   query<T extends QueryResultRow = DatabaseRow>(text: string, values?: unknown[]): Promise<QueryResult<T>>;
+  transaction<T>(fn: (database: DatabaseClient) => Promise<T>): Promise<T>;
 }
 
 export type AdminDatabaseClient = DatabaseClient & { auth: AuthFacade & { admin: AuthAdminFacade } };
 
 export function createPool(connectionString: string, options?: PoolConfig): Pool;
-export function createDatabaseClient(pool: Pool, options?: { userId?: string | null; role?: string; auth?: AuthFacade }): DatabaseClient;
+export function createDatabaseClient(pool: Pool, options?: { userId?: string | null; role?: string; auth?: AuthFacade; client?: import("pg").PoolClient }): DatabaseClient;

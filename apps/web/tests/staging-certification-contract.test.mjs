@@ -191,7 +191,7 @@ test("Playwright public suite covers release identity, auth request and required
   ]);
   assert.match(publicSpec, /expectedReleaseSha/);
   assert.match(publicSpec, /noindex/);
-  assert.match(auth, /Check your email for the sign-in link/);
+  assert.match(auth, /four-digit code|Preview complete/);
   assert.match(auth, /authenticatePage/);
   assert.match(responsive, /\[360, 390\]/);
   assert.match(responsive, /expectNoHorizontalOverflow/);
