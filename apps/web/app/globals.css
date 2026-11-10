@@ -33,6 +33,24 @@ button, input { font: inherit; }
 .desktop-nav { display: none; gap: 1.25rem; color: var(--muted); }
 .desktop-nav a:hover, .desktop-nav a:focus-visible { color: var(--text); }
 .header-actions { display: flex; gap: .75rem; align-items: center; }
+.unsubscribe-modal-backdrop {
+  position: fixed; inset: 0; z-index: 80; display: grid; place-items: center;
+  padding: 1rem; background: rgba(0, 0, 0, .62);
+}
+.unsubscribe-modal {
+  width: min(100%, 26rem); padding: 1.25rem; border-radius: 1.1rem;
+  border: 1px solid var(--border); background: var(--surface);
+}
+.unsubscribe-modal h2 { margin: 0 0 .55rem; font-size: 1.25rem; }
+.unsubscribe-modal p { margin: 0 0 .85rem; color: var(--muted); line-height: 1.5; }
+.unsubscribe-modal .form-field { display: grid; gap: .35rem; margin-bottom: 1rem; }
+.unsubscribe-modal .form-field span { font-size: .82rem; color: var(--muted); }
+.unsubscribe-modal input {
+  min-height: 2.7rem; padding: .65rem .8rem; border-radius: .8rem;
+  border: 1px solid var(--border); background: rgba(255,255,255,.04); color: var(--text);
+}
+.unsubscribe-modal-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .65rem; }
+.header-unsubscribe { white-space: nowrap; }
 .hero {
   min-height: 31rem; display: flex; align-items: flex-end; margin: .5rem 0 2rem; padding: 1.5rem;
   border-radius: calc(var(--radius) + .5rem); overflow: hidden;

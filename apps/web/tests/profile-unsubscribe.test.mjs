@@ -10,10 +10,23 @@ test("profile unsubscribe returns ok and refreshes Free plan without hard redire
 
   assert.match(actions, /export async function unsubscribePremium/);
   assert.match(actions, /return \{ ok: true \}/);
-  assert.match(actions, /auto_renew_consented = false/);
-  assert.match(actions, /USER_UNSUBSCRIBED/);
-  assert.match(actions, /unlinkJazzcashWalletForUser/);
+  assert.match(actions, /stopPremiumForUser/);
   assert.doesNotMatch(actions, /redirect\("\/profile\?unsubscribed=1"\)/);
+
+  const byMsisdn = await readFile(new URL("../lib/payments/unsubscribe-by-msisdn.mjs", import.meta.url), "utf8");
+  assert.match(byMsisdn, /lookupPremiumByJazzcashMsisdn/);
+  assert.match(byMsisdn, /unsubscribePremiumByJazzcashMsisdn/);
+  assert.match(byMsisdn, /auto_renew_consented = false/);
+  assert.match(byMsisdn, /USER_UNSUBSCRIBED/);
+  assert.match(byMsisdn, /unlinkJazzcashWalletForUser/);
+
+  const header = await readFile(new URL("../components/site-header.tsx", import.meta.url), "utf8");
+  assert.match(header, /HeaderUnsubscribeButton/);
+
+  const headerButton = await readFile(new URL("../components/header-unsubscribe-button.tsx", import.meta.url), "utf8");
+  assert.match(headerButton, /Are you sure you want to cancel your subscription/);
+  assert.match(headerButton, /\/api\/v1\/premium\/billing\/unsubscribe\/lookup/);
+  assert.match(headerButton, /\/api\/v1\/premium\/billing\/unsubscribe\/confirm/);
 
   const billingActions = await readFile(new URL("../app/billing/actions.ts", import.meta.url), "utf8");
   assert.match(billingActions, /unlinkJazzcashWalletForUser/);

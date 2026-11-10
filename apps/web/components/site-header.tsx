@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { HeaderUnsubscribeButton } from "@/components/header-unsubscribe-button";
 import { createClient } from "@/lib/database/server";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 
@@ -29,6 +30,7 @@ export async function SiteHeader() {
         <Link href="/ask">Ask Jalwa</Link>
       </nav>
       <div className="header-actions">
+        <HeaderUnsubscribeButton />
         <Link className="button button-primary" href="/pricing">
           Premium
         </Link>
