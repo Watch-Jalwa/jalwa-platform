@@ -33,6 +33,8 @@ test("profile unsubscribe returns ok and refreshes Free plan without hard redire
   assert.match(authPrompt, /Premium is ready/);
   assert.match(authPrompt, /Sign in/);
   assert.match(authPrompt, /Signup/);
+  assert.match(authPrompt, /open && onHome/);
+  assert.match(authPrompt, /dismissForAuth/);
 
   const billingActions = await readFile(new URL("../app/billing/actions.ts", import.meta.url), "utf8");
   assert.match(billingActions, /unlinkJazzcashWalletForUser/);
