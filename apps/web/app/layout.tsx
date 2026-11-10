@@ -12,6 +12,8 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Suspense } from "react";
 import { documentDirection, documentLanguage, LOCALE_COOKIE, normalizeLocale } from "@/lib/customer/locale";
+import { createClient } from "@/lib/database/server";
+import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import "./globals.css";
 import "./phase2.css";
 import "./phase3.css";
@@ -43,6 +45,16 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   const headerStore = await headers();
   const locale = normalizeLocale(cookieStore.get(LOCALE_COOKIE)?.value);
   const campaignShell = headerStore.get("x-jalwa-campaign") === "1";
+  let signedIn = false;
+  if (!campaignShell && hasBackendConfiguration() && !canUseDemoData()) {
+    try {
+      const database = await createClient();
+      const { data: { user } } = await database.auth.getUser();
+      signedIn = Boolean(user);
+    } catch {
+      signedIn = false;
+    }
+  }
 
   return (
     <html
@@ -60,7 +72,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         {campaignShell ? null : <SiteFooter />}
         {campaignShell ? null : <BottomNav />}
         <Suspense fallback={null}>
-          <PremiumStatusToast />
+          <PremiumStatusToast signedIn={signedIn} />
         </Suspense>
         <ServiceWorkerRegister />
         <ErrorMonitor />

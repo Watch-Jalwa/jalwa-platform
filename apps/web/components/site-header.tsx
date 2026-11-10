@@ -5,13 +5,19 @@ import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 
 export async function SiteHeader() {
   let signedIn = false;
+  let isPremium = false;
   if (hasBackendConfiguration() && !canUseDemoData()) {
     try {
       const database = await createClient();
       const { data: { user } } = await database.auth.getUser();
       signedIn = Boolean(user);
+      if (user) {
+        const { data: entitled } = await database.rpc("has_active_benefit", { p_benefit: "premium_catalogue" });
+        isPremium = Boolean(entitled);
+      }
     } catch {
       signedIn = false;
+      isPremium = false;
     }
   }
 
@@ -31,12 +37,13 @@ export async function SiteHeader() {
       </nav>
       <div className="header-actions">
         <HeaderUnsubscribeButton />
-        <Link className="button button-primary" href="/pricing">
+        <Link className="button button-primary header-premium" href="/pricing">
           Premium
         </Link>
         {signedIn ? (
-          <Link className="button button-secondary" href="/profile">
-            Profile
+          <Link className="button button-secondary header-profile" href="/profile">
+            <span>Profile</span>
+            {isPremium ? <span className="header-premium-tag">Premium</span> : null}
           </Link>
         ) : (
           <>

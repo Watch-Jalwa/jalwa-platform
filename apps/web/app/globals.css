@@ -51,6 +51,28 @@ button, input { font: inherit; }
 }
 .unsubscribe-modal-actions { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: .65rem; }
 .header-unsubscribe { white-space: nowrap; }
+.unsubscribe-plans-link { color: var(--brand); font-weight: 750; text-decoration: underline; }
+.header-profile { gap: .45rem; }
+.header-premium-tag {
+  display: inline-flex; align-items: center; min-height: 1.35rem; padding: .1rem .45rem;
+  border-radius: 999px; background: var(--brand); color: #111; font-size: .68rem; font-weight: 800;
+}
+.post-jazzcash-auth-modal .eyebrow { display: inline-block; margin-bottom: .35rem; }
+.post-jazzcash-auth-actions { width: 100%; justify-content: stretch; }
+.post-jazzcash-auth-actions .button { flex: 1 1 8rem; }
+.post-jazzcash-auth-dismiss { width: 100%; margin-top: .75rem; }
+@media (max-width: 720px) {
+  .unsubscribe-modal-backdrop { align-items: end; padding: 0; }
+  .unsubscribe-modal {
+    width: 100%; max-height: min(92dvh, 36rem); overflow: auto;
+    border-radius: 1.15rem 1.15rem 0 0; padding: 1.15rem 1rem calc(1rem + env(safe-area-inset-bottom));
+  }
+  .unsubscribe-modal-actions { width: 100%; }
+  .unsubscribe-modal-actions .button { flex: 1 1 calc(50% - .4rem); }
+  .header-actions { gap: .35rem; flex-wrap: nowrap; max-width: min(72vw, 22rem); overflow-x: auto; }
+  .header-actions .button { min-height: 2.35rem; padding: .45rem .7rem; font-size: .76rem; }
+  .header-actions .header-premium { display: none; }
+}
 .hero {
   min-height: 31rem; display: flex; align-items: flex-end; margin: .5rem 0 2rem; padding: 1.5rem;
   border-radius: calc(var(--radius) + .5rem); overflow: hidden;

@@ -25,8 +25,14 @@ test("profile unsubscribe returns ok and refreshes Free plan without hard redire
 
   const headerButton = await readFile(new URL("../components/header-unsubscribe-button.tsx", import.meta.url), "utf8");
   assert.match(headerButton, /Are you sure you want to cancel your subscription/);
+  assert.match(headerButton, /Click Here to view plans/);
   assert.match(headerButton, /\/api\/v1\/premium\/billing\/unsubscribe\/lookup/);
   assert.match(headerButton, /\/api\/v1\/premium\/billing\/unsubscribe\/confirm/);
+
+  const authPrompt = await readFile(new URL("../components/post-jazzcash-auth-prompt.tsx", import.meta.url), "utf8");
+  assert.match(authPrompt, /Premium is ready/);
+  assert.match(authPrompt, /Sign in/);
+  assert.match(authPrompt, /Signup/);
 
   const billingActions = await readFile(new URL("../app/billing/actions.ts", import.meta.url), "utf8");
   assert.match(billingActions, /unlinkJazzcashWalletForUser/);

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
 
 type Step = "closed" | "msisdn" | "confirm" | "done";
@@ -20,6 +21,7 @@ export function HeaderUnsubscribeButton() {
   const [msisdn, setMsisdn] = useState("");
   const [lookup, setLookup] = useState<LookupResult | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [showPlansCta, setShowPlansCta] = useState(false);
   const [pending, setPending] = useState(false);
 
   useEffect(() => {
@@ -36,11 +38,13 @@ export function HeaderUnsubscribeButton() {
     setMsisdn("");
     setLookup(null);
     setMessage(null);
+    setShowPlansCta(false);
   }
 
   async function checkNumber() {
     setPending(true);
     setMessage(null);
+    setShowPlansCta(false);
     try {
       const response = await fetch("/api/v1/premium/billing/unsubscribe/lookup", {
         method: "POST",
@@ -56,7 +60,8 @@ export function HeaderUnsubscribeButton() {
       if (payload.hasSubscription) {
         setStep("confirm");
       } else {
-        setMessage(payload.message || "No Jalwa Premium subscription was found for this JazzCash number.");
+        setMessage("No Jalwa Premium subscription was found for this JazzCash number.");
+        setShowPlansCta(true);
       }
     } catch {
       setMessage("Could not check this JazzCash number.");
@@ -68,6 +73,7 @@ export function HeaderUnsubscribeButton() {
   async function confirmUnsubscribe() {
     setPending(true);
     setMessage(null);
+    setShowPlansCta(false);
     try {
       const response = await fetch("/api/v1/premium/billing/unsubscribe/confirm", {
         method: "POST",
@@ -96,6 +102,7 @@ export function HeaderUnsubscribeButton() {
         onClick={() => {
           setStep("msisdn");
           setMessage(null);
+          setShowPlansCta(false);
           setLookup(null);
         }}
       >
@@ -129,7 +136,19 @@ export function HeaderUnsubscribeButton() {
                     disabled={pending}
                   />
                 </label>
-                {message ? <p className="form-message" role="alert">{message}</p> : null}
+                {message ? (
+                  <p className="form-message" role="alert">
+                    {message}
+                    {showPlansCta ? (
+                      <>
+                        {" "}
+                        <Link className="unsubscribe-plans-link" href="/pricing" onClick={close}>
+                          Click Here to view plans.
+                        </Link>
+                      </>
+                    ) : null}
+                  </p>
+                ) : null}
                 <div className="unsubscribe-modal-actions">
                   <button className="button button-secondary" type="button" onClick={close} disabled={pending}>
                     Close

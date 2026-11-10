@@ -82,7 +82,11 @@
 .hub-card h2 { margin: 0; font-size: 1rem; }
 .hub-card p { color: var(--muted); line-height: 1.45; font-size: .85rem; }
 .hub-card span { color: var(--brand); font-weight: 750; font-size: .85rem; }
-@media (max-width: 480px) { .header-actions { gap: .35rem; }.header-actions .button { min-height: 2.35rem; padding: .5rem .7rem; font-size: .78rem; }.header-actions .button-primary { display: none; } }
+@media (max-width: 480px) {
+  .header-actions { gap: .35rem; }
+  .header-actions .button { min-height: 2.35rem; padding: .5rem .7rem; font-size: .78rem; }
+  .header-actions .header-premium { display: none; }
+}
 @media (min-width: 720px) {
   .auth-journey { grid-template-columns: minmax(0, 1fr) minmax(22rem, 40rem); gap: 3rem; padding-top: 4rem; align-items: start; }
   .login-journey { grid-template-columns: minmax(0, .85fr) minmax(22rem, 40rem); }
