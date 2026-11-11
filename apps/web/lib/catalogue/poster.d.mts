@@ -1,8 +1,10 @@
 export function isCatalogueContentId(value: unknown): value is string;
 export function youtubePosterUrl(videoId: string | null | undefined): string | null;
 export function cataloguePosterPath(contentId: string | null | undefined): string | null;
+export function curatedPosterUrlForSlug(slug: string | null | undefined): string | null;
 export function buildGeneratedPosterSvg(input?: {
   id?: string;
+  slug?: string | null;
   title?: string;
   category?: string | null;
   contentType?: string | null;
@@ -14,6 +16,7 @@ export type CataloguePosterRef =
   | {
       kind: "generated";
       id: string;
+      slug?: string | null;
       title: string;
       category?: string | null;
       contentType?: string | null;

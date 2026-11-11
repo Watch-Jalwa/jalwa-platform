@@ -25,6 +25,7 @@ export async function GET(_request: Request, { params }: { params: Params }) {
 
     const svg = buildGeneratedPosterSvg({
       id: poster.id || contentId,
+      slug: poster.slug,
       title: poster.title || "Jalwa",
       category: poster.category,
       contentType: poster.contentType,

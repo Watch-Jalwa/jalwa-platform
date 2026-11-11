@@ -22,13 +22,15 @@ export default async function HomePage() {
     freeLimit: FREE_UNLOCKED_VIDEO_LIMIT,
   };
   try {
-    const [nextCategories, nextFeatured, catalogueWindow] = await Promise.all([
+    const [nextCategories, catalogueWindow] = await Promise.all([
       getCategories(),
-      searchCatalogue({ limit: 8 }),
       searchCatalogue({ limit: 100 }),
     ]);
     categories = nextCategories;
-    featuredContent = nextFeatured;
+    // Featured must show eight VOD cards even when live rows dominate catalogue ranking.
+    featuredContent = catalogueWindow
+      .filter((item) => item.contentType !== "live")
+      .slice(0, 8);
     accessSummary = summarizeVideoAccess(catalogueWindow);
   } catch {
     // Keep home reachable for post-JazzCash toast even when catalogue DB is offline locally.

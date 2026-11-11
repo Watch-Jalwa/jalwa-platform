@@ -73,10 +73,9 @@ export async function searchCatalogue(input: { query?: string; category?: string
   try {
     const database = await createClient();
     const requested = input.limit ?? 40;
-    // When live rows are stripped client-side, oversample so Featured still fills the requested count.
-    const queryLimit = liveSourcesEnabled()
-      ? requested
-      : Math.min(100, Math.max(requested * 4, requested + 24));
+    // Live catalogue rows often outrank the next VOD titles after the small featured set.
+    // Pull a full page then keep non-live rows so Featured can still fill 8 VOD cards.
+    const queryLimit = liveSourcesEnabled() ? requested : 100;
     const { data, error } = await database.rpc("search_catalogue", {
       p_query: query || null,
       p_category: category || null,

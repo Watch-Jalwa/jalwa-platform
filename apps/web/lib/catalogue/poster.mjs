@@ -1,4 +1,5 @@
 import { databasePool } from "@/lib/database/pool";
+import { curatedPosterUrlForSlug } from "./curated-posters.mjs";
 import { buildGeneratedPosterSvg } from "./generated-poster.mjs";
 import {
   cataloguePosterPath,
@@ -13,18 +14,19 @@ export {
   withCataloguePosterFallback,
   youtubePosterUrl,
   buildGeneratedPosterSvg,
+  curatedPosterUrlForSlug,
 };
 
 /**
  * Resolve a public poster for a published catalogue item.
- * YouTube keeps provider art; self-hosted catalogue uses generated Jalwa posters
- * (not black opening frames from FFmpeg).
+ * Order: YouTube art → curated open still → generated thematic SVG.
  */
 export async function resolveCataloguePoster(contentId) {
   if (!isCatalogueContentId(contentId)) return null;
 
   const result = await databasePool.query(
     `select c.id::text as id,
+            c.slug,
             c.status,
             c.content_type,
             c.title_en,
@@ -50,6 +52,9 @@ export async function resolveCataloguePoster(contentId) {
     if (youtube) return { kind: "redirect", url: youtube };
   }
 
+  const curated = curatedPosterUrlForSlug(row.slug);
+  if (curated) return { kind: "redirect", url: curated };
+
   const stored = typeof row.thumbnail_url === "string" ? row.thumbnail_url.trim() : "";
   if (stored && /^https?:\/\//i.test(stored) && !stored.includes("/api/catalogue/poster/")) {
     return { kind: "redirect", url: stored };
@@ -60,6 +65,7 @@ export async function resolveCataloguePoster(contentId) {
   return {
     kind: "generated",
     id: row.id,
+    slug: typeof row.slug === "string" ? row.slug : null,
     title: typeof row.title_en === "string" ? row.title_en : "Jalwa",
     category: typeof row.category_name === "string" ? row.category_name : null,
     contentType: typeof row.content_type === "string" ? row.content_type : "video",

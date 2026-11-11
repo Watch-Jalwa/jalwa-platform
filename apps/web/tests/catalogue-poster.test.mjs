@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
-import { buildGeneratedPosterSvg } from "../lib/catalogue/generated-poster.mjs";
+import { curatedPosterUrlForSlug } from "../lib/catalogue/curated-posters.mjs";
+import { buildGeneratedPosterSvg, resolvePosterTheme } from "../lib/catalogue/generated-poster.mjs";
 import {
   cataloguePosterPath,
   withCataloguePosterFallback,
@@ -38,6 +39,7 @@ test("poster fallback fills missing video thumbnails only", () => {
 test("generated posters include title category and brand without video frames", () => {
   const svg = buildGeneratedPosterSvg({
     id: "a2de188e-f7aa-4c28-8c06-e487c9a75a69",
+    slug: "sintel",
     title: "Sintel",
     category: "Entertainment",
     contentType: "video",
@@ -49,9 +51,20 @@ test("generated posters include title category and brand without video frames", 
   assert.match(svg, /JALWA/);
   assert.match(svg, /14m/);
   assert.doesNotMatch(svg, /thumbnail\.jpg/);
+  assert.equal(resolvePosterTheme({ slug: "vhs-static-cc0-clip", title: "Analog" }).motif, "static");
+  assert.equal(resolvePosterTheme({ slug: "apollo-11-eagle-has-landed" }).motif, "stars");
 });
 
-test("poster route serves generated catalogue art", async () => {
+test("curated open-movie posters use official stills", () => {
+  assert.match(curatedPosterUrlForSlug("sintel") ?? "", /Sintel_poster/);
+  assert.match(curatedPosterUrlForSlug("cosmos-laundromat") ?? "", /CosmosLaundromatPoster/);
+  assert.match(curatedPosterUrlForSlug("sprite-fright") ?? "", /Sprite_Fright/);
+  assert.match(curatedPosterUrlForSlug("caminandes-llamigos") ?? "", /Caminandes/);
+  assert.match(curatedPosterUrlForSlug("grca-south-rim-summer-timelapse") ?? "", /Grand_Canyon/);
+  assert.equal(curatedPosterUrlForSlug("unknown-slug"), null);
+});
+
+test("poster route serves curated or generated catalogue art", async () => {
   const route = await readFile(new URL("../app/api/catalogue/poster/[contentId]/route.ts", import.meta.url), "utf8");
   const poster = await readFile(new URL("../lib/catalogue/poster.mjs", import.meta.url), "utf8");
   const repository = await readFile(new URL("../lib/catalogue/repository.ts", import.meta.url), "utf8");
@@ -59,6 +72,8 @@ test("poster route serves generated catalogue art", async () => {
   assert.match(route, /X-Jalwa-Poster": "generated"/);
   assert.doesNotMatch(route, /getProcessedObject/);
   assert.match(poster, /kind: "generated"/);
+  assert.match(poster, /curatedPosterUrlForSlug/);
   assert.match(repository, /queryLimit/);
+  assert.match(repository, /p_limit: queryLimit/);
   assert.match(repository, /filtered\.slice\(0, requested\)/);
 });
