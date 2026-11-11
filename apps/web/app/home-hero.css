@@ -7,7 +7,12 @@
   min-height: clamp(22rem, 72vw, 28rem);
   margin: 0.5rem 0 2rem;
   border-radius: calc(var(--radius) + 0.35rem);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 122, 0, 0.32);
+  box-shadow:
+    0 0 0 1px rgba(255, 122, 0, 0.1),
+    0 0 28px rgba(255, 122, 0, 0.12),
+    0 0 42px rgba(124, 58, 237, 0.12),
+    0 16px 40px rgba(0, 0, 0, 0.35);
   background: #0b0908;
 }
 
