@@ -52,10 +52,6 @@ export function PostJazzcashAuthPrompt({ signedIn = false }: { signedIn?: boolea
   }, [premium, msisdn, signedIn, pathname, router, searchParams]);
 
   useEffect(() => {
-    if (!onHome && open) setOpen(false);
-  }, [onHome, open]);
-
-  useEffect(() => {
     if (!toast) return;
     const hide = window.setTimeout(() => setToast(null), 5500);
     return () => window.clearTimeout(hide);
