@@ -46,12 +46,34 @@ export function buildAudioArgs(input, output) {
   ];
 }
 
-export function buildThumbnailArgs(input, output) {
+/**
+ * Seek past opening fades/black titles before sampling a poster frame.
+ * Uses ~25% of duration (at least 3s when possible), capped for long films.
+ */
+export function thumbnailSeekSeconds(durationSeconds) {
+  const duration = Number(durationSeconds);
+  if (!Number.isFinite(duration) || duration <= 1) return 0;
+  const maxSeek = Math.max(0, duration - 1);
+  if (maxSeek <= 0) return 0;
+  const target = Math.max(duration * 0.25, Math.min(3, maxSeek));
+  return Math.min(target, Math.min(180, maxSeek));
+}
+
+/** Near-black opening-frame JPEGs from the old sampler are typically tiny. */
+export const UNDERSIZED_POSTER_BYTES = 12_000;
+
+export function buildThumbnailArgs(input, output, durationSeconds = null) {
+  const seek = thumbnailSeekSeconds(durationSeconds);
   return [
     "-y",
-    ...inputArgs(input),
+    "-nostdin",
+    "-protocol_whitelist",
+    LOCAL_PROTOCOLS,
+    ...(seek > 0 ? ["-ss", seek.toFixed(3)] : []),
+    "-i",
+    input,
     "-vf",
-    "thumbnail=30,scale=640:-2",
+    "thumbnail=90,scale=640:-2",
     "-frames:v",
     "1",
     "-q:v",
@@ -306,7 +328,7 @@ export async function processMediaJob({ database, job }) {
     let mediaPath;
 
     if (!audioOnly) {
-      await run(ffmpeg, buildThumbnailArgs(source, join(output, "thumbnail.jpg")));
+      await run(ffmpeg, buildThumbnailArgs(source, join(output, "thumbnail.jpg"), probe.durationSeconds));
       await assertJobStillAllowed(database, job.id, asset.content_id);
     }
 

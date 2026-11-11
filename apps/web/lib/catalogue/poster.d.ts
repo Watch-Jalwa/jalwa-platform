@@ -4,7 +4,7 @@ export function cataloguePosterPath(contentId: string | null | undefined): strin
 
 export type CataloguePosterRef =
   | { kind: "redirect"; url: string }
-  | { kind: "object"; key: string };
+  | { kind: "object"; key: string; title?: string };
 
 export function resolveCataloguePoster(contentId: string): Promise<CataloguePosterRef | null>;
 

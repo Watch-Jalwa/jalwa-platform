@@ -25,7 +25,7 @@ export function RecommendationRail({ items, title = "Recommended for you", place
         return (
           <article className={`recommendation-card${locked ? " recommendation-card-locked" : ""}`} data-recommendation-id={item.id} key={item.id ?? item.slug}>
             <Link href={href}>
-              <div className="recommendation-art" style={item.thumbnailUrl ? { backgroundImage: `linear-gradient(180deg,transparent,rgba(0,0,0,.85)),url(${item.thumbnailUrl})` } : undefined}><span>{badge}</span></div>
+              <div className="recommendation-art" style={item.thumbnailUrl ? { backgroundImage: `linear-gradient(180deg,transparent,rgba(0,0,0,.85)),url("${item.thumbnailUrl}")`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}><span>{badge}</span></div>
               <h3>{item.title}</h3>
               <p>{formatDuration(item.durationSeconds)} · {item.recommendationReason ?? "Selected for you"}</p>
             </Link>

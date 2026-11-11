@@ -1,10 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildAudioArgs, buildHlsArgs, buildShortArgs, buildThumbnailArgs, probeMedia } from "../src/media.mjs";
+import { buildAudioArgs, buildHlsArgs, buildShortArgs, buildThumbnailArgs, probeMedia, thumbnailSeekSeconds } from "../src/media.mjs";
 
 test("short transcode preserves source aspect instead of burning portrait black bars", () => {
   const args = buildShortArgs("input", "output");
@@ -20,10 +20,18 @@ test("short transcode preserves source aspect instead of burning portrait black 
   assert.ok(args.includes("file,pipe,crypto,data"));
 });
 
-test("thumbnail generation emits one bounded JPEG frame", () => {
-  const args = buildThumbnailArgs("input", "thumbnail.jpg");
+test("thumbnail generation seeks past opening black frames then samples", () => {
+  assert.equal(thumbnailSeekSeconds(null), 0);
+  assert.equal(thumbnailSeekSeconds(0.5), 0);
+  assert.equal(thumbnailSeekSeconds(8), 3);
+  assert.equal(thumbnailSeekSeconds(100), 25);
+  assert.equal(thumbnailSeekSeconds(900), 180);
+
+  const args = buildThumbnailArgs("input", "thumbnail.jpg", 100);
+  assert.ok(args.includes("-ss"));
+  assert.equal(args[args.indexOf("-ss") + 1], "25.000");
   assert.ok(args.includes("-frames:v"));
-  assert.ok(args.some((value) => value.includes("thumbnail=30")));
+  assert.ok(args.some((value) => value.includes("thumbnail=90")));
   assert.ok(args.some((value) => value.includes("scale=640")));
   assert.equal(args.at(-1), "thumbnail.jpg");
 });
@@ -45,6 +53,41 @@ test("HLS transcode supports video with no audio stream", () => {
 
 const ffmpegAvailable = spawnSync("ffmpeg", ["-version"], { stdio: "ignore" }).status === 0
   && spawnSync("ffprobe", ["-version"], { stdio: "ignore" }).status === 0;
+
+test("thumbnail extraction skips black intro frames", { skip: !ffmpegAvailable }, () => {
+  const directory = mkdtempSync(join(tmpdir(), "jalwa-poster-"));
+  try {
+    const input = join(directory, "black-intro.mp4");
+    const output = join(directory, "poster.jpg");
+    // 3s black, then colorful test pattern for 5s.
+    const generated = spawnSync("ffmpeg", [
+      "-hide_banner", "-loglevel", "error", "-y",
+      "-f", "lavfi", "-i", "color=c=black:s=640x360:d=3",
+      "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=24:duration=5",
+      "-filter_complex", "[0:v][1:v]concat=n=2:v=1:a=0",
+      "-c:v", "libx264", "-pix_fmt", "yuv420p", input,
+    ], { encoding: "utf8", timeout: 60_000 });
+    assert.equal(generated.status, 0, generated.stderr);
+
+    const oldArgs = [
+      "-y", "-nostdin", "-protocol_whitelist", "file,pipe,crypto,data",
+      "-i", input, "-vf", "thumbnail=30,scale=640:-2", "-frames:v", "1", "-q:v", "3",
+      join(directory, "old.jpg"),
+    ];
+    const oldRun = spawnSync("ffmpeg", oldArgs, { encoding: "utf8", timeout: 60_000 });
+    assert.equal(oldRun.status, 0, oldRun.stderr);
+
+    const encoded = spawnSync("ffmpeg", buildThumbnailArgs(input, output, 8), { encoding: "utf8", timeout: 60_000 });
+    assert.equal(encoded.status, 0, encoded.stderr);
+
+    const oldSize = readFileSync(join(directory, "old.jpg")).length;
+    const newSize = readFileSync(output).length;
+    assert.ok(newSize > 8_000, `expected non-black poster, got ${newSize} bytes`);
+    assert.ok(newSize > oldSize, `seeked poster (${newSize}) should beat opening-frame sampler (${oldSize})`);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test("short transcode outputs preserve landscape, portrait and archival proportions", { skip: !ffmpegAvailable }, () => {
   const directory = mkdtempSync(join(tmpdir(), "jalwa-video-aspect-"));

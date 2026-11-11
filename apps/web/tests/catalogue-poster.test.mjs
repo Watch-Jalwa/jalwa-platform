@@ -37,10 +37,15 @@ test("poster fallback fills missing video thumbnails only", () => {
 test("poster route and worker persist catalogue posters", async () => {
   const route = await readFile(new URL("../app/api/catalogue/poster/[contentId]/route.ts", import.meta.url), "utf8");
   const worker = await readFile(new URL("../../../apps/worker/src/media.mjs", import.meta.url), "utf8");
+  const repair = await readFile(new URL("../../../apps/worker/src/poster-repair.mjs", import.meta.url), "utf8");
   const migration = await readFile(new URL("../../../database/migrations/202611050002_catalogue_video_posters.sql", import.meta.url), "utf8");
   assert.match(route, /resolveCataloguePoster/);
   assert.match(route, /getProcessedObject/);
+  assert.match(route, /title-fallback/);
+  assert.match(route, /UNDERSIZED_POSTER_BYTES/);
   assert.match(worker, /\/api\/catalogue\/poster\//);
+  assert.match(worker, /thumbnailSeekSeconds/);
+  assert.match(repair, /repairOneUndersizedPoster/);
   assert.match(migration, /i\.ytimg\.com\/vi/);
   assert.match(migration, /\/api\/catalogue\/poster\//);
 });

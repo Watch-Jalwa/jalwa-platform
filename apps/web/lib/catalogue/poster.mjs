@@ -24,6 +24,7 @@ export async function resolveCataloguePoster(contentId) {
     `select c.id::text as id,
             c.status,
             c.content_type,
+            c.title_en,
             c.thumbnail_url,
             ps.provider,
             ps.provider_content_id,
@@ -71,5 +72,9 @@ export async function resolveCataloguePoster(contentId) {
       : null;
 
   if (!thumbnailPath || thumbnailPath.includes("..")) return null;
-  return { kind: "object", key: thumbnailPath };
+  return {
+    kind: "object",
+    key: thumbnailPath,
+    title: typeof row.title_en === "string" ? row.title_en : "Jalwa",
+  };
 }

@@ -122,6 +122,21 @@ export async function uploadDirectory(directory, prefix) {
   return uploaded;
 }
 
+export async function uploadProcessedFile(path, key) {
+  const info = await stat(path);
+  await storageClient().send(new PutObjectCommand({
+    Bucket: bucket("processed"),
+    Key: key,
+    Body: createReadStream(path),
+    ContentLength: info.size,
+    ContentType: contentType(path),
+    CacheControl: cacheControl(path),
+    ServerSideEncryption: mediaBackend() === "aws" ? "aws:kms" : undefined,
+    SSEKMSKeyId: mediaBackend() === "aws" ? process.env.AWS_MEDIA_KMS_KEY_ID : undefined,
+  }));
+  return { key, sizeBytes: info.size };
+}
+
 async function mediaControlRequest(payload) {
   const url = process.env.AWS_MEDIA_CONTROL_URL;
   const secret = process.env.AWS_MEDIA_CONTROL_SECRET;

@@ -21,7 +21,11 @@ export function ContentCard({ item }: { item: CatalogueItem }) {
       <Link href={locked ? lockedContentHref(item.slug, signedIn) : `/watch/${item.slug}`}>
         <div
           className="content-art"
-          style={item.thumbnailUrl ? { backgroundImage: `linear-gradient(180deg,transparent,rgba(0,0,0,.82)),url(${item.thumbnailUrl})` } : undefined}
+          style={item.thumbnailUrl ? {
+            backgroundImage: `linear-gradient(180deg,transparent,rgba(0,0,0,.82)),url("${item.thumbnailUrl}")`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+          } : undefined}
         >
           <span>{badge}</span>
         </div>
