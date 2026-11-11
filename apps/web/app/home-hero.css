@@ -30,6 +30,10 @@
   object-position: 72% center;
 }
 
+.home-banner-image-mobile {
+  display: none;
+}
+
 .home-banner-copy {
   position: relative;
   z-index: 1;
@@ -108,24 +112,80 @@
   }
 }
 
-@media (max-width: 479px) {
+@media (max-width: 719px) {
   .home-banner-hero {
-    min-height: 26rem;
+    min-height: 0;
+    display: block;
+  }
+
+  .home-banner-media {
+    position: relative;
+    aspect-ratio: 2 / 1;
+    inset: auto;
+    background: #0b0908;
   }
 
   .home-banner-image {
-    object-position: 82% 28%;
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 72% center;
+  }
+
+  .home-banner-image-mobile {
+    display: none;
   }
 
   .home-banner-copy {
+    position: static;
+    inset: auto;
+    display: block;
+    width: auto;
     max-width: none;
-    padding: 1.2rem 1rem 1.35rem;
-    background: linear-gradient(
-      180deg,
-      rgba(8, 6, 5, 0.15) 0%,
-      rgba(8, 6, 5, 0.72) 38%,
-      rgba(8, 6, 5, 0.94) 100%
-    );
+    padding: 0;
+    background: #0b0908;
+  }
+
+  .home-banner-copy-head {
+    position: absolute;
+    top: 12%;
+    left: 0.75rem;
+    width: 57%;
+  }
+
+  .home-banner-copy-foot {
+    position: relative;
+    padding: 0.9rem 0.9rem 1rem;
+  }
+
+  .home-banner-copy .eyebrow {
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+  }
+
+  .home-banner-copy h1 {
+    max-width: 15ch;
+    margin: 0.25rem 0 0.45rem;
+    font-size: clamp(1.05rem, 5.4vw, 1.5rem);
+    line-height: 1.04;
+  }
+
+  .home-banner-copy p {
+    max-width: 34ch;
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+
+  .home-banner-copy .hero-actions {
+    gap: 0.3rem;
+    margin-top: 0.55rem;
+  }
+
+  .home-banner-copy .hero-actions .button {
+    min-height: 1.95rem;
+    padding: 0.35rem 0.55rem;
+    font-size: 0.63rem;
   }
 
   .home-banner-copy h1 {

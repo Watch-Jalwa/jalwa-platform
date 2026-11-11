@@ -5,6 +5,7 @@ import test from "node:test";
 const billingUrl = new URL("../lib/payments/jazzcash-landing-billing.mjs", import.meta.url);
 const v11Url = new URL("../lib/payments/jazzcash-v11.mjs", import.meta.url);
 const migrationUrl = new URL("../../../database/migrations/202611050001_jazzcash_pay_via_token_entitlement.sql", import.meta.url);
+const priceMigrationUrl = new URL("../../../database/migrations/202611110002_update_monthly_price_to_990_tax_inclusive.sql", import.meta.url);
 
 test("pay-first complete path charges via token then grants local Premium", async () => {
   const billing = await readFile(billingUrl, "utf8");
@@ -84,13 +85,15 @@ test("IPN routes settle through the same complete path as Return URL", async () 
   assert.match(inquiryRoute, /inquireJazzcashLandingStatus/);
 });
 
-test("migration tracks charge txn and aligns monthly price to Rs 599", async () => {
+test("migration tracks charge txn and aligns monthly price to Rs 990 inclusive of tax", async () => {
   const migration = await readFile(migrationUrl, "utf8");
+  const priceMigration = await readFile(priceMigrationUrl, "utf8");
   assert.match(migration, /payment_token/);
   assert.match(migration, /charge_txn_ref/);
   assert.match(migration, /subscription_id/);
-  assert.match(migration, /amount_minor = 59900/);
   assert.match(migration, /premium-monthly-pkr/);
+  assert.match(priceMigration, /amount_minor = 99000/);
+  assert.match(priceMigration, /inclusive of applicable taxes/);
 });
 
 test("phone signup/signin reconciles pending JazzCash Premium onto the same number", async () => {

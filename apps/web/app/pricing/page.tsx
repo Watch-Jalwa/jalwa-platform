@@ -7,7 +7,7 @@ type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 
 /** Default JazzCash landing — guest link start, no sign-in required. */
 const MONTHLY_LANDING_HREF = "/mainLanding?utm=D&package=default&parameter=default&payment=jazzcash";
-const MONTHLY_AMOUNT_MINOR = 59900;
+const MONTHLY_AMOUNT_MINOR = 99000;
 
 export default async function PricingPage({ searchParams }: { searchParams: SearchParams }) {
   const params = await searchParams;
@@ -34,7 +34,7 @@ export default async function PricingPage({ searchParams }: { searchParams: Sear
             {formatPkr(MONTHLY_AMOUNT_MINOR)}
             <small> / month</small>
           </p>
-          <p>30 days of Premium access. Continue JazzCash linking without signing in.</p>
+          <p>PKR 990 per month, inclusive of applicable taxes. 30 days of Premium access. Continue JazzCash linking without signing in.</p>
           <Link className="button button-primary checkout-button" href={MONTHLY_LANDING_HREF}>
             Choose monthly
           </Link>

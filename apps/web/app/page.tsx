@@ -53,22 +53,26 @@ export default async function HomePage() {
           />
         </div>
         <div className="home-banner-copy">
-          <span className="eyebrow">Jalwa · Pakistan</span>
-          <h1 id="hero-title">Pakistan ki kahaniyan, skills aur entertainment aik jagah.</h1>
-          <p>
-            Mobile-first discovery for Deen, Kissan, learning, technology, rozgar and family-safe
-            entertainment.
-          </p>
-          <div className="hero-actions">
-            <Link className="button button-primary" href="/explore">
-              Explore content
-            </Link>
-            <Link className="button button-secondary" href="/signup">
-              Signup
-            </Link>
-            <Link className="button button-secondary" href="/login">
-              Sign in
-            </Link>
+          <div className="home-banner-copy-head">
+            <span className="eyebrow">Jalwa · Pakistan</span>
+            <h1 id="hero-title">Pakistan ki kahaniyan, skills aur entertainment aik jagah.</h1>
+          </div>
+          <div className="home-banner-copy-foot">
+            <p>
+              Mobile-first discovery for Deen, Kissan, learning, technology, rozgar and family-safe
+              entertainment.
+            </p>
+            <div className="hero-actions">
+              <Link className="button button-primary" href="/explore">
+                Explore content
+              </Link>
+              <Link className="button button-secondary" href="/signup">
+                Signup
+              </Link>
+              <Link className="button button-secondary" href="/login">
+                Sign in
+              </Link>
+            </div>
           </div>
         </div>
       </section>
@@ -85,8 +89,8 @@ export default async function HomePage() {
           </p>
         </div>
         <div className="tamasha-premium-cta">
-          <strong>Rs 599</strong>
-          <small>monthly JazzCash</small>
+          <strong>Rs 990</strong>
+          <small>monthly JazzCash · tax inclusive</small>
           <Link className="tamasha-premium-button" href="/pricing">
             See plans
           </Link>
