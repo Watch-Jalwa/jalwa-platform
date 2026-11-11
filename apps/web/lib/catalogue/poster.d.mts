@@ -1,10 +1,24 @@
 export function isCatalogueContentId(value: unknown): value is string;
 export function youtubePosterUrl(videoId: string | null | undefined): string | null;
 export function cataloguePosterPath(contentId: string | null | undefined): string | null;
+export function buildGeneratedPosterSvg(input?: {
+  id?: string;
+  title?: string;
+  category?: string | null;
+  contentType?: string | null;
+  durationSeconds?: number | null;
+}): string;
 
 export type CataloguePosterRef =
   | { kind: "redirect"; url: string }
-  | { kind: "object"; key: string; title?: string };
+  | {
+      kind: "generated";
+      id: string;
+      title: string;
+      category?: string | null;
+      contentType?: string | null;
+      durationSeconds?: number | null;
+    };
 
 export function resolveCataloguePoster(contentId: string): Promise<CataloguePosterRef | null>;
 

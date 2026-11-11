@@ -72,11 +72,22 @@ export async function searchCatalogue(input: { query?: string; category?: string
   requireDatabase();
   try {
     const database = await createClient();
-    const { data, error } = await database.rpc("search_catalogue", { p_query: query || null, p_category: category || null, p_limit: input.limit ?? 40 });
+    const requested = input.limit ?? 40;
+    // When live rows are stripped client-side, oversample so Featured still fills the requested count.
+    const queryLimit = liveSourcesEnabled()
+      ? requested
+      : Math.min(100, Math.max(requested * 4, requested + 24));
+    const { data, error } = await database.rpc("search_catalogue", {
+      p_query: query || null,
+      p_category: category || null,
+      p_limit: queryLimit,
+    });
     if (error) throw error;
     const items = ((data ?? []) as Record<string, unknown>[]).map(mapSearchRow);
-    const filtered = filterVisibleCatalogueItems(liveSourcesEnabled() ? items : items.filter((item) => item.contentType !== "live"));
-    return annotateCatalogueAccess(filtered);
+    const filtered = filterVisibleCatalogueItems(
+      liveSourcesEnabled() ? items : items.filter((item) => item.contentType !== "live"),
+    );
+    return annotateCatalogueAccess(filtered.slice(0, requested));
   } catch (error) {
     if (canUseDemoData()) return annotateCatalogueAccess(filterVisibleCatalogueItems(featuredContent));
     return catalogueFailure("search", error);
