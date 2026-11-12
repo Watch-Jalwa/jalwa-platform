@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 type SearchParams = Promise<{ q?: string; category?: string }>;
 
 const EXPLORE_CATEGORY_ORDER = ["entertainment", "learn", "pakistan"];
-const HIDDEN_EXPLORE_CATEGORIES = new Set(["deen", "live"]);
+const HIDDEN_EXPLORE_CATEGORIES = new Set(["deen", "kissan", "live"]);
 
 export default async function ExplorePage({ searchParams }: { searchParams: SearchParams }) {
   const { q = "", category = "" } = await searchParams;

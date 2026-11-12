@@ -34,6 +34,7 @@ export const PROVIDED_CATALOGUE_THUMBNAILS = Object.freeze({
   "eso-cast-254-light": "/catalogue/thumbnails/eso-cast-254-light.jpeg",
   "elephants-dream": "/catalogue/thumbnails/elephants-dream.jpeg",
   "big-buck-bunny": "/catalogue/thumbnails/big-buck-bunny.jpeg",
+  "baking-cookies-cc0": "/catalogue/thumbnails/baking-cookies-cc0.jpeg",
 });
 
 export function providedCatalogueThumbnailForSlug(slug) {

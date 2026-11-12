@@ -1,4 +1,3 @@
-import { publicLiveCatalogueEnabled } from "@/lib/live-sources/registry";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import { createClient } from "@/lib/database/server";
 import { annotateCatalogueAccess } from "./free-tier-access.mjs";
@@ -6,6 +5,8 @@ import { withCataloguePosterFallback } from "./poster-core.mjs";
 import { categories as demoCategories, featuredContent } from "./demo-data";
 import { filterVisibleCatalogueItems, isTemporarilyHiddenSlug } from "./temporarily-hidden-slugs.mjs";
 import type { CatalogueCategory, CatalogueItem, LiveCatalogueCollection, PlaybackSource, PremiumCatalogueCollection } from "./types";
+
+const HIDDEN_PUBLIC_CATEGORY_SLUGS = new Set(["deen", "kissan"]);
 
 function asString(value: unknown) { return typeof value === "string" ? value : null; }
 function asTimestamp(value: unknown) {
@@ -45,15 +46,17 @@ function catalogueFailure(scope: string, error: unknown): never {
 }
 
 export async function getCategories(): Promise<CatalogueCategory[]> {
-  if (canUseDemoData()) return demoCategories;
+  if (canUseDemoData()) return demoCategories.filter((category) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(category.slug) && category.slug !== "live");
   requireDatabase();
   try {
     const database = await createClient();
     const { data, error } = await database.from("categories").select("slug,name_en,name_ur,name_roman_ur,icon").eq("is_active", true).order("sort_order");
     if (error) throw error;
-    return (data ?? []).map((row) => ({ slug: row.slug, label: row.name_en, urdu: row.name_ur, romanUrdu: row.name_roman_ur, icon: row.icon }));
+    return (data ?? [])
+      .filter((row) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(row.slug) && row.slug !== "live")
+      .map((row) => ({ slug: row.slug, label: row.name_en, urdu: row.name_ur, romanUrdu: row.name_roman_ur, icon: row.icon }));
   } catch (error) {
-    if (canUseDemoData()) return demoCategories;
+    if (canUseDemoData()) return demoCategories.filter((category) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(category.slug) && category.slug !== "live");
     return catalogueFailure("categories", error);
   }
 }
@@ -65,7 +68,11 @@ export async function searchCatalogue(input: { query?: string; category?: string
     const demo = featuredContent.filter((item) => {
       const categoryMatches = !category || item.categorySlug === category;
       const haystack = `${item.title} ${item.titleUrdu ?? ""} ${item.description ?? ""}`.toLowerCase();
-      return categoryMatches && (!query || haystack.includes(query.toLowerCase())) && !isTemporarilyHiddenSlug(item.slug);
+      return categoryMatches &&
+        !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) &&
+        item.contentType !== "live" &&
+        (!query || haystack.includes(query.toLowerCase())) &&
+        !isTemporarilyHiddenSlug(item.slug);
     });
     return annotateCatalogueAccess(demo);
   }
@@ -75,7 +82,7 @@ export async function searchCatalogue(input: { query?: string; category?: string
     const requested = input.limit ?? 40;
     // Live catalogue rows often outrank the next VOD titles after the small featured set.
     // Pull a full page then keep non-live rows so Featured can still fill 8 VOD cards.
-    const queryLimit = publicLiveCatalogueEnabled() ? requested : 100;
+    const queryLimit = 100;
     const { data, error } = await database.rpc("search_catalogue", {
       p_query: query || null,
       p_category: category || null,
@@ -83,12 +90,16 @@ export async function searchCatalogue(input: { query?: string; category?: string
     });
     if (error) throw error;
     const items = ((data ?? []) as Record<string, unknown>[]).map(mapSearchRow);
-    const filtered = filterVisibleCatalogueItems(
-      publicLiveCatalogueEnabled() ? items : items.filter((item) => item.contentType !== "live"),
-    );
+    const filtered = filterVisibleCatalogueItems(items.filter(
+      (item) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live",
+    ));
     return annotateCatalogueAccess(filtered.slice(0, requested));
   } catch (error) {
-    if (canUseDemoData()) return annotateCatalogueAccess(filterVisibleCatalogueItems(featuredContent));
+    if (canUseDemoData()) {
+      return annotateCatalogueAccess(filterVisibleCatalogueItems(featuredContent.filter(
+        (item) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live",
+      )));
+    }
     return catalogueFailure("search", error);
   }
 }
@@ -96,7 +107,9 @@ export async function searchCatalogue(input: { query?: string; category?: string
 export async function getContentBySlug(slug: string): Promise<CatalogueItem | null> {
   if (isTemporarilyHiddenSlug(slug)) return null;
   if (canUseDemoData()) {
-    const demo = featuredContent.find((item) => item.slug === slug) ?? null;
+    const demo = featuredContent.find((item) =>
+      item.slug === slug && !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live",
+    ) ?? null;
     if (!demo) return null;
     const [annotated] = await annotateCatalogueAccess([demo]);
     return annotated ?? null;
@@ -109,7 +122,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       .eq("slug", slug).maybeSingle();
     if (error) throw error;
     if (!data) return null;
-    if (data.content_type === "live" && !publicLiveCatalogueEnabled()) return null;
+    if (data.content_type === "live") return null;
 
     const [categoryResult, playbackResult, rightsResult] = await Promise.all([
       data.primary_category_id
@@ -127,6 +140,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
     const category = categoryResult.data;
     const playback = playbackResult.data;
     const rights = rightsResult.data;
+    if (category?.slug && HIDDEN_PUBLIC_CATEGORY_SLUGS.has(category.slug)) return null;
     let liveConfig: Record<string, unknown> | null = null;
     let liveHealth: Record<string, unknown> | null = null;
     if (data.content_type === "live" && playback?.id) {
@@ -189,7 +203,9 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
     return annotated ?? item;
   } catch (error) {
     if (canUseDemoData()) {
-      const demo = featuredContent.find((item) => item.slug === slug) ?? null;
+      const demo = featuredContent.find((item) =>
+        item.slug === slug && !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live",
+      ) ?? null;
       if (!demo) return null;
       const [annotated] = await annotateCatalogueAccess([demo]);
       return annotated ?? null;
@@ -199,7 +215,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
 }
 
 export async function getLiveCatalogue(): Promise<{ items: CatalogueItem[]; collections: LiveCatalogueCollection[] }> {
-  if (!publicLiveCatalogueEnabled()) return { items: [], collections: [] };
+  return { items: [], collections: [] };
   requireDatabase();
   try {
     const summaries = await searchCatalogue({ category: "live", limit: 100 });

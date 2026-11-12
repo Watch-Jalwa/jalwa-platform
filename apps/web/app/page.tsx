@@ -10,6 +10,15 @@ import "./home-hero.css";
 
 export const dynamic = "force-dynamic";
 
+const HOMEPAGE_TRENDING_SLUGS = [
+  "spring-blender",
+  "sprite-fright",
+  "sintel",
+  "apollo-11-eagle-has-landed",
+  "caminandes-llamigos",
+  "tears-of-steel",
+] as const;
+
 export default async function HomePage() {
   let categories: Awaited<ReturnType<typeof getCategories>> = [];
   let trendingContent: Awaited<ReturnType<typeof searchCatalogue>> = [];
@@ -30,9 +39,10 @@ export default async function HomePage() {
       searchCatalogue({ limit: 100 }),
     ]);
     categories = nextCategories;
-    trendingContent = catalogueWindow
-      .filter((item) => item.contentType !== "live")
-      .slice(0, 8);
+    const bySlug = new Map(catalogueWindow.map((item) => [item.slug, item]));
+    trendingContent = HOMEPAGE_TRENDING_SLUGS
+      .map((slug) => bySlug.get(slug))
+      .filter((item): item is (typeof catalogueWindow)[number] => Boolean(item));
     accessSummary = summarizeVideoAccess(catalogueWindow);
   } catch {
     // Keep home reachable for post-JazzCash toast even when catalogue DB is offline locally.
@@ -60,8 +70,7 @@ export default async function HomePage() {
           </div>
           <div className="home-banner-copy-foot">
             <p>
-              Mobile-first discovery for Deen, Kissan, learning, technology, rozgar and family-safe
-              entertainment.
+              Mobile-first discovery for learning, technology, rozgar and family-safe entertainment.
             </p>
             <div className="hero-actions">
               <Link className="button button-primary" href="/explore">
