@@ -21,8 +21,6 @@ type Campaign = {
 
 const categories = [
   { title: "Entertainment", copy: "Kahaniyan aur family entertainment, aik jagah.", icon: "🎬" },
-  { title: "Deen", copy: "Deeni maloomat aur roohani content dekhein.", icon: "🕌" },
-  { title: "Kissan", copy: "Zaraat aur kisani se mutaliq maloomat.", icon: "🌿" },
   { title: "Learn & Grow", copy: "Nayi skills aur kaam ki baatein seekhein.", icon: "📖" },
 ];
 
@@ -51,7 +49,7 @@ export function LandingShell({
   subscribeCta?: string;
 }) {
   return (
-    <div className="campaign-landing">
+    <div className="campaign-landing" data-landing={campaign.landing}>
       <LandingAnalyticsBoot
         landing={campaign.landing}
         landingPath={campaign.landingPath}

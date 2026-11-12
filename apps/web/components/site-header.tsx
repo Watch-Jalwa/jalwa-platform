@@ -29,6 +29,7 @@ export async function SiteHeader() {
       </Link>
       <nav className="desktop-nav" aria-label="Primary">
         <Link href="/for-you">For You</Link>
+        <Link href="/explore?category=entertainment">Entertainment</Link>
         <Link href="/explore?category=learn">Learn</Link>
         <Link href="/ask">Ask Jalwa</Link>
       </nav>

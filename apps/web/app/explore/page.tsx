@@ -44,7 +44,7 @@ export default async function ExplorePage({ searchParams }: { searchParams: Sear
           {access.lockedForPremium ? ` ${access.lockedForPremium} locked for Tamasha Premium / Monthly.` : ""}
         </p>
       ) : null}
-      {content.length ? <div className="content-grid">{content.map((item) => <ContentCard item={item} key={item.slug} />)}</div> : <div className="empty-state"><h2>No matching content</h2><p>Try a broader term or another category.</p></div>}
+      {content.length ? <div className="content-grid">{content.map((item) => <ContentCard item={item} key={item.slug} />)}</div> : <div className="empty-state"><h2>Coming Soon</h2><p>New content is on the way.</p></div>}
     </div>
   );
 }

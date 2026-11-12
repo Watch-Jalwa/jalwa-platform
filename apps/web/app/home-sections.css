@@ -93,38 +93,20 @@
     inset 0 0 60px rgba(124, 58, 237, 0.12);
 }
 .home-mfp-frame::after {
-  content: "";
-  position: absolute;
-  inset: -25%;
-  z-index: 0;
-  pointer-events: none;
-  background: conic-gradient(from 120deg, transparent 0 60%, rgba(255, 122, 0, 0.1), transparent 78%);
-  animation: jalwa-shine 10s linear infinite;
-  mix-blend-mode: screen;
-  opacity: 0.7;
+  display: none;
 }
-/* Clip the baked-in (non-interactive) tile strip; real CTAs render below. */
+/* The reference creative supplies the three-panel visual; the CTA layer remains
+   real links so category destinations stay dynamic and keyboard accessible. */
 .home-mfp-art-clip {
   position: relative;
   z-index: 0;
   overflow: hidden;
-  /* Keep only hero illustration; exclude baked category tiles from the source art. */
-  aspect-ratio: 3.35 / 1;
+  /* Stop before the baked orange underlines and bottom decorative stroke. */
+  aspect-ratio: 1024 / 375;
   background: #12081f;
 }
 .home-mfp-art-clip::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0;
-  z-index: 1;
-  height: 42%;
-  pointer-events: none;
-  background: linear-gradient(
-    180deg,
-    rgba(12, 6, 24, 0) 0%,
-    rgba(12, 6, 24, 0.55) 45%,
-    rgba(12, 6, 24, 0.98) 100%
-  );
+  display: none;
 }
 .home-mfp-art {
   display: block;
@@ -132,69 +114,40 @@
   height: 100%;
   max-width: none;
   object-fit: cover;
-  object-position: center 8%;
+  object-position: center top;
   vertical-align: middle;
   transform-origin: center top;
 }
 .home-mfp-cta-panel {
-  position: relative;
+  position: absolute;
+  inset: 62% 0 0;
   z-index: 2;
   display: grid;
-  gap: 0.85rem;
-  margin-top: -0.35rem;
-  padding: 0.35rem 0.85rem 1rem;
-  background: rgba(12, 6, 24, 0.98);
+  pointer-events: none;
+  padding: 0;
+  background: transparent;
 }
 .home-mfp-cta-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.55rem;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  height: 100%;
 }
 .home-mfp-cta {
   display: grid;
   justify-items: center;
   align-content: center;
-  gap: 0.35rem;
-  min-height: 4.6rem;
-  padding: 0.65rem 0.45rem;
-  border-radius: 0.9rem;
-  border: 1.5px solid rgba(255, 170, 70, 0.45);
-  background:
-    linear-gradient(160deg, rgba(42, 18, 80, 0.82), rgba(12, 6, 24, 0.9)),
-    radial-gradient(circle at 50% 0%, rgba(255, 122, 0, 0.16), transparent 55%);
-  box-shadow:
-    inset 0 0 0 1px rgba(255, 255, 255, 0.05),
-    0 8px 18px rgba(0, 0, 0, 0.22);
-  text-align: center;
-  transition:
-    transform 0.22s ease,
-    border-color 0.22s ease,
-    box-shadow 0.22s ease,
-    background 0.22s ease;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  pointer-events: auto;
 }
 .home-mfp-cta .category-icon-svg {
-  width: 1.85rem;
-  height: 1.85rem;
+  display: none;
 }
-.home-mfp-cta-label {
-  font-size: 0.72rem;
-  font-weight: 750;
-  line-height: 1.2;
-  color: rgba(255, 255, 255, 0.92);
-}
-.home-mfp-cta:hover,
-.home-mfp-cta:focus-visible,
-.home-mfp-cta.is-active {
-  outline: none;
-  border-color: rgba(255, 170, 60, 0.95);
-  background:
-    linear-gradient(160deg, rgba(62, 28, 110, 0.88), rgba(18, 8, 36, 0.92)),
-    radial-gradient(circle at 50% 0%, rgba(255, 122, 0, 0.28), transparent 60%);
-  box-shadow:
-    0 0 0 1px rgba(255, 122, 0, 0.35),
-    0 0 22px rgba(255, 122, 0, 0.28),
-    inset 0 0 0 1px rgba(255, 214, 150, 0.12);
-  transform: translateY(-2px);
+.home-mfp-cta:focus-visible {
+  outline: 2px solid rgba(255, 170, 60, 0.95);
+  outline-offset: -0.35rem;
 }
 
 /* ---- Trending rail ---- */
@@ -558,27 +511,11 @@
 }
 
 @media (min-width: 560px) {
-  .home-mfp-cta-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .home-mfp-cta { min-height: 5rem; }
-  .home-mfp-cta-label { font-size: 0.78rem; }
+  .home-mfp-cta-panel { inset: 60% 0 0; }
 }
 
 @media (min-width: 720px) {
-  .home-mfp-art-clip { aspect-ratio: 3.45 / 1; }
-  .home-mfp-cta-panel { padding: 0.25rem 1.1rem 1.15rem; gap: 0.95rem; }
-  .home-mfp-cta-grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.7rem;
-  }
-  .home-mfp-cta {
-    min-height: 5.4rem;
-    padding: 0.8rem 0.55rem;
-    border-radius: 1rem;
-  }
-  .home-mfp-cta .category-icon-svg {
-    width: 2.15rem;
-    height: 2.15rem;
-  }
+  .home-mfp-cta-panel { inset: 58% 0 0; }
   .trending-nav { display: inline-flex; }
   .trending-rail {
     position: relative;
@@ -615,8 +552,6 @@
 }
 
 @media (min-width: 1100px) {
-  .home-mfp-cta-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
-  .home-mfp-cta-label { font-size: 0.82rem; }
   .trending-scroller { grid-auto-columns: 275px; }
 }
 
@@ -631,8 +566,7 @@
 }
 
 @media (max-width: 559px) {
-  .home-mfp-art-clip { aspect-ratio: 2.55 / 1; }
-  .home-mfp-art-clip::after { height: 48%; }
+  .home-mfp-cta-panel { inset: 64% 0 0; }
 }
 
 @media (prefers-reduced-motion: reduce) {

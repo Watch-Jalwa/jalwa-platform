@@ -3,20 +3,10 @@ import Link from "next/link";
 import type { CatalogueCategory } from "@/lib/catalogue/types";
 import { CategoryIcon } from "./category-icon";
 
-/** Banner tile order matches the Made-for-Pakistan vector art. */
-const BANNER_CATEGORY_ORDER = [
-  "originals",
-  "shorts",
-  "entertainment",
-  "deen",
-  "kissan",
-  "learn",
-  "tech",
-  "rozgar",
-  "pakistan",
-  "kids",
-  "life",
-  "live",
+const BROWSE_FEATURES = [
+  { slug: "learn", label: "Learn" },
+  { slug: "entertainment", label: "Entertainment" },
+  { slug: "deen", label: "Deen" },
 ] as const;
 
 /**
@@ -26,9 +16,10 @@ const BANNER_CATEGORY_ORDER = [
  */
 export function MadeForPakistan({ categories }: { categories: CatalogueCategory[] }) {
   const bySlug = new Map(categories.map((category) => [category.slug, category]));
-  const tiles = BANNER_CATEGORY_ORDER.map((slug) => bySlug.get(slug)).filter(
-    (category): category is CatalogueCategory => Boolean(category),
-  );
+  const tiles = BROWSE_FEATURES.map((feature) => ({
+    ...(bySlug.get(feature.slug) ?? { slug: feature.slug, icon: null }),
+    label: feature.label,
+  }));
 
   return (
     <section className="home-mfp" aria-labelledby="categories-title" data-reveal="up">
@@ -38,10 +29,10 @@ export function MadeForPakistan({ categories }: { categories: CatalogueCategory[
             <Image
               unoptimized
               className="home-mfp-art"
-              src="/home/made-for-pakistan-banner.jpeg"
+              src="/home/made-for-pakistan-three-panel.jpg"
               alt=""
-              width={1600}
-              height={1100}
+              width={1024}
+              height={443}
               sizes="(max-width: 720px) 100vw, 1180px"
               priority={false}
             />
@@ -53,14 +44,14 @@ export function MadeForPakistan({ categories }: { categories: CatalogueCategory[
             </h2>
 
             <nav className="home-mfp-cta-grid" aria-label="Browse categories">
-              {tiles.map((category, index) => (
+              {tiles.map((category) => (
                 <Link
                   key={category.slug}
-                  className={`home-mfp-cta${index === 0 ? " is-active" : ""}`}
+                  className="home-mfp-cta"
                   href={`/explore?category=${category.slug}`}
                 >
                   <CategoryIcon slug={category.slug} />
-                  <span className="home-mfp-cta-label">{category.label}</span>
+                  <span className="home-mfp-cta-label visually-hidden">{category.label}</span>
                 </Link>
               ))}
             </nav>

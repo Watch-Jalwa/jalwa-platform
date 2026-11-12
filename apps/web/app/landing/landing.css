@@ -499,6 +499,19 @@ body.campaign-shell .site-main-campaign,
     background: #000;
   }
 
+  /* The default campaign creative is portrait. Keep its complete artwork visible
+     while reserving enough first-screen height for the JazzCash form. */
+  .campaign-landing[data-landing="mainLanding"] .landing-hero-image {
+    width: auto;
+    max-width: 100%;
+    max-height: 52svh;
+    margin-inline: auto;
+  }
+
+  .campaign-landing[data-landing="mainLanding"] .landing-middle {
+    margin-top: 0;
+  }
+
   .landing-middle {
     width: min(calc(100% - 1rem), 24rem);
     margin: 1.8rem auto 0;
@@ -574,6 +587,16 @@ body.campaign-shell .site-main-campaign,
 
   .landing-msisdn-brand {
     padding-right: 0.55rem;
+  }
+}
+
+@media (min-width: 721px) and (max-height: 720px) {
+  /* Short laptop/browser viewports must still expose the complete subscribe card. */
+  .campaign-landing[data-landing="mainLanding"] .landing-hero-image {
+    width: auto;
+    max-width: 100%;
+    max-height: min(52svh, 30rem);
+    margin-inline: auto;
   }
 }
 

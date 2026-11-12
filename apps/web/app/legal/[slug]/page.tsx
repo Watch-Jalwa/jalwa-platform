@@ -24,7 +24,7 @@ export default async function LegalPage({ params }: { params: Params }) {
         <span className="eyebrow">Jalwa policy</span>
         <h1>{policy.title}</h1>
         <p>{policy.summary}</p>
-        <small>Last updated: 30 July 2026</small>
+        <small>Last updated: {policy.updatedAt ?? "30 July 2026"}</small>
       </header>
       {policy.reviewNotice ? <aside className="policy-notice">{policy.reviewNotice}</aside> : null}
       <div className="policy-sections">
