@@ -36,6 +36,17 @@ test("poster fallback fills missing video thumbnails only", () => {
   );
 });
 
+test("provided catalogue thumbnails override only matched slugs", () => {
+  assert.equal(
+    withCataloguePosterFallback({ slug: "sintel", contentType: "video", thumbnailUrl: "https://cdn.example/old.jpg" }).thumbnailUrl,
+    "/catalogue/thumbnails/sintel.jpeg",
+  );
+  assert.equal(
+    withCataloguePosterFallback({ slug: "unmatched-video", contentType: "video", thumbnailUrl: "https://cdn.example/current.jpg" }).thumbnailUrl,
+    "https://cdn.example/current.jpg",
+  );
+});
+
 test("generated posters include title category and brand without video frames", () => {
   const svg = buildGeneratedPosterSvg({
     id: "a2de188e-f7aa-4c28-8c06-e487c9a75a69",

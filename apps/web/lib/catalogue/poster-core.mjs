@@ -1,3 +1,5 @@
+import { providedCatalogueThumbnailForSlug } from "./provided-thumbnails.mjs";
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function isCatalogueContentId(value) {
@@ -19,6 +21,8 @@ export function cataloguePosterPath(contentId) {
 /** Fill missing catalogue thumbnails with the public poster route. */
 export function withCataloguePosterFallback(item) {
   if (!item) return item;
+  const providedThumbnail = providedCatalogueThumbnailForSlug(item.slug);
+  if (providedThumbnail) return { ...item, thumbnailUrl: providedThumbnail };
   if (item.thumbnailUrl) return item;
   if (item.contentType === "live" || item.contentType === "audio") return item;
   const poster = cataloguePosterPath(item.id);
