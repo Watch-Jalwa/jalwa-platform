@@ -30,6 +30,7 @@ function mapRow(row: Record<string, unknown>): RecommendedItem {
 
 function demoRecommendations(limit: number, contextSlug?: string | null): RecommendedItem[] {
   return filterVisibleCatalogueItems(featuredContent)
+    .filter((item) => item.contentType !== "live" && item.categorySlug !== "live")
     .filter((item) => item.slug !== contextSlug)
     .slice(0, limit)
     .map((item, index) => ({
@@ -39,8 +40,11 @@ function demoRecommendations(limit: number, contextSlug?: string | null): Recomm
     }));
 }
 
-async function annotateVisibleRecommendations(items: RecommendedItem[]): Promise<RecommendedItem[]> {
-  return annotateCatalogueAccess(filterVisibleCatalogueItems(items)) as Promise<RecommendedItem[]>;
+async function annotateVisibleRecommendations(items: RecommendedItem[], limit?: number): Promise<RecommendedItem[]> {
+  const visible = filterVisibleCatalogueItems(items).filter(
+    (item) => item.contentType !== "live" && item.categorySlug !== "live",
+  );
+  return annotateCatalogueAccess(limit ? visible.slice(0, limit) : visible) as Promise<RecommendedItem[]>;
 }
 
 function recommendationFailure(error: unknown): never {
@@ -57,23 +61,25 @@ export async function getRecommendations({ limit = 24, contextContentId = null, 
     const database = await createClient();
     const { data: { user } } = await database.auth.getUser();
     if (!user) {
-      const { data, error } = await database.rpc("search_catalogue", { p_query: null, p_category: null, p_limit: limit });
+      const { data, error } = await database.rpc("search_catalogue", { p_query: null, p_category: null, p_limit: Math.max(limit, 100) });
       if (error) throw error;
       return annotateVisibleRecommendations(
         ((data ?? []) as Record<string, unknown>[]).map((row) => ({ ...mapRow(row), recommendationReason: "Trending on Jalwa" })),
+        limit,
       );
     }
     const profile = await getActiveViewerProfile(user.id);
     if (!profile) {
-      const { data, error } = await database.rpc("search_catalogue", { p_query: null, p_category: null, p_limit: limit });
+      const { data, error } = await database.rpc("search_catalogue", { p_query: null, p_category: null, p_limit: Math.max(limit, 100) });
       if (error) throw error;
       return annotateVisibleRecommendations(
         ((data ?? []) as Record<string, unknown>[]).map((row) => ({ ...mapRow(row), recommendationReason: "Popular on Jalwa" })),
+        limit,
       );
     }
     const { data, error } = await database.rpc("get_recommendations", { p_viewer_profile_id: profile.id, p_limit: limit, p_context_content_id: contextContentId });
     if (error) throw error;
-    return annotateVisibleRecommendations(((data ?? []) as Record<string, unknown>[]).map(mapRow));
+    return annotateVisibleRecommendations(((data ?? []) as Record<string, unknown>[]).map(mapRow), limit);
   } catch (error) {
     if (canUseDemoData()) {
       return annotateVisibleRecommendations(demoRecommendations(limit, contextSlug));

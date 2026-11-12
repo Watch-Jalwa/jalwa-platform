@@ -29,7 +29,7 @@ export const PROVIDED_CATALOGUE_THUMBNAILS = Object.freeze({
   "tears-of-steel": "/catalogue/thumbnails/tears-of-steel.jpeg",
   "promise-of-pakistan-geography": "/catalogue/thumbnails/promise-of-pakistan-geography.jpeg",
   "invitation-to-pakistan-nara": "/catalogue/thumbnails/invitation-to-pakistan-nara.jpeg",
-  "harnessing-wikipedia-science-communication": "/catalogue/thumbnails/harnessing-wikipedia-science-communication.jpeg",
+  "wikipedia-science-comms-cc-by": "/catalogue/thumbnails/harnessing-wikipedia-science-communication.png",
   "eso-cast-265-light": "/catalogue/thumbnails/eso-cast-265-light.jpeg",
   "eso-cast-254-light": "/catalogue/thumbnails/eso-cast-254-light.jpeg",
   "elephants-dream": "/catalogue/thumbnails/elephants-dream.jpeg",

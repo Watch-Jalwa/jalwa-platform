@@ -71,6 +71,7 @@ export async function searchCatalogue(input: { query?: string; category?: string
       return categoryMatches &&
         !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) &&
         item.contentType !== "live" &&
+        item.categorySlug !== "live" &&
         (!query || haystack.includes(query.toLowerCase())) &&
         !isTemporarilyHiddenSlug(item.slug);
     });
@@ -91,13 +92,13 @@ export async function searchCatalogue(input: { query?: string; category?: string
     if (error) throw error;
     const items = ((data ?? []) as Record<string, unknown>[]).map(mapSearchRow);
     const filtered = filterVisibleCatalogueItems(items.filter(
-      (item) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live",
+      (item) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live" && item.categorySlug !== "live",
     ));
     return annotateCatalogueAccess(filtered.slice(0, requested));
   } catch (error) {
     if (canUseDemoData()) {
       return annotateCatalogueAccess(filterVisibleCatalogueItems(featuredContent.filter(
-        (item) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live",
+        (item) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live" && item.categorySlug !== "live",
       )));
     }
     return catalogueFailure("search", error);
@@ -108,7 +109,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
   if (isTemporarilyHiddenSlug(slug)) return null;
   if (canUseDemoData()) {
     const demo = featuredContent.find((item) =>
-      item.slug === slug && !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live",
+      item.slug === slug && !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live" && item.categorySlug !== "live",
     ) ?? null;
     if (!demo) return null;
     const [annotated] = await annotateCatalogueAccess([demo]);
@@ -204,7 +205,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
   } catch (error) {
     if (canUseDemoData()) {
       const demo = featuredContent.find((item) =>
-        item.slug === slug && !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live",
+        item.slug === slug && !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live" && item.categorySlug !== "live",
       ) ?? null;
       if (!demo) return null;
       const [annotated] = await annotateCatalogueAccess([demo]);
