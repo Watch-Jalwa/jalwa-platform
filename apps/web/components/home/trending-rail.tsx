@@ -41,13 +41,13 @@ export function TrendingRail({ items }: { items: CatalogueItem[] }) {
                 ) : null}
                 <span className="trending-play" aria-hidden="true" />
                 <span className="trending-quality">HD</span>
-                <div className="trending-meta">
-                  <h3>{item.title}</h3>
-                  <p>
-                    {item.category} · {formatDuration(item.durationSeconds)}
-                    {locked ? ` · ${lockedContentBadge(signedIn)}` : ""}
-                  </p>
-                </div>
+              </div>
+              <div className="trending-meta">
+                <h3>{item.title}</h3>
+                <p>
+                  {item.category} · {formatDuration(item.durationSeconds)}
+                  {locked ? ` · ${lockedContentBadge(signedIn)}` : ""}
+                </p>
               </div>
             </Link>
           </article>

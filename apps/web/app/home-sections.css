@@ -328,6 +328,10 @@
   scroll-snap-align: start;
   min-width: 0;
 }
+.trending-card > a {
+  display: block;
+  color: inherit;
+}
 .trending-card.is-featured {
   width: auto;
 }
@@ -414,22 +418,17 @@
   font-weight: 800;
 }
 .trending-meta {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  z-index: 2;
-  padding: 0.95rem 0.95rem 0.85rem;
+  padding: 0.65rem 0.2rem 0.15rem;
 }
 .trending-meta h3 {
   margin: 0 0 0.25rem;
-  font-size: 1rem;
+  font-size: 0.95rem;
   line-height: 1.25;
 }
 .trending-meta p {
   margin: 0;
-  color: rgba(255, 255, 255, 0.72);
-  font-size: 0.78rem;
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 /* ---- About + Arena+ ---- */
@@ -600,8 +599,8 @@
     height: 2.35rem;
   }
   .trending-scroller {
-    grid-template-columns: 260px;
-    grid-auto-columns: 210px;
+    grid-template-columns: 325px;
+    grid-auto-columns: 262px;
     padding-right: 3.4rem;
     padding-left: 3.4rem;
   }
@@ -618,15 +617,17 @@
 @media (min-width: 1100px) {
   .home-mfp-cta-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .home-mfp-cta-label { font-size: 0.82rem; }
-  .trending-scroller { grid-auto-columns: 220px; }
+  .trending-scroller { grid-auto-columns: 275px; }
 }
 
 @media (max-width: 719px) {
   .arena-perks { gap: 0.4rem; }
   .arena-perks li { font-size: 0.68rem; }
   .home-promo-art { width: min(100%, 220px); }
-  .trending-scroller { grid-template-columns: 78vw; grid-auto-columns: 58vw; }
+  .trending-scroller { grid-template-columns: min(90vw, 325px); grid-auto-columns: min(68vw, 262px); }
   .trending-art { aspect-ratio: 16 / 9; }
+  .trending-meta { padding-top: 0.55rem; }
+  .trending-meta h3 { font-size: 0.88rem; }
 }
 
 @media (max-width: 559px) {
