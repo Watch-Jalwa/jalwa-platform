@@ -40,7 +40,6 @@ export function LandingShell({
   offerNotice,
   ctaHref = "/explore",
   subscribeCta = "Subscribe Now",
-  showJazzcashReward = false,
 }: {
   campaign: Campaign;
   h1: string;
@@ -50,7 +49,6 @@ export function LandingShell({
   ctaHref?: string;
   ctaLabel?: string;
   subscribeCta?: string;
-  showJazzcashReward?: boolean;
 }) {
   return (
     <div className="campaign-landing">
@@ -87,17 +85,6 @@ export function LandingShell({
         </section>
 
         <section className="landing-middle" aria-label="JazzCash subscribe">
-          {showJazzcashReward ? (
-            <aside className="landing-reward-card" aria-label="Monthly JazzCash reward">
-              <div>
-                <p className="eyebrow">Monthly reward</p>
-                <strong>10,000</strong>
-                <span>JazzCash credits</span>
-              </div>
-              <small>Chance to win. Terms and Conditions apply.</small>
-            </aside>
-          ) : null}
-
           <LandingSubscribe
             campaign={campaign}
             offerNotice={offerNotice}

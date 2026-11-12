@@ -40,6 +40,7 @@ export function TrendingRail({ items }: { items: CatalogueItem[] }) {
                   </span>
                 ) : null}
                 <span className="trending-play" aria-hidden="true" />
+                <span className="trending-quality">HD</span>
                 <div className="trending-meta">
                   <h3>{item.title}</h3>
                   <p>

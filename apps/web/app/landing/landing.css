@@ -41,6 +41,7 @@ body.campaign-shell .site-main-campaign,
   flex-direction: column;
   justify-content: flex-start;
   gap: var(--landing-stack-gap);
+  min-height: 100svh;
   min-height: 100dvh;
   box-sizing: border-box;
 }
@@ -308,51 +309,6 @@ body.campaign-shell .site-main-campaign,
   font-size: 0.88rem;
 }
 
-/* Keep JazzCash form stacked: number → consent → Subscribe Now (matches client SS) */
-
-.landing-reward-card {
-  width: 100%;
-  margin: 0;
-  padding: 0.9rem 1rem;
-  border: 1px solid rgba(255, 122, 0, 0.7);
-  border-radius: 1rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  background: rgba(255, 122, 0, 0.08);
-}
-
-.landing-reward-card .eyebrow {
-  margin: 0;
-  color: rgba(255, 255, 255, 0.75);
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.landing-reward-card strong {
-  display: block;
-  font-size: clamp(1.6rem, 6vw, 2rem);
-  color: #ffd24d;
-  line-height: 1;
-  margin-top: 0.1rem;
-}
-
-.landing-reward-card span {
-  display: block;
-  margin-top: 0.15rem;
-  font-size: 0.86rem;
-}
-
-.landing-reward-card small {
-  max-width: 7.5rem;
-  color: var(--landing-muted);
-  font-size: 0.72rem;
-  line-height: 1.3;
-  text-align: right;
-}
-
 /* Footer content — same column width as banner */
 .landing-below {
   width: min(100% - (var(--landing-gutter) * 2), var(--landing-banner-max));
@@ -518,7 +474,8 @@ body.campaign-shell .site-main-campaign,
   }
 
   .landing-above-fold {
-    min-height: 100dvh;
+    min-height: calc(100svh - 1rem);
+    min-height: calc(100dvh - 1rem);
     gap: 0.4rem;
   }
 
@@ -543,9 +500,9 @@ body.campaign-shell .site-main-campaign,
   }
 
   .landing-middle {
-    width: 100%;
-    margin: 0;
-    padding: 0 0.7rem 0.65rem;
+    width: min(calc(100% - 1rem), 24rem);
+    margin: 1.8rem auto 0;
+    padding: 0 0 0.35rem;
     box-sizing: border-box;
   }
 
@@ -604,14 +561,6 @@ body.campaign-shell .site-main-campaign,
     height: 1.6rem;
   }
 
-  .landing-reward-card {
-    padding: 0.65rem 0.75rem;
-  }
-
-  .landing-reward-card strong {
-    font-size: 1.35rem;
-  }
-
   .landing-below {
     width: 100%;
     margin-top: 0.85rem;
@@ -629,16 +578,6 @@ body.campaign-shell .site-main-campaign,
 }
 
 @media (max-width: 419px) {
-  .landing-reward-card {
-    flex-direction: column;
-    text-align: center;
-  }
-
-  .landing-reward-card small {
-    max-width: none;
-    text-align: center;
-  }
-
   .landing-offer-banner {
     align-items: center;
   }

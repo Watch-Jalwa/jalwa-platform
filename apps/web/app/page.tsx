@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { MadeForPakistan } from "@/components/home/made-for-pakistan";
 import { PromoBanners } from "@/components/home/promo-banners";
+import { TamashaPremiumCard } from "@/components/home/tamasha-premium-card";
 import { TrendingRail } from "@/components/home/trending-rail";
 import { FREE_UNLOCKED_VIDEO_LIMIT, summarizeVideoAccess } from "@/lib/catalogue/free-tier-access.mjs";
 import { getCategories, searchCatalogue } from "@/lib/catalogue/repository";
@@ -77,25 +78,7 @@ export default async function HomePage() {
         </div>
       </section>
 
-      <section className="tamasha-premium-banner" aria-labelledby="tamasha-premium-title" data-reveal="up">
-        <div className="tamasha-premium-copy">
-          <span className="tamasha-premium-kicker">Tamasha Premium</span>
-          <h2 id="tamasha-premium-title">Full videos access.</h2>
-          <p>
-            Full catalogue access · {accessSummary.freeLimit} free videos ·{" "}
-            {accessSummary.lockedForPremium > 0
-              ? `${accessSummary.lockedForPremium} more unlocked with Monthly`
-              : "Premium challenges · Reward eligibility"}
-          </p>
-        </div>
-        <div className="tamasha-premium-cta">
-          <strong>Rs 990</strong>
-          <small>monthly JazzCash · tax inclusive</small>
-          <Link className="tamasha-premium-button" href="/pricing">
-            See plans
-          </Link>
-        </div>
-      </section>
+      <TamashaPremiumCard lockedForPremium={accessSummary.lockedForPremium} />
 
       <MadeForPakistan categories={categories} />
 
