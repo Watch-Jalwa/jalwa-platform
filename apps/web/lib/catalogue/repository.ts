@@ -1,4 +1,4 @@
-import { liveSourcesEnabled } from "@/lib/live-sources/registry";
+import { publicLiveCatalogueEnabled } from "@/lib/live-sources/registry";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import { createClient } from "@/lib/database/server";
 import { annotateCatalogueAccess } from "./free-tier-access.mjs";
@@ -75,7 +75,7 @@ export async function searchCatalogue(input: { query?: string; category?: string
     const requested = input.limit ?? 40;
     // Live catalogue rows often outrank the next VOD titles after the small featured set.
     // Pull a full page then keep non-live rows so Featured can still fill 8 VOD cards.
-    const queryLimit = liveSourcesEnabled() ? requested : 100;
+    const queryLimit = publicLiveCatalogueEnabled() ? requested : 100;
     const { data, error } = await database.rpc("search_catalogue", {
       p_query: query || null,
       p_category: category || null,
@@ -84,7 +84,7 @@ export async function searchCatalogue(input: { query?: string; category?: string
     if (error) throw error;
     const items = ((data ?? []) as Record<string, unknown>[]).map(mapSearchRow);
     const filtered = filterVisibleCatalogueItems(
-      liveSourcesEnabled() ? items : items.filter((item) => item.contentType !== "live"),
+      publicLiveCatalogueEnabled() ? items : items.filter((item) => item.contentType !== "live"),
     );
     return annotateCatalogueAccess(filtered.slice(0, requested));
   } catch (error) {
@@ -109,7 +109,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       .eq("slug", slug).maybeSingle();
     if (error) throw error;
     if (!data) return null;
-    if (data.content_type === "live" && !liveSourcesEnabled()) return null;
+    if (data.content_type === "live" && !publicLiveCatalogueEnabled()) return null;
 
     const [categoryResult, playbackResult, rightsResult] = await Promise.all([
       data.primary_category_id
@@ -199,7 +199,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
 }
 
 export async function getLiveCatalogue(): Promise<{ items: CatalogueItem[]; collections: LiveCatalogueCollection[] }> {
-  if (!liveSourcesEnabled()) return { items: [], collections: [] };
+  if (!publicLiveCatalogueEnabled()) return { items: [], collections: [] };
   requireDatabase();
   try {
     const summaries = await searchCatalogue({ category: "live", limit: 100 });

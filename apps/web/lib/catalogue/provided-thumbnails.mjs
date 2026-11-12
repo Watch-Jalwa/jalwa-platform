@@ -19,6 +19,21 @@ export const PROVIDED_CATALOGUE_THUMBNAILS = Object.freeze({
   "cosmos-laundromat": "/catalogue/thumbnails/cosmos-laundromat.jpeg",
   "vhs-static-cc0-clip": "/catalogue/thumbnails/vhs-static-cc0-clip.jpeg",
   sintel: "/catalogue/thumbnails/sintel.jpeg",
+  "counting-chisenbop-cc0": "/catalogue/thumbnails/counting-chisenbop-cc0.jpeg",
+  "how-fossils-form-cc-by": "/catalogue/thumbnails/how-fossils-form-cc-by.jpeg",
+  "vanellus-vanellus-cc0": "/catalogue/thumbnails/vanellus-vanellus-cc0.jpeg",
+  "ocean-surface-waves-cc0": "/catalogue/thumbnails/ocean-surface-waves-cc0.jpeg",
+  "proxima-centauri-flythrough-cc-by": "/catalogue/thumbnails/proxima-centauri-flythrough-cc-by.jpeg",
+  "tiny-waterfall-cc0": "/catalogue/thumbnails/tiny-waterfall-cc0.jpeg",
+  "tree-trimmer-cc0": "/catalogue/thumbnails/tree-trimmer-cc0.jpeg",
+  "tears-of-steel": "/catalogue/thumbnails/tears-of-steel.jpeg",
+  "promise-of-pakistan-geography": "/catalogue/thumbnails/promise-of-pakistan-geography.jpeg",
+  "invitation-to-pakistan-nara": "/catalogue/thumbnails/invitation-to-pakistan-nara.jpeg",
+  "harnessing-wikipedia-science-communication": "/catalogue/thumbnails/harnessing-wikipedia-science-communication.jpeg",
+  "eso-cast-265-light": "/catalogue/thumbnails/eso-cast-265-light.jpeg",
+  "eso-cast-254-light": "/catalogue/thumbnails/eso-cast-254-light.jpeg",
+  "elephants-dream": "/catalogue/thumbnails/elephants-dream.jpeg",
+  "big-buck-bunny": "/catalogue/thumbnails/big-buck-bunny.jpeg",
 });
 
 export function providedCatalogueThumbnailForSlug(slug) {

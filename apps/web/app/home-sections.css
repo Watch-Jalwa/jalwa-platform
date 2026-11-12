@@ -333,7 +333,8 @@
 }
 .trending-art {
   position: relative;
-  height: 238px;
+  aspect-ratio: 16 / 9;
+  height: auto;
   border-radius: 1.05rem;
   overflow: hidden;
   border: 1px solid var(--jalwa-edge-soft);
@@ -585,9 +586,9 @@
   }
   .trending-nav {
     position: absolute;
-    top: 11.5rem;
-    right: 0;
-    left: 0;
+    top: 9rem;
+    right: -2.5rem;
+    left: -2.5rem;
     z-index: 5;
     display: flex;
     justify-content: space-between;
@@ -600,9 +601,9 @@
   }
   .trending-scroller {
     grid-template-columns: 260px;
-    grid-auto-columns: 165px;
-    padding-right: 2.4rem;
-    padding-left: 2.4rem;
+    grid-auto-columns: 210px;
+    padding-right: 3.4rem;
+    padding-left: 3.4rem;
   }
   .home-promo-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -617,7 +618,7 @@
 @media (min-width: 1100px) {
   .home-mfp-cta-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .home-mfp-cta-label { font-size: 0.82rem; }
-  .trending-scroller { grid-auto-columns: 165px; }
+  .trending-scroller { grid-auto-columns: 220px; }
 }
 
 @media (max-width: 719px) {
@@ -625,7 +626,7 @@
   .arena-perks li { font-size: 0.68rem; }
   .home-promo-art { width: min(100%, 220px); }
   .trending-scroller { grid-template-columns: 78vw; grid-auto-columns: 58vw; }
-  .trending-art { height: 220px; }
+  .trending-art { aspect-ratio: 16 / 9; }
 }
 
 @media (max-width: 559px) {
