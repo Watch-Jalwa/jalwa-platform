@@ -4,8 +4,9 @@
 .site-footer > div { max-width: 36rem; }
 .site-footer p { line-height: 1.6; }
 .site-footer nav { display: flex; flex-wrap: wrap; gap: .75rem 1rem; }
-.site-footer-support { display: inline-flex; flex-wrap: wrap; gap: 0.35rem 0.75rem; }
-.site-footer-support a:last-child { color: #a1a1aa; }
+.site-footer-links { display: grid; gap: .6rem; align-content: start; }
+.site-footer-complaints { margin: 0; }
+.site-footer-complaints a { color: #a1a1aa; }
 .site-footer nav a:hover, .site-footer nav a:focus-visible { color: var(--text); }
 .site-footer small { color: #71717a; }
 .policy-page, .support-page { max-width: 820px; }

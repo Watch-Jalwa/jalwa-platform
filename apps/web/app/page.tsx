@@ -22,6 +22,7 @@ const HOMEPAGE_TRENDING_SLUGS = [
 export default async function HomePage() {
   let categories: Awaited<ReturnType<typeof getCategories>> = [];
   let trendingContent: Awaited<ReturnType<typeof searchCatalogue>> = [];
+  let catalogueWindow: Awaited<ReturnType<typeof searchCatalogue>> = [];
   let accessSummary: {
     totalVideos: number;
     freeUnlocked: number;
@@ -34,11 +35,12 @@ export default async function HomePage() {
     freeLimit: FREE_UNLOCKED_VIDEO_LIMIT,
   };
   try {
-    const [nextCategories, catalogueWindow] = await Promise.all([
+    const [nextCategories, nextCatalogueWindow] = await Promise.all([
       getCategories(),
       searchCatalogue({ limit: 100 }),
     ]);
     categories = nextCategories;
+    catalogueWindow = nextCatalogueWindow;
     const bySlug = new Map(catalogueWindow.map((item) => [item.slug, item]));
     trendingContent = HOMEPAGE_TRENDING_SLUGS
       .map((slug) => bySlug.get(slug))
@@ -89,7 +91,7 @@ export default async function HomePage() {
 
       <TamashaPremiumCard lockedForPremium={accessSummary.lockedForPremium} />
 
-      <MadeForPakistan categories={categories} />
+      <MadeForPakistan categories={categories} items={catalogueWindow} />
 
       <section className="home-trending" aria-labelledby="trending-title" data-reveal="up">
         <TrendingRail items={trendingContent} />

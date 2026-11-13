@@ -3,6 +3,7 @@
  * Filtered in catalogue browse/watch/recommendations so titles leave the app surface.
  */
 export const TEMPORARILY_HIDDEN_CONTENT_SLUGS = Object.freeze([
+  "mossy-tree-cc0",
   "nasa-space-station-views",
   "abrasive-bird-debate-cc0",
   "house-sparrow-tschilp-cc0",
