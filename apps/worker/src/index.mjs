@@ -3,6 +3,7 @@ import { createDatabaseClient, createPool } from "@jalwa/postgres";
 import { processDrmPackagingJob } from "./drm.mjs";
 import { processMediaJob } from "./media.mjs";
 import { reportWorkerError } from "./observability.mjs";
+import { repairOneUndersizedPoster } from "./poster-repair.mjs";
 import { processSourceDownloadJob } from "./source-download.mjs";
 import { mediaBackend, storageConfigured } from "./storage.mjs";
 
@@ -178,7 +179,11 @@ async function tick() {
     const sourceDownloadClaimed = await handleSourceDownload(database);
     const drmClaimed = await handleDrm(database);
     const mediaClaimed = await handleMedia(database);
-    await heartbeat("ready", { sourceDownloadClaimed, drmClaimed, mediaClaimed });
+    let posterRepaired = false;
+    if (!sourceDownloadClaimed && !drmClaimed && !mediaClaimed) {
+      posterRepaired = await repairOneUndersizedPoster(database);
+    }
+    await heartbeat("ready", { sourceDownloadClaimed, drmClaimed, mediaClaimed, posterRepaired });
   } finally {
     running = false;
   }

@@ -1,1 +1,67 @@
 .jalwa-ad-slot{width:min(100% - 2rem,1180px);margin:.75rem auto 0;padding:.8rem 1rem;border:1px solid var(--border);border-radius:1rem;background:linear-gradient(120deg,rgba(255,107,44,.12),rgba(255,255,255,.04));display:flex;flex-wrap:wrap;align-items:center;gap:.55rem 1rem;font-size:.85rem}.jalwa-ad-slot strong{font-size:.95rem}.jalwa-ad-slot>span:not(.eyebrow){color:var(--muted);flex:1 1 18rem}.jalwa-ad-slot>a{font-weight:800;text-decoration:underline}.premium-benefit-grid{display:grid;grid-template-columns:1fr;gap:.8rem;margin:1rem 0 2rem}.premium-benefit-card h2{margin:.4rem 0}.premium-benefit-card p{color:var(--muted);margin-bottom:0}.premium-collection-list{display:grid;gap:1rem}.playback-quality-badge{display:inline-flex;margin-top:.55rem;padding:.3rem .55rem;border:1px solid var(--border);border-radius:999px;color:var(--muted);font-size:.72rem}@media(min-width:720px){.jalwa-ad-slot{width:min(100% - 3rem,1180px)}.premium-benefit-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+
+/* Self-hosted watch assets can be portrait, landscape, or 4:3 archival media.
+   Keep this scoped: live, DRM and official embeds retain their own player geometry. */
+.player-shell.player-shell--self-hosted {
+  aspect-ratio: auto;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+
+.self-hosted-media-frame {
+  width: 100%;
+  margin-inline: auto;
+  overflow: hidden;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: #000;
+}
+
+.player-shell.player-shell--self-hosted .self-hosted-media-frame video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  object-fit: contain;
+}
+
+.player-shell--self-hosted .self-hosted-stack .playback-quality-badge {
+  justify-self: start;
+}
+
+.player-shell--self-hosted .player-placeholder {
+  min-height: 16rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.premium-status-toast{position:fixed;z-index:80;left:50%;bottom:5.5rem;transform:translateX(-50%);width:min(92vw,26rem);padding:.85rem 1.1rem;border-radius:.9rem;border:1px solid rgba(255,122,0,.45);background:#14110e;color:#fff7ed;font-weight:700;text-align:center;box-shadow:0 12px 40px rgba(0,0,0,.45);animation:premium-toast-in .28s ease-out}
+@media(min-width:720px){.premium-status-toast{bottom:2rem}}
+.premium-status-toast-error{border-color:rgba(248,113,113,.55);background:#1c1010;color:#fecaca}
+@keyframes premium-toast-in{from{opacity:0;transform:translate(-50%,.6rem)}to{opacity:1;transform:translate(-50%,0)}}
+
+/* Audio-only content retains the signed media gateway while using native audio controls.
+   Do not apply video aspect-ratio/height rules to an audio recording. */
+.player-shell--self-hosted .self-hosted-media-frame--audio {
+  aspect-ratio: auto;
+  display: flex;
+  align-items: center;
+  min-height: 8rem;
+  padding: 1.25rem;
+}
+.self-hosted-audio {
+  display: grid;
+  gap: 0.75rem;
+  width: 100%;
+  min-width: 0;
+}
+.self-hosted-audio-label {
+  margin: 0;
+  font-weight: 600;
+}
+.player-shell--self-hosted .self-hosted-audio audio {
+  display: block;
+  width: 100%;
+  min-width: 0;
+}

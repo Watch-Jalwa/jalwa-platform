@@ -1,14 +1,37 @@
 import Link from "next/link";
 import { ContentCard } from "@/components/content-card";
+import { FREE_UNLOCKED_VIDEO_LIMIT, summarizeVideoAccess } from "@/lib/catalogue/free-tier-access.mjs";
 import { getCategories, searchCatalogue } from "@/lib/catalogue/repository";
 
 export const metadata = { title: "Explore" };
 export const dynamic = "force-dynamic";
 type SearchParams = Promise<{ q?: string; category?: string }>;
 
+const EXPLORE_CATEGORY_ORDER = ["entertainment", "learn", "pakistan"];
+const HIDDEN_EXPLORE_CATEGORIES = new Set([
+  "deen",
+  "kissan",
+  "live",
+  "originals",
+  "shorts",
+  "tech",
+  "rozgar",
+  "kids",
+  "life",
+]);
+
 export default async function ExplorePage({ searchParams }: { searchParams: SearchParams }) {
   const { q = "", category = "" } = await searchParams;
-  const [categories, content] = await Promise.all([getCategories(), searchCatalogue({ query: q, category })]);
+  const [categories, content] = await Promise.all([getCategories(), searchCatalogue({ query: q, category, limit: 100 })]);
+  const visibleCategories = categories
+    .filter((item) => !HIDDEN_EXPLORE_CATEGORIES.has(item.slug))
+    .sort((left, right) => {
+      const leftIndex = EXPLORE_CATEGORY_ORDER.indexOf(left.slug);
+      const rightIndex = EXPLORE_CATEGORY_ORDER.indexOf(right.slug);
+      return (leftIndex < 0 ? EXPLORE_CATEGORY_ORDER.length : leftIndex) -
+        (rightIndex < 0 ? EXPLORE_CATEGORY_ORDER.length : rightIndex);
+    });
+  const access = summarizeVideoAccess(content);
   return (
     <div className="page-shell">
       <div className="section-heading"><div><span className="eyebrow">Catalogue</span><h1>Explore Jalwa</h1></div></div>
@@ -19,13 +42,19 @@ export default async function ExplorePage({ searchParams }: { searchParams: Sear
       </form>
       <nav className="chip-row" aria-label="Content categories">
         <Link className={!category ? "chip chip-active" : "chip"} href={q ? `/explore?q=${encodeURIComponent(q)}` : "/explore"}>All</Link>
-        {categories.map((item) => {
+        {visibleCategories.map((item) => {
           const href = `/explore?category=${item.slug}${q ? `&q=${encodeURIComponent(q)}` : ""}`;
           return <Link className={category === item.slug ? "chip chip-active" : "chip"} href={href} key={item.slug}>{item.label}</Link>;
         })}
       </nav>
       <p className="result-summary">{content.length} result{content.length === 1 ? "" : "s"}{q ? ` for “${q}”` : ""}</p>
-      {content.length ? <div className="content-grid">{content.map((item) => <ContentCard item={item} key={item.slug} />)}</div> : <div className="empty-state"><h2>No matching content</h2><p>Try a broader term or another category.</p></div>}
+      {access.totalVideos ? (
+        <p className="result-summary">
+          Free plan: {Math.min(access.freeUnlocked, FREE_UNLOCKED_VIDEO_LIMIT)} of {access.totalVideos} videos playable.
+          {access.lockedForPremium ? ` ${access.lockedForPremium} locked for Tamasha Premium / Monthly.` : ""}
+        </p>
+      ) : null}
+      {content.length ? <div className="content-grid">{content.map((item) => <ContentCard item={item} key={item.slug} />)}</div> : <div className="empty-state"><h2>Coming Soon</h2><p>New content is on the way.</p></div>}
     </div>
   );
 }

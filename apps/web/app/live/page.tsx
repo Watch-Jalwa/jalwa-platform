@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getLiveCatalogue } from "@/lib/catalogue/repository";
-import { liveSourcesEnabled } from "@/lib/live-sources/registry";
+import { publicLiveCatalogueEnabled } from "@/lib/live-sources/registry";
 import type { CatalogueItem } from "@/lib/catalogue/types";
 
 export const dynamic = "force-dynamic";
@@ -23,7 +23,7 @@ function LiveCard({ item }: { item: CatalogueItem }) {
 }
 
 export default async function LivePage() {
-  if (!liveSourcesEnabled()) {
+  if (!publicLiveCatalogueEnabled()) {
     return <div className="page-shell"><section className="live-hero"><span className="eyebrow">Public information</span><h1>Live sources</h1><p>The approved official live catalogue is installed but disabled in this environment.</p></section></div>;
   }
   const catalogue = await getLiveCatalogue();

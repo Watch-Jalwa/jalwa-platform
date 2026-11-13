@@ -1,8 +1,10 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/database/admin";
 import { createClient } from "@/lib/database/server";
+import { stopPremiumForUser } from "@/lib/payments/unsubscribe-by-msisdn.mjs";
 
 async function authenticatedUser() {
   const database = await createClient();
@@ -59,8 +61,26 @@ export async function cancelAccountDeletion(formData: FormData) {
   redirect("/profile?request=deletion-cancelled");
 }
 
+/** Immediately stop Premium: cancel open subscriptions and revoke active entitlements now. */
+export async function unsubscribePremium(): Promise<{ ok: true } | { ok: false; message: string }> {
+  const { user } = await authenticatedUser();
+  const result = await stopPremiumForUser(user.id, { source: "profile" });
+  if (!result.ok) {
+    return { ok: false, message: result.message || "Could not stop Premium right now." };
+  }
+
+  revalidatePath("/profile");
+  revalidatePath("/billing");
+  revalidatePath("/premium");
+  revalidatePath("/explore");
+  revalidatePath("/");
+  return { ok: true };
+}
+
 export async function signOut() {
-  const { database } = await authenticatedUser();
+  const database = await createClient();
   await database.auth.signOut();
+  revalidatePath("/");
+  revalidatePath("/profile");
   redirect("/");
 }

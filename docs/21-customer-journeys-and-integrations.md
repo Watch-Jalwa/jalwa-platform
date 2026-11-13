@@ -4,9 +4,10 @@ This release completes the browser-based MVP journeys that can be implemented wi
 
 ## Customer UI
 
-- Email magic-link signup and sign-in
-- Phone OTP request and verification through Supabase Auth
-- Google, Apple and Facebook OAuth launch actions
+- Unified passwordless “Sign in or create account” screen (full name + email or Pakistani mobile, four-digit OTP)
+- Email OTP sign-in/sign-up through Better Auth; phone OTP remains feature-flagged until an SMS provider is configured
+- Staging QA still uses Better Auth magic links for automated sessions
+- Google, Apple and Facebook OAuth launch actions when enabled
 - Post-auth onboarding with language, display name, terms acceptance and plan intent
 - Up to five viewer profiles with child/kids mode and an active-profile cookie
 - Watch history, resume playback and clear-history controls

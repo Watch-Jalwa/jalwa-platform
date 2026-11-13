@@ -40,21 +40,19 @@ test.describe("public customer web", () => {
 
   test("login and signup validation remain accessible", async ({ page }) => {
     await page.goto("/login", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    const email = page.getByRole("textbox", { name: /Email/i });
-    await expect(email).toHaveAttribute("type", "email");
-    expect(await email.evaluate((element) => element.checkValidity())).toBe(false);
-    await expect(page.getByRole("button", { name: /Send sign-in link/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Sign in or create account/i })).toBeVisible();
+    await expect(page.getByLabel(/Full name/i)).toBeVisible();
+    const identity = page.getByLabel(/Email or mobile number/i);
+    await expect(identity).toBeVisible();
+    expect(await identity.evaluate((element) => element.checkValidity())).toBe(false);
+    await expect(page.getByRole("button", { name: /^Continue$/i })).toBeVisible();
     await expectNoHorizontalOverflow(page, "desktop login");
 
     await page.goto("/signup", { waitUntil: "networkidle" });
-    await page.getByRole("textbox", { name: /Your name/i }).fill("Staging Playwright");
-    await page.getByRole("textbox", { name: /Email/i }).fill("playwright@example.com");
-    const terms = page.getByRole("checkbox", { name: /accept the Terms/i });
-    await expect(terms).not.toBeChecked();
-    expect(await terms.evaluate((element) => element.checkValidity())).toBe(false);
-    await terms.check();
-    expect(await terms.evaluate((element) => element.checkValidity())).toBe(true);
+    expect(new URL(page.url()).pathname).toBe("/login");
+    await page.getByLabel(/Full name/i).fill("Staging Playwright");
+    await page.getByLabel(/Email or mobile number/i).fill("playwright@example.com");
+    await expect(page.getByRole("button", { name: /^Continue$/i })).toBeEnabled();
   });
 
   test("legal pages, manifest, readiness and CSP reporting are healthy", async ({ page }) => {

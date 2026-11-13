@@ -1,8 +1,12 @@
-import { liveSourcesEnabled } from "@/lib/live-sources/registry";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import { createClient } from "@/lib/database/server";
+import { annotateCatalogueAccess } from "./free-tier-access.mjs";
+import { withCataloguePosterFallback } from "./poster-core.mjs";
 import { categories as demoCategories, featuredContent } from "./demo-data";
+import { filterVisibleCatalogueItems, isTemporarilyHiddenSlug } from "./temporarily-hidden-slugs.mjs";
 import type { CatalogueCategory, CatalogueItem, LiveCatalogueCollection, PlaybackSource, PremiumCatalogueCollection } from "./types";
+
+const HIDDEN_PUBLIC_CATEGORY_SLUGS = new Set(["deen", "kissan"]);
 
 function asString(value: unknown) { return typeof value === "string" ? value : null; }
 function asTimestamp(value: unknown) {
@@ -12,8 +16,8 @@ function asTimestamp(value: unknown) {
 }
 function asNumber(value: unknown) { return typeof value === "number" ? value : null; }
 function mapSearchRow(row: Record<string, unknown>): CatalogueItem {
-  return {
-    id: asString(row.id) ?? undefined,
+  return withCataloguePosterFallback({
+    id: row.id == null ? undefined : String(row.id),
     slug: asString(row.slug) ?? "unavailable",
     title: asString(row.title) ?? "Untitled",
     titleUrdu: asString(row.title_ur),
@@ -25,7 +29,7 @@ function mapSearchRow(row: Record<string, unknown>): CatalogueItem {
     contentType: (asString(row.content_type) ?? "video") as CatalogueItem["contentType"],
     hostingMode: (asString(row.hosting_mode) ?? "external_link") as CatalogueItem["hostingMode"],
     thumbnailUrl: asString(row.thumbnail_url),
-  };
+  });
 }
 
 function requireDatabase() {
@@ -33,20 +37,26 @@ function requireDatabase() {
 }
 
 function catalogueFailure(scope: string, error: unknown): never {
-  console.error(`catalogue_${scope}_failed`, error);
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+  // Local/dev without a reachable Postgres host is expected during UI work — avoid Next.js issue spam.
+  if (code !== "ENOTFOUND" && code !== "ECONNREFUSED") {
+    console.error(`catalogue_${scope}_failed`, error);
+  }
   throw new Error("Jalwa catalogue is temporarily unavailable.");
 }
 
 export async function getCategories(): Promise<CatalogueCategory[]> {
-  if (canUseDemoData()) return demoCategories;
+  if (canUseDemoData()) return demoCategories.filter((category) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(category.slug) && category.slug !== "live");
   requireDatabase();
   try {
     const database = await createClient();
     const { data, error } = await database.from("categories").select("slug,name_en,name_ur,name_roman_ur,icon").eq("is_active", true).order("sort_order");
     if (error) throw error;
-    return (data ?? []).map((row) => ({ slug: row.slug, label: row.name_en, urdu: row.name_ur, romanUrdu: row.name_roman_ur, icon: row.icon }));
+    return (data ?? [])
+      .filter((row) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(row.slug) && row.slug !== "live")
+      .map((row) => ({ slug: row.slug, label: row.name_en, urdu: row.name_ur, romanUrdu: row.name_roman_ur, icon: row.icon }));
   } catch (error) {
-    if (canUseDemoData()) return demoCategories;
+    if (canUseDemoData()) return demoCategories.filter((category) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(category.slug) && category.slug !== "live");
     return catalogueFailure("categories", error);
   }
 }
@@ -55,27 +65,56 @@ export async function searchCatalogue(input: { query?: string; category?: string
   const query = input.query?.trim() ?? "";
   const category = input.category?.trim() ?? "";
   if (canUseDemoData()) {
-    return featuredContent.filter((item) => {
+    const demo = featuredContent.filter((item) => {
       const categoryMatches = !category || item.categorySlug === category;
       const haystack = `${item.title} ${item.titleUrdu ?? ""} ${item.description ?? ""}`.toLowerCase();
-      return categoryMatches && (!query || haystack.includes(query.toLowerCase()));
+      return categoryMatches &&
+        !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) &&
+        item.contentType !== "live" &&
+        item.categorySlug !== "live" &&
+        (!query || haystack.includes(query.toLowerCase())) &&
+        !isTemporarilyHiddenSlug(item.slug);
     });
+    return annotateCatalogueAccess(demo);
   }
   requireDatabase();
   try {
     const database = await createClient();
-    const { data, error } = await database.rpc("search_catalogue", { p_query: query || null, p_category: category || null, p_limit: input.limit ?? 40 });
+    const requested = input.limit ?? 40;
+    // Live catalogue rows often outrank the next VOD titles after the small featured set.
+    // Pull a full page then keep non-live rows so Featured can still fill 8 VOD cards.
+    const queryLimit = 100;
+    const { data, error } = await database.rpc("search_catalogue", {
+      p_query: query || null,
+      p_category: category || null,
+      p_limit: queryLimit,
+    });
     if (error) throw error;
     const items = ((data ?? []) as Record<string, unknown>[]).map(mapSearchRow);
-    return liveSourcesEnabled() ? items : items.filter((item) => item.contentType !== "live");
+    const filtered = filterVisibleCatalogueItems(items.filter(
+      (item) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live" && item.categorySlug !== "live",
+    ));
+    return annotateCatalogueAccess(filtered.slice(0, requested));
   } catch (error) {
-    if (canUseDemoData()) return featuredContent;
+    if (canUseDemoData()) {
+      return annotateCatalogueAccess(filterVisibleCatalogueItems(featuredContent.filter(
+        (item) => !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live" && item.categorySlug !== "live",
+      )));
+    }
     return catalogueFailure("search", error);
   }
 }
 
 export async function getContentBySlug(slug: string): Promise<CatalogueItem | null> {
-  if (canUseDemoData()) return featuredContent.find((item) => item.slug === slug) ?? null;
+  if (isTemporarilyHiddenSlug(slug)) return null;
+  if (canUseDemoData()) {
+    const demo = featuredContent.find((item) =>
+      item.slug === slug && !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live" && item.categorySlug !== "live",
+    ) ?? null;
+    if (!demo) return null;
+    const [annotated] = await annotateCatalogueAccess([demo]);
+    return annotated ?? null;
+  }
   requireDatabase();
   try {
     const database = await createClient();
@@ -84,7 +123,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       .eq("slug", slug).maybeSingle();
     if (error) throw error;
     if (!data) return null;
-    if (data.content_type === "live" && !liveSourcesEnabled()) return null;
+    if (data.content_type === "live") return null;
 
     const [categoryResult, playbackResult, rightsResult] = await Promise.all([
       data.primary_category_id
@@ -102,6 +141,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
     const category = categoryResult.data;
     const playback = playbackResult.data;
     const rights = rightsResult.data;
+    if (category?.slug && HIDDEN_PUBLIC_CATEGORY_SLUGS.has(category.slug)) return null;
     let liveConfig: Record<string, unknown> | null = null;
     let liveHealth: Record<string, unknown> | null = null;
     if (data.content_type === "live" && playback?.id) {
@@ -142,7 +182,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       termsUrl: asString(liveConfig?.terms_url),
       requiredAttribution: asString(liveConfig?.required_attribution),
     } : null;
-    return {
+    const item: CatalogueItem = withCataloguePosterFallback({
       id: data.id,
       slug: data.slug,
       title: data.title_en,
@@ -159,15 +199,24 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       sourceUrl: rights?.source_url ?? source?.officialSourceUrl ?? source?.externalUrl,
       attribution: rights?.attribution_text ?? source?.requiredAttribution,
       isEarlyAccess: Boolean(data.publish_at && new Date(data.publish_at).getTime() > Date.now()),
-    };
+    });
+    const [annotated] = await annotateCatalogueAccess([item]);
+    return annotated ?? item;
   } catch (error) {
-    if (canUseDemoData()) return featuredContent.find((item) => item.slug === slug) ?? null;
+    if (canUseDemoData()) {
+      const demo = featuredContent.find((item) =>
+        item.slug === slug && !HIDDEN_PUBLIC_CATEGORY_SLUGS.has(item.categorySlug) && item.contentType !== "live" && item.categorySlug !== "live",
+      ) ?? null;
+      if (!demo) return null;
+      const [annotated] = await annotateCatalogueAccess([demo]);
+      return annotated ?? null;
+    }
     return catalogueFailure("content", error);
   }
 }
 
 export async function getLiveCatalogue(): Promise<{ items: CatalogueItem[]; collections: LiveCatalogueCollection[] }> {
-  if (!liveSourcesEnabled()) return { items: [], collections: [] };
+  return { items: [], collections: [] };
   requireDatabase();
   try {
     const summaries = await searchCatalogue({ category: "live", limit: 100 });

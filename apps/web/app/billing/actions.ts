@@ -3,7 +3,9 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/database/server";
+import { unlinkJazzcashWalletForUser } from "@/lib/payments/jazzcash-landing-billing.mjs";
 import { cancelPaymentServiceSubscription, getPaymentServiceStatus, paymentServiceEnabled, unlinkPaymentServiceWallet } from "@/lib/payments/payment-service";
+import { jazzcashV11Configured } from "@/lib/payments/jazzcash-v11.mjs";
 import { validRemoteId } from "@/lib/payments/bff";
 import { isFrontendPreview } from "@/lib/runtime";
 
@@ -38,9 +40,14 @@ export async function unlinkWallet() {
   const database = await createClient();
   const { data: { user } } = await database.auth.getUser();
   if (!user) redirect("/login?next=/billing");
-  if (!paymentServiceEnabled()) redirect("/billing?error=wallet");
+  if (!paymentServiceEnabled() && !jazzcashV11Configured()) redirect("/billing?error=wallet");
   try {
-    await unlinkPaymentServiceWallet(user.id);
+    if (paymentServiceEnabled()) {
+      await unlinkPaymentServiceWallet(user.id);
+    }
+    if (jazzcashV11Configured()) {
+      await unlinkJazzcashWalletForUser(user.id);
+    }
   } catch {
     redirect("/billing?error=wallet");
   }

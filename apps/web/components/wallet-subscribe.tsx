@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 type ErrorPayload = { error?: string; message?: string };
 
@@ -13,11 +14,8 @@ async function jsonResponse(response: Response) {
   return response.json().catch(() => ({})) as Promise<Record<string, unknown> & ErrorPayload>;
 }
 
-function goToSignIn(planCode: string) {
-  window.location.href = `/signup?next=${encodeURIComponent(`/pricing?selected=${planCode}`)}&plan=${encodeURIComponent(planCode)}`;
-}
-
 export function WalletSubscribe({ planCode, children }: { planCode: string; children: React.ReactNode }) {
+  const router = useRouter();
   const [msisdn, setMsisdn] = useState("");
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -31,7 +29,7 @@ export function WalletSubscribe({ planCode, children }: { planCode: string; chil
     try {
       const statusResponse = await fetch("/api/payments/status", { cache: "no-store" });
       if (statusResponse.status === 401) {
-        goToSignIn(planCode);
+        router.push(`/login?next=${encodeURIComponent(`/pricing?selected=${planCode}`)}&plan=${encodeURIComponent(planCode)}`);
         return;
       }
       const statusPayload = await jsonResponse(statusResponse) as BillingStatus & ErrorPayload;
@@ -44,7 +42,7 @@ export function WalletSubscribe({ planCode, children }: { planCode: string; chil
         return;
       }
       if (statusPayload.wallet?.status === "pending") {
-        window.location.href = "/billing/wallet-return?wallet=pending";
+        router.push("/billing/wallet-return?wallet=pending");
         return;
       }
       if (statusPayload.wallet?.status === "linked") {
@@ -62,7 +60,7 @@ export function WalletSubscribe({ planCode, children }: { planCode: string; chil
           setError(subscribePayload.message ?? "Subscription could not be started.");
           return;
         }
-        window.location.href = "/billing/wallet-return?wallet=linked";
+        router.push("/billing/wallet-return?wallet=linked");
         return;
       }
 
@@ -82,7 +80,7 @@ export function WalletSubscribe({ planCode, children }: { planCode: string; chil
       });
       const linkPayload = await jsonResponse(linkResponse);
       if (linkResponse.status === 409 && linkPayload.error === "already_linked") {
-        window.location.href = "/billing/wallet-return?wallet=linked";
+        router.push("/billing/wallet-return?wallet=linked");
         return;
       }
       if (!linkResponse.ok) {

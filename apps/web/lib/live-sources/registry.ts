@@ -405,6 +405,11 @@ export function liveSourcesEnabled() {
   return process.env.PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED === "true";
 }
 
+/** Public live catalogue remains hidden until an explicit product enablement. */
+export function publicLiveCatalogueEnabled() {
+  return liveSourcesEnabled() && process.env.PUBLIC_LIVE_CATALOGUE_ENABLED === "true";
+}
+
 export function getLiveSourceDefinition(value: string): LiveSourceDefinition | null {
   return Object.prototype.hasOwnProperty.call(LIVE_SOURCE_REGISTRY, value)
     ? LIVE_SOURCE_REGISTRY[value as LiveSourceKey]

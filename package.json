@@ -14,8 +14,10 @@
     "postcss": "8.5.24",
     "nanoid": "3.3.18",
     "next": {
-      "sharp": "0.35.4"
-    }
+      "sharp": "0.35.5"
+    },
+    "source-map-js": "1.2.2",
+    "zod": "4.6.7"
   },
   "scripts": {
     "dev": "npm run dev --workspace @jalwa/web",
@@ -35,5 +37,8 @@
     "test:staging:playwright:visual": "playwright test --config=playwright.staging.config.mjs qa/playwright/visual.spec.mjs",
     "harvest:alpha": "node scripts/harvest-alpha-open-content.mjs",
     "ci": "npm run lint && npm run typecheck && npm run test && npm run test:ai && npm run test:release && npm run test:backup-encryption && npm run build"
+  },
+  "devDependencies": {
+    "source-map-js": "1.2.2"
   }
 }

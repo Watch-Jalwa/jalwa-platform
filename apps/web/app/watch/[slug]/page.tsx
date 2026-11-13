@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { CommentsSection } from "@/components/comments-section";
 import { DrmPlayer } from "@/components/drm-player";
 import { OfficialLiveEmbedPlayer } from "@/components/official-live-embed-player";
@@ -10,6 +10,8 @@ import { ResilientYouTubePlayer } from "@/components/resilient-youtube-player";
 import { SelfHostedPlayer } from "@/components/self-hosted-player";
 import { SocialActions } from "@/components/social-actions";
 import { formatDuration } from "@/lib/catalogue/demo-data";
+import { canPlayVideoContent, getViewerVideoAccess } from "@/lib/catalogue/free-tier-access.mjs";
+import { lockedContentHref } from "@/lib/catalogue/locked-content-cta.mjs";
 import { getContentBySlug } from "@/lib/catalogue/repository";
 import { getRecommendations } from "@/lib/recommendations/repository";
 
@@ -26,9 +28,30 @@ export default async function WatchPage({ params }: { params: Params }) {
   const isSelfHosted = !liveSource && item.id && ["self_host_open", "self_host_owned"].includes(item.hostingMode) && item.playback?.mediaAssetId;
   const officialSource = item.playback?.officialSourceUrl ?? item.sourceUrl ?? item.playback?.externalUrl ?? "";
   const attribution = item.attribution ?? item.playback?.requiredAttribution ?? "Official public source.";
+  const viewerAccess = await getViewerVideoAccess();
+  const playbackAllowed = canPlayVideoContent(viewerAccess, {
+    contentId: item.id || (item.slug ? `slug:${item.slug}` : null),
+    contentType: item.contentType,
+  });
 
   let player: React.ReactNode;
-  if (liveSource && item.playback?.deliveryAdapter === "official_live_embed") {
+  if (!playbackAllowed) {
+    // Signed-in without entitlement → plans. Guests stay on watch with Sign in (then play or pricing).
+    if (viewerAccess.signedIn) {
+      redirect(lockedContentHref(item.slug, true));
+    }
+    player = (
+      <div className="player-placeholder">
+        <span className="eyebrow">Sign in</span>
+        <p>Sign in to watch this title. If your account has Premium, playback starts right away; otherwise you will see Monthly plans.</p>
+        <div className="watch-actions">
+          <Link className="button button-primary" href={lockedContentHref(item.slug, false)}>
+            Sign in
+          </Link>
+        </div>
+      </div>
+    );
+  } else if (liveSource && item.playback?.deliveryAdapter === "official_live_embed") {
     player = <OfficialLiveEmbedPlayer
       attribution={attribution}
       checkedAt={item.playback.checkedAt}
@@ -56,13 +79,13 @@ export default async function WatchPage({ params }: { params: Params }) {
   } else if (isDrm) {
     player = <DrmPlayer contentId={item.id!} poster={item.thumbnailUrl} title={item.title} nextPath={`/watch/${item.slug}`} />;
   } else if (isSelfHosted) {
-    player = <SelfHostedPlayer contentId={item.id!} poster={item.thumbnailUrl} title={item.title} />;
+    player = <SelfHostedPlayer contentId={item.id!} poster={item.thumbnailUrl} title={item.title} audioOnly={item.contentType === "audio"} />;
   } else {
     player = <div className="player-placeholder"><span className="eyebrow">{item.accessLevel === "premium" ? "Premium" : "Free"}</span><p>Playback source is awaiting media processing, rights approval or final publication.</p></div>;
   }
 
   return <div className="page-shell watch-layout">
-    <div className="player-shell">{player}</div>
+    <div className={isSelfHosted && !isDrm ? "player-shell player-shell--self-hosted" : "player-shell"}>{player}</div>
     <article className="watch-copy">
       <span className="eyebrow">{item.isEarlyAccess ? "Early access · Jalwa Originals" : item.category} · {item.contentType === "live" ? "Live source" : formatDuration(item.durationSeconds)}</span>
       <h1>{item.title}</h1>
@@ -72,7 +95,9 @@ export default async function WatchPage({ params }: { params: Params }) {
       {liveSource ? <p className="live-non-endorsement">This source is presented for public information. The source institution does not sponsor or endorse Jalwa or its advertisers.</p> : null}
       <div className="watch-actions">
         <Link className="button button-secondary" href="/history">Watch history</Link>
-        {item.sourceUrl ? <Link className="button button-secondary" href={item.sourceUrl} rel="noreferrer" target="_blank">View original source ↗</Link> : null}
+        {playbackAllowed && item.sourceUrl ? (
+          <Link className="button button-secondary" href={item.sourceUrl} rel="noreferrer" target="_blank">View original source ↗</Link>
+        ) : null}
       </div>
       {liveSource ? null : <SocialActions contentId={item.id} title={item.title} />}
     </article>
