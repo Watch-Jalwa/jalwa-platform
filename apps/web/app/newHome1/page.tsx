@@ -18,7 +18,7 @@ const CATEGORIES = [
   { slug: "pakistan", title: "Pakistan", copy: "Culture, history and people." },
 ] as const;
 
-export default async function NewHome1Page() {
+export async function NewHomePage() {
   let catalogue: Awaited<ReturnType<typeof searchCatalogue>> = [];
   try {
     catalogue = await searchCatalogue({ limit: 100 });
@@ -126,3 +126,5 @@ export default async function NewHome1Page() {
     </div>
   );
 }
+
+export default NewHomePage;
