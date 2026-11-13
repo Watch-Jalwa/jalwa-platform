@@ -32,6 +32,20 @@ export default async function LegalPage({ params }: { params: Params }) {
           <section key={section.heading}>
             <h2>{section.heading}</h2>
             {section.body.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
+            {section.table ? (
+              <div className="policy-table-wrap">
+                <table className="policy-table">
+                  <thead>
+                    <tr>{section.table.headers.map((header) => <th key={header} scope="col">{header}</th>)}</tr>
+                  </thead>
+                  <tbody>
+                    {section.table.rows.map((row) => (
+                      <tr key={row.join("|")}>{row.map((cell, index) => <td key={`${row.join("|")}-${index}`}>{cell}</td>)}</tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
           </section>
         ))}
       </div>
