@@ -15,13 +15,13 @@ const FEATURED = [
 ] as const;
 
 const CATEGORIES = [
-  { slug: "entertainment", title: "Entertainment", copy: "Movies, animation & stories.", image: "/catalogue/thumbnails/sprite-fright.jpeg" },
-  { slug: "learn", title: "Learn", copy: "Nature, science & discovery.", image: "/catalogue/thumbnails/vanellus-vanellus-cc0.jpeg" },
-  { slug: "pakistan", title: "Pakistan", copy: "People, culture & stories.", image: "/home/new-home-stories.jpeg" },
+  { slug: "entertainment", title: "Entertainment", copy: "Movies, animation & stories.", image: "/catalogue/thumbnails/sprite-fright.jpeg", videoSlug: undefined },
+  { slug: "learn", title: "Learn", copy: "Nature, science & discovery.", image: "/catalogue/thumbnails/grca-animals-broll.jpeg", videoSlug: "grca-animals-broll" },
+  { slug: "pakistan", title: "Pakistan", copy: "People, culture & stories.", image: "/home/new-home-stories.jpeg", videoSlug: undefined },
 ] as const;
 
 const LEARNING = [
-  { slug: "vanellus-vanellus-cc0", title: "Discover the wild", copy: "Get closer to the extraordinary natural world.", fallback: "/catalogue/thumbnails/vanellus-vanellus-cc0.jpeg" },
+  { slug: "grca-animals-broll", title: "Animals at Grand Canyon B-roll", copy: "Get closer to the extraordinary natural world.", fallback: "/catalogue/thumbnails/grca-animals-broll.jpeg" },
   { slug: "apollo-11-eagle-has-landed", title: "Journey beyond Earth", copy: "Explore the story behind the first moon landing.", fallback: "/catalogue/thumbnails/apollo-11-eagle-has-landed.jpeg" },
 ] as const;
 
@@ -82,7 +82,7 @@ export async function NewHomePage() {
         <h2 id="new-home-discover-title">Explore Jalwa</h2>
         <div className="new-home-category-grid">
           {CATEGORIES.map((category) => (
-            <Link href={`/explore?category=${category.slug}`} className="new-home-category" key={category.slug}>
+            <Link href={category.videoSlug ? `/watch/${category.videoSlug}` : `/explore?category=${category.slug}`} className="new-home-category" key={category.slug}>
               <Image src={category.image} alt="" fill sizes="(max-width: 720px) 100vw, 33vw" unoptimized />
               <span className="new-home-category-overlay" aria-hidden="true" />
               <div className="new-home-category-copy">
