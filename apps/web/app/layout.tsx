@@ -73,7 +73,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
     >
       <body className={campaignShell ? "campaign-shell" : undefined} suppressHydrationWarning>
         {campaignShell ? null : <PreviewBanner />}
-        {campaignShell ? null : <SiteHeader />}
+        <SiteHeader />
         {campaignShell ? null : <JalwaAdSlot />}
         <main className={campaignShell ? "site-main site-main-campaign" : "site-main"}>{children}</main>
         {campaignShell ? null : <SiteFooter />}

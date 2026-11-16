@@ -337,7 +337,7 @@ body:has(.new-home-page) .site-header .button:not(.button-primary):focus-visible
   .new-home-section-heading { margin-bottom: .9rem; }
   .new-home-section-heading h2 { font-size: 1.35rem; }
   .new-home-section-heading p { font-size: .68rem; }
-  .new-home-rail { grid-template-columns: minmax(0, 78vw); grid-auto-flow: column; grid-auto-columns: minmax(0, 78vw); overflow-x: auto; padding-inline: 0; padding-bottom: .4rem; scrollbar-width: none; }
+  .new-home-rail { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 84vw; overflow-x: auto; padding-inline: 0; padding-bottom: .4rem; scrollbar-width: none; }
   .new-home-rail::-webkit-scrollbar { display: none; }
   .new-home-watch-controls .new-home-rail-button { display: none; }
   .new-home-watch-controls { top: 1.8rem; }

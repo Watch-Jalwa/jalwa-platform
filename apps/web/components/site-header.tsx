@@ -48,7 +48,7 @@ export async function SiteHeader() {
             <Link className="button button-secondary header-signup" href="/signup">
               Signup
             </Link>
-            <Link className="button button-secondary" href="/login">
+            <Link className="button button-secondary header-signin" href="/login">
               Sign in
             </Link>
           </>

@@ -37,7 +37,6 @@ export function LandingSubscribe({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const attribution = useMemo(() => attributionForBilling(campaign), [campaign]);
-  const offerLines = offerNotice?.split("\n") ?? [];
 
   async function subscribe() {
     setBusy(true);
@@ -160,17 +159,12 @@ export function LandingSubscribe({
 
       {offerNotice ? (
         <aside className="landing-offer-banner" aria-label="Offer notice">
-          <span className="landing-offer-info" aria-hidden="true">
+          <span className="landing-offer-info" aria-hidden="true">i
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
               <path d="M3 10v4a1 1 0 0 0 1 1h2.2l4.3 3.4A1 1 0 0 0 12 18V6a1 1 0 0 0-1.5-.8L6.2 8.6H4a1 1 0 0 0-1 1zm14.1-2.5a1 1 0 0 0-.7 1.7 4 4 0 0 1 0 5.6 1 1 0 1 0 1.4 1.4 6 6 0 0 0 0-8.4 1 1 0 0 0-.7-.3zm.2 3.1a1 1 0 0 0-.6 1.2 1.5 1.5 0 0 1 0 1.4 1 1 0 1 0 1.8.8 3.5 3.5 0 0 0 0-3 1 1 0 0 0-1.2-.4z" />
             </svg>
           </span>
-          <p>
-            <strong>{offerLines[0]}</strong>
-            {offerLines.slice(1).map((line, index) => (
-              <span key={`${line}-${index}`}><br />{line}</span>
-            ))}
-          </p>
+          <p>{offerNotice}</p>
         </aside>
       ) : null}
 

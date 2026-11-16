@@ -80,19 +80,6 @@ export function LandingShell({
         he={campaign.he}
       />
 
-      <header className="landing-site-header">
-        <div className="landing-page-wrap">
-          <Link className="landing-brand" href="/">
-            <span className="landing-brand-mark">J</span>
-            <span>Jalwa</span>
-          </Link>
-          <nav className="landing-site-nav" aria-label="Landing page">
-            <Link href="/">Home</Link>
-            <a href="mailto:support@digisphere.com.pk">Help</a>
-          </nav>
-        </div>
-      </header>
-
       <h1 className="visually-hidden">{h1}</h1>
 
       <div className="landing-above-fold">

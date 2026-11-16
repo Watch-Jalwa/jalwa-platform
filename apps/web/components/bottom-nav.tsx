@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 const items = [
-  ["/", "⌂", "Home"], ["/for-you", "✦", "For You"], ["/shorts", "▶", "Shorts"], ["/profile", "◉", "Profile"]
+  ["/", "⌂", "Home"], ["/for-you", "✦", "For You"], ["/pricing", "♛", "Premium"], ["/profile", "◉", "Profile"]
 ] as const;
 
 export function BottomNav() {
