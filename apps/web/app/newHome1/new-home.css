@@ -19,11 +19,11 @@ body:has(.new-home-page) .site-header .button:not(.button-primary):focus-visible
   body:has(.new-home-page) .site-header { min-height: 4.75rem; padding-inline: 4.2%; }
 }
 
-.new-home-page > * + * { margin-top: 3rem; }
+.new-home-page > * + * { margin-top: 3.4rem; }
 .new-home-page > .new-home-watch { margin-top: 0; padding-top: 2.4rem; }
-.new-home-page > .new-home-discover { margin-top: 3.6rem; }
-.new-home-page > .new-home-story-panel { margin-top: 3.3rem; }
-.new-home-page > .new-home-premium-panel { margin-top: 3rem; }
+.new-home-page > .new-home-discover { margin-top: 4rem; }
+.new-home-page > .new-home-story-panel { margin-top: 3.7rem; }
+.new-home-page > .new-home-premium-panel { margin-top: 3.4rem; }
 .new-home-kicker {
   display: block;
   color: #ff7a32;
@@ -130,7 +130,7 @@ body:has(.new-home-page) .site-header .button:not(.button-primary):focus-visible
   display: grid;
   grid-auto-flow: column;
   grid-auto-columns: calc((100% - 2.25rem) / 4);
-  gap: .75rem;
+  gap: 1rem;
   overflow-x: auto;
   padding-inline: 0;
   scrollbar-width: none;
@@ -217,7 +217,7 @@ body:has(.new-home-page) .site-header .button:not(.button-primary):focus-visible
 }
 .new-home-rail-next { background: #ff6d2d; color: #1a0a05; }
 .new-home-rail-button:disabled { cursor: default; opacity: .42; }
-.new-home-category-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .7rem; margin-top: 1.2rem; }
+.new-home-category-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .9rem; margin-top: 1.2rem; }
 .new-home-category {
   position: relative;
   min-height: 15rem;
@@ -247,7 +247,7 @@ body:has(.new-home-page) .site-header .button:not(.button-primary):focus-visible
 .new-home-category h3 { margin: 0 0 .25rem; font-size: 1.15rem; }
 .new-home-category p { margin: 0; color: #fff; font-size: .7rem; }
 .new-home-category-copy > span { display: block; margin-top: .55rem; color: #ff842e; font-size: .62rem; font-weight: 800; }
-.new-home-learning-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; }
+.new-home-learning-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
 .new-home-learning-card {
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(0, .85fr);
@@ -324,11 +324,11 @@ body:has(.new-home-page) .site-header .button:not(.button-primary):focus-visible
 .new-home-premium-poster small { bottom: .35rem; color: #fff; font-size: .42rem; }
 @media (max-width: 719px) {
   .new-home-page { width: min(100% - 1rem, 40rem); padding-top: .5rem; }
-  .new-home-page > * + * { margin-top: 2.28rem; }
-  .new-home-page > .new-home-watch { margin-top: 1.68rem; padding-top: 0; }
-  .new-home-page > .new-home-discover { margin-top: 2.7rem; }
+  .new-home-page > * + * { margin-top: 2.6rem; }
+  .new-home-page > .new-home-watch { margin-top: 1.9rem; padding-top: 0; }
+  .new-home-page > .new-home-discover { margin-top: 3rem; }
   .new-home-page > .new-home-story-panel,
-  .new-home-page > .new-home-premium-panel { margin-top: 2.4rem; }
+  .new-home-page > .new-home-premium-panel { margin-top: 2.7rem; }
   .new-home-hero { display: grid; grid-template-rows: auto auto; aspect-ratio: auto; min-height: 0; }
   .new-home-hero-copy { order: 2; width: 100%; height: auto; padding: 1.15rem; background: #1c0e09; }
   .new-home-hero-copy h1 { max-width: 13ch; font-size: clamp(1.7rem, 9vw, 2.6rem); }

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type Step = "closed" | "msisdn" | "confirm" | "done";
 
@@ -109,7 +110,7 @@ export function HeaderUnsubscribeButton() {
         Unsubscribe
       </button>
 
-      {step === "closed" ? null : (
+      {step === "closed" || typeof document === "undefined" ? null : createPortal(
         <div className="unsubscribe-modal-backdrop" role="presentation" onClick={close}>
           <div
             className="unsubscribe-modal"
@@ -193,7 +194,8 @@ export function HeaderUnsubscribeButton() {
               </>
             ) : null}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
