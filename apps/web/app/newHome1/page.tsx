@@ -43,7 +43,7 @@ export async function NewHomePage() {
           <p>Pakistan ki liye, aik hi jagah.</p>
           <div className="new-home-actions">
             <Link className="new-home-button new-home-button-primary" href="/explore">Explore Content <span aria-hidden="true">→</span></Link>
-            <Link className="new-home-button new-home-button-dark" href="/ask">Jalwa+ <span aria-hidden="true">♛</span></Link>
+            <Link className="new-home-button new-home-button-dark" href="/pricing">Jalwa+</Link>
           </div>
         </div>
         <div className="new-home-hero-art" aria-hidden="true">

@@ -38,6 +38,11 @@ export const metadata: Metadata = {
   description: "Pakistan's mobile-first platform for useful content and positive entertainment.",
   applicationName: "Jalwa",
   manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
   robots: isFrontendPreview || isStaging ? { index: false, follow: false } : undefined,
 };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, themeColor: "#09090b" };
