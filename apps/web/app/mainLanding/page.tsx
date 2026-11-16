@@ -30,7 +30,7 @@ export default async function MainLandingPage({ searchParams }: { searchParams: 
       h1="Jalwa — Scroll se aagay. Jalwa dekho. Kahaniyan aur entertainment, aik jagah."
       webBannerSrc="/landing/default-web-banner.jpeg"
       mobileBannerSrc="/landing/default-mobile-banner.jpeg"
-      offerNotice="Subscribe Now click kertay he Rs.1 kat lia jae ga. Ye limited offer sirf aj k din k liye valid hai. Us k bad PKR 990/m, tax inclusive, lago hun gay."
+      offerNotice={"Rs. 1 today · PKR 990/month thereafter (inclusive of taxes).\nSubscribe Now click kartay hi Rs. 1 kat lia jayega. Ye limited offer sirf aaj ke din ke liye valid hai. Us ke baad PKR 990/month, tax inclusive, lagu hon gay."}
       ctaHref="/explore"
       subscribeCta="Subscribe Now"
     />

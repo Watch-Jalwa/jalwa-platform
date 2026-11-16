@@ -20,15 +20,29 @@ type Campaign = {
 };
 
 const categories = [
-  { title: "Entertainment", copy: "Kahaniyan aur family entertainment, aik jagah.", icon: "🎬" },
-  { title: "Learn & Grow", copy: "Nayi skills aur kaam ki baatein seekhein.", icon: "📖" },
-];
+  { title: "Entertainment", copy: "Kahaniyan aur family entertainment, aik jagah.", icon: "play" },
+  { title: "Learn & Grow", copy: "Nayi skills aur kaam ki baatein seekhein.", icon: "book" },
+] as const;
 
 const trust = [
-  { title: "Mobile par dekhein", copy: "Apni screen par Jalwa explore karein", icon: "📱" },
-  { title: "Apna content chunein", copy: "Apni pasand ki categories dekhein", icon: "▶️" },
-  { title: "Aur bhi explore karein", copy: "Jalwa ki duniya discover karein", icon: "🧭" },
+  { number: "01", title: "Mobile par dekhein", copy: "Apni screen par Jalwa explore karein" },
+  { number: "02", title: "Apna content chunein", copy: "Apni pasand ki categories dekhein" },
+  { number: "03", title: "Aur bhi explore karein", copy: "Jalwa ki duniya discover karein" },
 ];
+
+function LandingIcon({ name }: { name: "play" | "book" }) {
+  return name === "play" ? (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <rect x="3" y="4" width="18" height="16" rx="3" />
+      <path d="m10 8 6 4-6 4z" />
+    </svg>
+  ) : (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+      <path d="M12 5C8 2 4 3 3 5v14c3-2 6-2 9 1 3-3 6-3 9-1V5c-1-2-5-3-9 0z" />
+      <path d="M12 5v15" />
+    </svg>
+  );
+}
 
 export function LandingShell({
   campaign,
@@ -66,6 +80,19 @@ export function LandingShell({
         he={campaign.he}
       />
 
+      <header className="landing-site-header">
+        <div className="landing-page-wrap">
+          <Link className="landing-brand" href="/">
+            <span className="landing-brand-mark">J</span>
+            <span>Jalwa</span>
+          </Link>
+          <nav className="landing-site-nav" aria-label="Landing page">
+            <Link href="/">Home</Link>
+            <a href="mailto:support@digisphere.com.pk">Help</a>
+          </nav>
+        </div>
+      </header>
+
       <h1 className="visually-hidden">{h1}</h1>
 
       <div className="landing-above-fold">
@@ -93,15 +120,19 @@ export function LandingShell({
       </div>
 
       <section className="landing-below" aria-labelledby="landing-offerings">
-        <div className="landing-section-rule">
+        <div className="landing-section-top">
+          <span className="landing-eyebrow">Explore Jalwa</span>
           <h2 id="landing-offerings">Jalwa par kya milega?</h2>
+          <p>Har mood ka apna Jalwa.</p>
         </div>
         <div className="landing-category-grid">
           {categories.map((item) => (
             <article className="landing-category-card" key={item.title}>
-              <span aria-hidden="true">{item.icon}</span>
-              <h3>{item.title}</h3>
-              <p>{item.copy}</p>
+              <span className="landing-category-icon"><LandingIcon name={item.icon} /></span>
+              <div>
+                <h3>{item.title}</h3>
+                <p>{item.copy}</p>
+              </div>
             </article>
           ))}
         </div>
@@ -109,7 +140,7 @@ export function LandingShell({
         <div className="landing-trust-row">
           {trust.map((item) => (
             <article key={item.title}>
-              <span aria-hidden="true">{item.icon}</span>
+              <span className="landing-step-number">{item.number}</span>
               <strong>{item.title}</strong>
               <small>{item.copy}</small>
             </article>

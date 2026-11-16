@@ -33,10 +33,11 @@ export function LandingSubscribe({
   ctaLabel?: string;
 }) {
   const [msisdn, setMsisdn] = useState("");
-  const [consent, setConsent] = useState(true);
+  const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const attribution = useMemo(() => attributionForBilling(campaign), [campaign]);
+  const offerLines = offerNotice?.split("\n") ?? [];
 
   async function subscribe() {
     setBusy(true);
@@ -106,12 +107,11 @@ export function LandingSubscribe({
   return (
     <section className="landing-subscribe" aria-labelledby="landing-subscribe-title">
       <div className="landing-subscribe-head">
-        <span className="landing-subscribe-phone" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6A19.79 19.79 0 0 1 2.12 4.18 2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z" />
-          </svg>
-        </span>
-        <h2 id="landing-subscribe-title">{heading}</h2>
+        <div>
+          <h2 id="landing-subscribe-title">{heading}</h2>
+          <p className="landing-subscribe-subtitle">Jalwa ki duniya unlock karein.</p>
+        </div>
+        <span className="landing-offer-badge">Rs. 1 today</span>
       </div>
 
       <div className="landing-subscribe-landscape">
@@ -142,7 +142,7 @@ export function LandingSubscribe({
           <label className="landing-consent">
             <input checked={consent} onChange={(event) => setConsent(event.target.checked)} type="checkbox" />
             <span>
-              I agree to Jalwa <Link href="/legal/terms">Terms and Conditions</Link>
+              I agree to Jalwa <Link href="/legal/terms">Terms and Conditions</Link> .
             </span>
           </label>
 
@@ -160,12 +160,17 @@ export function LandingSubscribe({
 
       {offerNotice ? (
         <aside className="landing-offer-banner" aria-label="Offer notice">
-          <span className="landing-offer-megaphone" aria-hidden="true">
+          <span className="landing-offer-info" aria-hidden="true">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
               <path d="M3 10v4a1 1 0 0 0 1 1h2.2l4.3 3.4A1 1 0 0 0 12 18V6a1 1 0 0 0-1.5-.8L6.2 8.6H4a1 1 0 0 0-1 1zm14.1-2.5a1 1 0 0 0-.7 1.7 4 4 0 0 1 0 5.6 1 1 0 1 0 1.4 1.4 6 6 0 0 0 0-8.4 1 1 0 0 0-.7-.3zm.2 3.1a1 1 0 0 0-.6 1.2 1.5 1.5 0 0 1 0 1.4 1 1 0 1 0 1.8.8 3.5 3.5 0 0 0 0-3 1 1 0 0 0-1.2-.4z" />
             </svg>
           </span>
-          <p>{offerNotice}</p>
+          <p>
+            <strong>{offerLines[0]}</strong>
+            {offerLines.slice(1).map((line, index) => (
+              <span key={`${line}-${index}`}><br />{line}</span>
+            ))}
+          </p>
         </aside>
       ) : null}
 
