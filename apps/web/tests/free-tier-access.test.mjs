@@ -68,7 +68,8 @@ test("locked content CTA routes guests to sign-in and members to pricing", () =>
 });
 
 test("client-requested titles stay on the temporary hide list", () => {
-  assert.equal(TEMPORARILY_HIDDEN_CONTENT_SLUGS.length, 4);
+  assert.equal(TEMPORARILY_HIDDEN_CONTENT_SLUGS.length, 5);
+  assert.equal(isTemporarilyHiddenSlug("mossy-tree-cc0"), true);
   assert.equal(isTemporarilyHiddenSlug("nasa-space-station-views"), true);
   assert.equal(isTemporarilyHiddenSlug("abrasive-bird-debate-cc0"), true);
   assert.equal(isTemporarilyHiddenSlug("house-sparrow-tschilp-cc0"), true);
