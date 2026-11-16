@@ -475,6 +475,14 @@
   color: var(--muted);
   font-size: 0.72rem;
 }
+.trending-access-label {
+  display: inline-block;
+  padding: 0.12rem 0.3rem;
+  border-radius: 0.25rem;
+  background: var(--jalwa-orange);
+  color: #111;
+  font-weight: 800;
+}
 
 /* ---- About + Arena+ ---- */
 .home-promo-grid {

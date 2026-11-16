@@ -77,7 +77,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         {campaignShell ? null : <JalwaAdSlot />}
         <main className={campaignShell ? "site-main site-main-campaign" : "site-main"}>{children}</main>
         {campaignShell ? null : <SiteFooter />}
-        {campaignShell ? null : <BottomNav />}
+        {campaignShell ? null : <BottomNav signedIn={signedIn} />}
         <Suspense fallback={null}>
           <PremiumStatusToast signedIn={signedIn} />
         </Suspense>

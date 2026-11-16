@@ -65,3 +65,22 @@
   width: 100%;
   min-width: 0;
 }
+
+.for-you-page .recommendation-grid {
+  gap: 1.875rem;
+}
+
+.recommendation-card-locked .recommendation-art span {
+  background: var(--brand);
+  color: #111;
+}
+
+.page-shell > .content-grid {
+  row-gap: 1.4rem;
+}
+
+@media (max-width: 700px) {
+  .for-you-page .recommendation-grid {
+    gap: 1.5rem;
+  }
+}

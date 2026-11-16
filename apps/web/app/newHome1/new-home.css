@@ -8,17 +8,12 @@
 }
 
 body:has(.new-home-page) .preview-banner { display: none; }
-body:has(.new-home-page) .site-header .button { border-radius: .5rem; }
 body:has(.new-home-page) .site-header .button:not(.button-primary):hover,
 body:has(.new-home-page) .site-header .button:not(.button-primary):focus-visible {
   background: #ff6d2d;
   border-color: transparent;
   color: #160a06;
 }
-@media (min-width: 721px) {
-  body:has(.new-home-page) .site-header { min-height: 4.75rem; padding-inline: 4.2%; }
-}
-
 .new-home-page > * + * { margin-top: 3.4rem; }
 .new-home-page > .new-home-watch { margin-top: 0; padding-top: 2.4rem; }
 .new-home-page > .new-home-discover { margin-top: 4rem; }
@@ -358,11 +353,6 @@ body:has(.new-home-page) .site-header .button:not(.button-primary):focus-visible
   .new-home-premium-panel .new-home-section-image { height: auto; object-fit: contain; }
   .new-home-section-image { max-height: none; object-fit: contain; }
   .new-home-premium-visual { min-height: 12rem; }
-}
-@media (min-width: 721px) and (max-width: 1150px) {
-  body:has(.new-home-page) .site-header { padding-inline: 3%; }
-  body:has(.new-home-page) .site-header .desktop-nav { margin-inline: auto; }
-  body:has(.new-home-page) .site-header .header-actions { display: none; }
 }
 @media (prefers-reduced-motion: reduce) {
   .new-home-button, .new-home-small-button, .new-home-category, .new-home-video-art img { transition: none; }

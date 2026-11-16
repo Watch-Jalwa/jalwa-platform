@@ -46,7 +46,7 @@ export function TrendingRail({ items }: { items: CatalogueItem[] }) {
                 <h3>{item.title}</h3>
                 <p>
                   {item.category} · {formatDuration(item.durationSeconds)}
-                  {locked ? ` · ${lockedContentBadge(signedIn)}` : ""}
+                  {locked ? <> · <span className="trending-access-label">{lockedContentBadge(signedIn)}</span></> : null}
                 </p>
               </div>
             </Link>

@@ -249,7 +249,19 @@ button, input { font: inherit; }
 .button-primary:hover { background: var(--brand-strong); }
 .button-secondary { background: rgba(255,255,255,.08); }
 .header-signin,
-.header-signup { background: var(--brand); color: #111; border-color: transparent; }
+.header-signup {
+  background: rgba(255,255,255,.08);
+  color: var(--text);
+  border-color: var(--border);
+}
+.header-signin:hover,
+.header-signin:focus-visible,
+.header-signup:hover,
+.header-signup:focus-visible {
+  background: var(--brand);
+  color: #111;
+  border-color: transparent;
+}
 .eyebrow { color: var(--brand); font-size: .75rem; font-weight: 800; text-transform: uppercase; letter-spacing: .12em; }
 .section-heading { display: flex; align-items: end; justify-content: space-between; gap: 1rem; margin: 2rem 0 1rem; }
 .section-heading h2 { margin: .25rem 0 0; font-size: 1.6rem; }
