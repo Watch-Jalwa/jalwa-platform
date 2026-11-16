@@ -51,7 +51,7 @@ export default async function ExplorePage({ searchParams }: { searchParams: Sear
       {access.totalVideos ? (
         <p className="result-summary">
           Free plan: {Math.min(access.freeUnlocked, FREE_UNLOCKED_VIDEO_LIMIT)} of {access.totalVideos} videos playable.
-          {access.lockedForPremium ? ` ${access.lockedForPremium} locked for Tamasha Premium / Monthly.` : ""}
+          {access.lockedForPremium ? ` ${access.lockedForPremium} locked for Jalwa Premium / Monthly.` : ""}
         </p>
       ) : null}
       {content.length ? <div className="content-grid">{content.map((item) => <ContentCard item={item} key={item.slug} />)}</div> : <div className="empty-state"><h2>Coming Soon</h2><p>New content is on the way.</p></div>}
