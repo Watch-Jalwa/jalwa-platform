@@ -1,6 +1,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { searchCatalogue } from "@/lib/catalogue/repository";
+import { WatchRail } from "./watch-rail";
 import "./new-home.css";
 
 export const dynamic = "force-dynamic";
@@ -9,13 +10,19 @@ const FEATURED = [
   { slug: "spring-blender", title: "Spring", meta: "Entertainment · 7m 50s", fallback: "/catalogue/thumbnails/spring-blender.jpeg" },
   { slug: "sprite-fright", title: "Sprite Fright", meta: "Entertainment · 3m 30s", fallback: "/catalogue/thumbnails/sprite-fright.jpeg" },
   { slug: "sintel", title: "Sintel", meta: "Entertainment · 14m 6s", fallback: "/catalogue/thumbnails/sintel.jpeg" },
-  { slug: "apollo-11-eagle-has-landed", title: "Eagle Has Landed: The Flight of Apollo 11", meta: "Learn · 20m", fallback: "/catalogue/thumbnails/apollo-11-eagle-has-landed.jpeg" },
+  { slug: "apollo-11-eagle-has-landed", title: "Eagle Has Landed: Apollo 11", meta: "Learn · 20m", fallback: "/catalogue/thumbnails/apollo-11-eagle-has-landed.jpeg" },
+  { slug: "caminandes-llamigos", title: "Caminandes", meta: "Entertainment · 2m", fallback: "/catalogue/thumbnails/caminandes-llamigos.jpeg" },
 ] as const;
 
 const CATEGORIES = [
-  { slug: "entertainment", title: "Entertainment", copy: "Movies, animation and stories." },
-  { slug: "learn", title: "Learn", copy: "Skills, nature and useful ideas." },
-  { slug: "pakistan", title: "Pakistan", copy: "Culture, history and people." },
+  { slug: "entertainment", title: "Entertainment", copy: "Movies, animation & stories.", image: "/catalogue/thumbnails/sprite-fright.jpeg" },
+  { slug: "learn", title: "Learn", copy: "Nature, science & discovery.", image: "/catalogue/thumbnails/vanellus-vanellus-cc0.jpeg" },
+  { slug: "pakistan", title: "Pakistan", copy: "People, culture & stories.", image: "/home/new-home-stories.jpeg" },
+] as const;
+
+const LEARNING = [
+  { slug: "vanellus-vanellus-cc0", title: "Discover the wild", copy: "Get closer to the extraordinary natural world.", fallback: "/catalogue/thumbnails/vanellus-vanellus-cc0.jpeg" },
+  { slug: "apollo-11-eagle-has-landed", title: "Journey beyond Earth", copy: "Explore the story behind the first moon landing.", fallback: "/catalogue/thumbnails/apollo-11-eagle-has-landed.jpeg" },
 ] as const;
 
 export async function NewHomePage() {
@@ -32,7 +39,7 @@ export async function NewHomePage() {
       <section className="new-home-hero" aria-labelledby="new-home-title">
         <div className="new-home-hero-copy">
           <span className="new-home-kicker">JALWA · PAKISTAN</span>
-          <h1 id="new-home-title">Pakistan ki Kahaniyan, Ab Jalwa Par</h1>
+          <h1 id="new-home-title">Pakistan ki<br />Kahaniyan,<br />Ab Jalwa Par</h1>
           <p>Pakistan ki liye, aik hi jagah.</p>
           <div className="new-home-actions">
             <Link className="new-home-button new-home-button-primary" href="/explore">Explore Content <span aria-hidden="true">→</span></Link>
@@ -49,12 +56,10 @@ export async function NewHomePage() {
           <div>
             <span className="new-home-kicker">JALWA ORIGINALS</span>
             <h2 id="new-home-watch-title"><em>More to Watch.</em> More to Explore.</h2>
-            <p>Discover what Pakistan is watching right now.</p>
+            <p>Discover films, animation and fascinating stories.</p>
           </div>
-          <Link href="/explore" className="new-home-small-button">View All <span aria-hidden="true">→</span></Link>
         </div>
-        <div className="new-home-rail">
-          <button className="new-home-rail-button" type="button" aria-label="Previous videos">‹</button>
+        <WatchRail>
           {FEATURED.map((featured) => {
             const item = bySlug.get(featured.slug);
             return (
@@ -65,35 +70,64 @@ export async function NewHomePage() {
                   <span className="new-home-play" aria-hidden="true">▶</span>
                   <span className="new-home-quality">HD</span>
                 </div>
-                <h3>{item?.title ?? featured.title}</h3>
+                <h3>{featured.title}</h3>
                 <p>{featured.meta}</p>
               </Link>
             );
           })}
-          <button className="new-home-rail-button new-home-rail-next" type="button" aria-label="Next videos">›</button>
-        </div>
+        </WatchRail>
       </section>
 
       <section className="new-home-section new-home-discover" aria-labelledby="new-home-discover-title">
-        <span className="new-home-kicker">EXPLORE JALWA</span>
-        <h2 id="new-home-discover-title">Find something worth watching.</h2>
-        <p>Choose what you love. Discover stories and skills from Pakistan and beyond.</p>
+        <h2 id="new-home-discover-title">Explore Jalwa</h2>
         <div className="new-home-category-grid">
           {CATEGORIES.map((category) => (
             <Link href={`/explore?category=${category.slug}`} className="new-home-category" key={category.slug}>
-              <h3>{category.title}</h3>
-              <p>{category.copy}</p>
-              <span>Explore <b aria-hidden="true">→</b></span>
+              <Image src={category.image} alt="" fill sizes="(max-width: 720px) 100vw, 33vw" unoptimized />
+              <span className="new-home-category-overlay" aria-hidden="true" />
+              <div className="new-home-category-copy">
+                <h3>{category.title}</h3>
+                <p>{category.copy}</p>
+                <span>Explore <b aria-hidden="true">→</b></span>
+              </div>
             </Link>
           ))}
+        </div>
+      </section>
+
+      <section className="new-home-section new-home-learning" aria-labelledby="new-home-learning-title">
+        <div className="new-home-section-heading">
+          <div>
+            <span className="new-home-kicker">DISCOVER MORE</span>
+            <h2 id="new-home-learning-title">Watch. Learn. Get curious.</h2>
+            <p>Explore the world, from wildlife to space.</p>
+          </div>
+          <Link href="/explore?category=learn" className="new-home-small-button">Explore learning <span aria-hidden="true">→</span></Link>
+        </div>
+        <div className="new-home-learning-grid">
+          {LEARNING.map((lesson) => {
+            const item = bySlug.get(lesson.slug);
+            return (
+              <Link className="new-home-learning-card" href={`/watch/${lesson.slug}`} key={lesson.slug}>
+                <div className="new-home-learning-art">
+                  <Image src={item?.thumbnailUrl ?? lesson.fallback} alt="" fill loading="eager" unoptimized sizes="(max-width: 720px) 100vw, 50vw" />
+                </div>
+                <div>
+                  <h3>{item?.title ?? lesson.title}</h3>
+                  <p>{lesson.copy}</p>
+                  <span>Watch now <b aria-hidden="true">→</b></span>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       </section>
 
       <section className="new-home-feature-panel new-home-story-panel" aria-labelledby="new-home-story-title">
         <div>
           <span className="new-home-kicker">ABOUT US</span>
-          <h2 id="new-home-story-title">Stories that connect Pakistan.</h2>
-          <p>Jalwa brings people together through homegrown stories, meaningful learning and entertainment made for every generation.</p>
+          <h2 id="new-home-story-title">Pakistan. In every story.</h2>
+          <p>Entertainment, learning and the stories that bring us together. Discover a world of content made for curious minds.</p>
           <Link className="new-home-button new-home-button-primary" href="/explore">Discover Jalwa <span aria-hidden="true">→</span></Link>
         </div>
         <Image
@@ -109,10 +143,10 @@ export async function NewHomePage() {
       <section className="new-home-feature-panel new-home-premium-panel" aria-labelledby="new-home-premium-title">
         <div>
           <span className="new-home-kicker">♛ JALWA+</span>
-          <h2 id="new-home-premium-title">More to Watch.<br />More to Explore.</h2>
-          <p>A larger collection of shows, movies and exclusive stories, all in one place.</p>
+          <h2 id="new-home-premium-title">Unlock the full Jalwa experience.</h2>
+          <p>More stories, more discoveries and access to premium content.</p>
           <small>AD-LITE VIEWING &nbsp; · &nbsp; EXCLUSIVE CONTENT &nbsp; · &nbsp; EARLY ACCESS</small>
-          <Link className="new-home-button new-home-button-primary" href="/pricing">See Plans &amp; Subscribe <span aria-hidden="true">→</span></Link>
+          <Link className="new-home-button new-home-button-primary" href="/pricing">Explore premium <span aria-hidden="true">→</span></Link>
         </div>
         <Image
           className="new-home-section-image new-home-premium-image"
