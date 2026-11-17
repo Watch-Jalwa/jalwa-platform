@@ -9,6 +9,9 @@ import type { CatalogueCategory, CatalogueItem, LiveCatalogueCollection, Playbac
 const HIDDEN_PUBLIC_CATEGORY_SLUGS = new Set(["deen", "kissan"]);
 
 function asString(value: unknown) { return typeof value === "string" ? value : null; }
+export function cleanCatalogueDescription(value: unknown) {
+  return asString(value)?.replace(/^Live-test candidate\s+ITEM-\d+:\s*/i, "").trim() ?? null;
+}
 function asTimestamp(value: unknown) {
   if (typeof value === "string") return value;
   if (value instanceof Date && Number.isFinite(value.getTime())) return value.toISOString();
@@ -21,7 +24,7 @@ function mapSearchRow(row: Record<string, unknown>): CatalogueItem {
     slug: asString(row.slug) ?? "unavailable",
     title: asString(row.title) ?? "Untitled",
     titleUrdu: asString(row.title_ur),
-    description: asString(row.description),
+    description: cleanCatalogueDescription(row.description),
     category: asString(row.category_name) ?? "Jalwa",
     categorySlug: asString(row.category_slug) ?? "all",
     durationSeconds: asNumber(row.duration_seconds),
@@ -187,7 +190,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       slug: data.slug,
       title: data.title_en,
       titleUrdu: data.title_ur,
-      description: data.description_en,
+      description: cleanCatalogueDescription(data.description_en),
       category: category?.name_en ?? "Jalwa",
       categorySlug: category?.slug ?? "all",
       durationSeconds: data.duration_seconds,
@@ -244,7 +247,7 @@ export async function getLiveCatalogue(): Promise<{ items: CatalogueItem[]; coll
     const collections = (collectionRows ?? []).map((row) => ({
       slug: row.slug,
       title: row.title_en,
-      description: row.description_en,
+      description: cleanCatalogueDescription(row.description_en),
       items: (membershipRows ?? [])
         .filter((membership) => membership.collection_id === row.id)
         .map((membership) => bySlug.get(slugById.get(membership.content_id) ?? ""))
@@ -320,7 +323,7 @@ export async function getPremiumCollections(): Promise<PremiumCatalogueCollectio
     return (collections ?? []).map((collection) => ({
       slug: collection.slug,
       title: collection.title_en,
-      description: collection.description_en,
+      description: cleanCatalogueDescription(collection.description_en),
       items: (membership ?? [])
         .filter((entry) => entry.collection_id === collection.id)
         .map((entry) => itemBySlug.get(slugById.get(entry.content_id) ?? ""))

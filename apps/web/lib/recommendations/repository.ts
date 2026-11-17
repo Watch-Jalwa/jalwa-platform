@@ -6,6 +6,7 @@ import { filterVisibleCatalogueItems } from "@/lib/catalogue/temporarily-hidden-
 import type { CatalogueItem } from "@/lib/catalogue/types";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import { createClient } from "@/lib/database/server";
+import { cleanCatalogueDescription } from "@/lib/catalogue/repository";
 
 export type RecommendedItem = CatalogueItem & { recommendationReason?: string; recommendationScore?: number };
 
@@ -15,7 +16,7 @@ function mapRow(row: Record<string, unknown>): RecommendedItem {
     slug: typeof row.slug === "string" ? row.slug : "unavailable",
     title: typeof row.title === "string" ? row.title : "Untitled",
     titleUrdu: typeof row.title_ur === "string" ? row.title_ur : null,
-    description: typeof row.description === "string" ? row.description : null,
+    description: cleanCatalogueDescription(row.description),
     category: typeof row.category_name === "string" ? row.category_name : "Jalwa",
     categorySlug: typeof row.category_slug === "string" ? row.category_slug : "all",
     durationSeconds: typeof row.duration_seconds === "number" ? row.duration_seconds : null,
