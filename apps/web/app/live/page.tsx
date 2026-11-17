@@ -15,7 +15,6 @@ function LiveCard({ item }: { item: CatalogueItem }) {
     <Link href={`/watch/${item.slug}`}>
       <div className="live-card-art" aria-hidden="true"><span className={`live-card-status live-card-status-${status}`}>{label}</span></div>
       <h3>{item.title}</h3>
-      {item.titleUrdu ? <p className="urdu">{item.titleUrdu}</p> : null}
       <p>{item.description}</p>
     </Link>
     {item.playback?.officialSourceUrl ? <Link className="live-source-link" href={item.playback.officialSourceUrl} rel="noreferrer" target="_blank">Official source ↗</Link> : null}

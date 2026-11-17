@@ -89,7 +89,6 @@ export default async function WatchPage({ params }: { params: Params }) {
     <article className="watch-copy">
       <span className="eyebrow">{item.isEarlyAccess ? "Early access · Jalwa Originals" : item.category} · {item.contentType === "live" ? "Live source" : formatDuration(item.durationSeconds)}</span>
       <h1>{item.title}</h1>
-      {item.titleUrdu ? <p className="urdu watch-urdu">{item.titleUrdu}</p> : null}
       {item.description ? <p>{item.description}</p> : null}
       {item.attribution ? <p className="attribution">{item.attribution}</p> : null}
       {liveSource ? <p className="live-non-endorsement">This source is presented for public information. The source institution does not sponsor or endorse Jalwa or its advertisers.</p> : null}
