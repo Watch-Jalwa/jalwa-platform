@@ -24,7 +24,7 @@ jobs:
     environment: staging
     env:
       HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
-      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      USER: ${{ vars.STAGING_USER || 'deploy' }}
       APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
       SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
@@ -37,7 +37,7 @@ jobs:
           test "$GITHUB_REF" = refs/heads/main || { echo 'Staging deploys must run from main.' >&2; exit 1; }
           [[ "$GITHUB_SHA" =~ ^[0-9a-f]{40}$ ]]
           test "$APP_DIR" = /opt/codistan/jalwa-platform || { echo 'Managed Codistan staging root must remain /opt/codistan/jalwa-platform.' >&2; exit 1; }
-          test "$USER" = codistan || { echo 'Codistan staging deploy user must remain codistan unless the server access model is deliberately migrated.' >&2; exit 1; }
+          test "$USER" = deploy || { echo 'Codistan staging deploy user must remain codistan unless the server access model is deliberately migrated.' >&2; exit 1; }
           for name in HOST USER KNOWN_HOSTS SSH_KEY; do
             test -n "${!name:-}" || { echo "Missing staging access value $name" >&2; exit 1; }
           done
@@ -102,7 +102,7 @@ jobs:
     needs: build
     env:
       HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
-      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      USER: ${{ vars.STAGING_USER || 'deploy' }}
       APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
       DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
       KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
