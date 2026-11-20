@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export function SocialActions({ contentId, title }: { contentId?: string | null; title: string }) {
+  const router = useRouter();
   const [message, setMessage] = useState("");
   const [following, setFollowing] = useState(false);
 
@@ -13,7 +15,7 @@ export function SocialActions({ contentId, title }: { contentId?: string | null;
     }
     if (!contentId) { setMessage("This action becomes persistent on the connected production backend."); return; }
     const response = await fetch("/api/social/preferences", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(name === "follow" || name === "unfollow" ? { action: name, entityType: "content", entityId: contentId } : { action: name, contentId, context: { page: "watch" } }) });
-    if (response.status === 401) { window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`; return; }
+    if (response.status === 401) { router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`); return; }
     if (!response.ok) { const data = await response.json(); setMessage(data.error ?? "Action unavailable."); return; }
     if (name === "follow" || name === "unfollow") setFollowing(name === "follow");
     setMessage(name === "hide" ? "This title will be reduced in your recommendations." : name === "report" ? "Report signal recorded for review." : name === "share" ? "Link shared or copied." : following ? "No longer following this title." : "Following this title.");

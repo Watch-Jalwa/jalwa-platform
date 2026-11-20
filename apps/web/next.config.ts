@@ -5,7 +5,8 @@ const contentSecurityPolicy = [
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'self'",
-  "form-action 'self'",
+  // Allow hosted JazzCash LinkWallet POST (PIN/MPIN only on JazzCash).
+  "form-action 'self' https://onlinepayments.jazzcash.com.pk https://payments.jazzcash.com.pk https://pgw.jazzcash.com.pk https://sandbox.jazzcash.com.pk",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",

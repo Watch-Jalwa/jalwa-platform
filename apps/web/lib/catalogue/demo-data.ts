@@ -1,5 +1,10 @@
 import type { CatalogueCategory, CatalogueItem } from "./types";
 
+/**
+ * Frontend-preview fixture catalogue only.
+ * Served when `canUseDemoData()` is true (NEXT_PUBLIC_FRONTEND_PREVIEW / Vercel preview).
+ * Never treat these YouTube sample IDs as staging/production catalogue inventory.
+ */
 export const categories: CatalogueCategory[] = [
   { slug: "originals", label: "Jalwa Originals", urdu: "جلوہ اوریجنلز", icon: "✦" },
   { slug: "shorts", label: "Shorts", urdu: "شارٹس", icon: "▯" },

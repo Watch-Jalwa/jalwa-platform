@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { admin, magicLink } from "better-auth/plugins";
+import { admin, emailOTP, magicLink, phoneNumber } from "better-auth/plugins";
 import { nextCookies } from "better-auth/next-js";
 import nodemailer from "nodemailer";
 import { databasePool } from "@/lib/database/pool";
@@ -34,6 +34,22 @@ export const auth = betterAuth({
   secret: process.env.BETTER_AUTH_SECRET,
   database: databasePool,
   advanced: { database: { generateId: "uuid", joins: true } },
+  emailAndPassword: {
+    enabled: true,
+    minPasswordLength: 7,
+    maxPasswordLength: 128,
+    autoSignIn: true,
+    password: {
+      hash: async (password) => {
+        const { hashPassword } = await import("./auth/password-hash.mjs");
+        return hashPassword(password);
+      },
+      verify: async ({ hash, password }) => {
+        const { verifyPassword } = await import("./auth/password-hash.mjs");
+        return verifyPassword({ hash, password });
+      },
+    },
+  },
   socialProviders: socialProviders(),
   plugins: [
     magicLink({
@@ -57,6 +73,36 @@ export const auth = betterAuth({
           text: `Sign in to Jalwa: ${url}\n\nThis link expires in 10 minutes.`,
           html: `<p>Sign in to Jalwa:</p><p><a href="${url.replaceAll('"', '&quot;')}">Continue to Jalwa</a></p><p>This link expires in 10 minutes.</p>`,
         });
+      },
+    }),
+    emailOTP({
+      otpLength: 4,
+      expiresIn: 5 * 60,
+      allowedAttempts: 5,
+      // Temporary fixed code for staging/dev auth testing. Replace before production.
+      generateOTP: () => "1234",
+      sendVerificationOTP: async ({ email, otp, type }) => {
+        if (type !== "sign-in") return;
+        await smtpTransport().sendMail({
+          from: process.env.SMTP_FROM ?? "Jalwa <no-reply@watch-jalwa.com>",
+          to: email,
+          subject: "Your Jalwa sign-in code",
+          text: `Your Jalwa code is ${otp}.\n\nIt expires in 5 minutes and stops working after five unsuccessful attempts.`,
+          html: `<p>Your Jalwa code is <strong>${otp}</strong>.</p><p>It expires in 5 minutes and stops working after five unsuccessful attempts.</p>`,
+        });
+      },
+    }),
+    phoneNumber({
+      otpLength: 4,
+      expiresIn: 5 * 60,
+      allowedAttempts: 5,
+      // Temporary fixed code for JazzCash pay-first → OTP sign-in. Replace with SMS provider before production.
+      sendOTP: async () => {},
+      verifyOTP: async ({ code }) => code === "1234",
+      phoneNumberValidator: async (value) => /^\+923\d{9}$/.test(value) || /^03\d{9}$/.test(value),
+      signUpOnVerification: {
+        getTempEmail: (phone) => `${String(phone).replace(/\D/g, "")}@msisdn.jalwa.local`,
+        getTempName: (phone) => `Jalwa ${phone}`,
       },
     }),
     admin(),

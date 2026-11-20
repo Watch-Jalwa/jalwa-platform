@@ -1,15 +1,16 @@
 const VIDEO_MIME_TYPES = new Set(["video/mp4", "video/quicktime", "video/webm", "video/x-matroska"]);
+const AUDIO_MIME_TYPES = new Set(["audio/ogg", "audio/mpeg", "audio/mp4", "audio/wav", "audio/webm"]);
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024 * 1024;
 
 export function validateMediaUpload({ mimeType, sizeBytes }) {
-  if (!VIDEO_MIME_TYPES.has(mimeType)) return { ok: false, error: "Unsupported video format." };
+  if (!VIDEO_MIME_TYPES.has(mimeType) && !AUDIO_MIME_TYPES.has(mimeType)) return { ok: false, error: "Unsupported media format." };
   if (!Number.isFinite(sizeBytes) || sizeBytes <= 0) return { ok: false, error: "File size is required." };
   if (sizeBytes > MAX_UPLOAD_BYTES) return { ok: false, error: "Video exceeds the 5 GB upload limit." };
   return { ok: true };
 }
 
 export function selectPipeline({ contentType, durationSeconds }) {
-  return contentType === "short" || (Number.isFinite(durationSeconds) && durationSeconds > 0 && durationSeconds <= 90)
+  return contentType === "audio" || contentType === "short" || (Number.isFinite(durationSeconds) && durationSeconds > 0 && durationSeconds <= 90)
     ? "short_mp4"
     : "hls";
 }

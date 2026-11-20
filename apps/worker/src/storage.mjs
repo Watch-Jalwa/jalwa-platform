@@ -86,6 +86,7 @@ function contentType(path) {
   if (path.endsWith(".mpd")) return "application/dash+xml";
   if (path.endsWith(".m4s")) return "video/iso.segment";
   if (path.endsWith(".ts")) return "video/mp2t";
+  if (path.endsWith(".m4a")) return "audio/mp4";
   if (path.endsWith(".mp4")) return "video/mp4";
   if (path.endsWith(".vtt")) return "text/vtt";
   if (path.endsWith(".webp")) return "image/webp";
@@ -119,6 +120,21 @@ export async function uploadDirectory(directory, prefix) {
     uploaded.push(key);
   }
   return uploaded;
+}
+
+export async function uploadProcessedFile(path, key) {
+  const info = await stat(path);
+  await storageClient().send(new PutObjectCommand({
+    Bucket: bucket("processed"),
+    Key: key,
+    Body: createReadStream(path),
+    ContentLength: info.size,
+    ContentType: contentType(path),
+    CacheControl: cacheControl(path),
+    ServerSideEncryption: mediaBackend() === "aws" ? "aws:kms" : undefined,
+    SSEKMSKeyId: mediaBackend() === "aws" ? process.env.AWS_MEDIA_KMS_KEY_ID : undefined,
+  }));
+  return { key, sizeBytes: info.size };
 }
 
 async function mediaControlRequest(payload) {

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 
 type Comment = { id: string; userId: string; parentId: string | null; author: string; body: string; language: string; score: number; replyCount: number; likedByMe: boolean; editedAt: string | null; createdAt: string; mine: boolean };
@@ -8,6 +9,7 @@ type Settings = { commentsEnabled: boolean; repliesEnabled: boolean; approvalReq
 const defaultSettings: Settings = { commentsEnabled: true, repliesEnabled: true, slowModeSeconds: 15 };
 
 export function CommentsSection({ contentId }: { contentId?: string | null }) {
+  const router = useRouter();
   const [comments, setComments] = useState<Comment[]>([]);
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [replyTo, setReplyTo] = useState<string | null>(null);
@@ -28,7 +30,7 @@ export function CommentsSection({ contentId }: { contentId?: string | null }) {
     event.preventDefault(); setBusy(true); setMessage(""); const form = new FormData(event.currentTarget);
     const response = await fetch("/api/comments", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ contentId, parentId: replyTo, body: form.get("body"), language: form.get("language") }) });
     const data = await response.json();
-    if (response.status === 401) { window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`; return; }
+    if (response.status === 401) { router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`); return; }
     if (!response.ok) setMessage(data.error ?? "Comment could not be posted.");
     else { event.currentTarget.reset(); setReplyTo(null); setMessage(data.preview ? "Preview comment accepted locally; production persists it." : settings.approvalRequired ? "Comment sent for review." : "Comment posted."); await load(); }
     setBusy(false);
@@ -36,7 +38,7 @@ export function CommentsSection({ contentId }: { contentId?: string | null }) {
 
   async function react(comment: Comment) {
     const response = await fetch(`/api/comments/${comment.id}/reaction`, { method: "POST" });
-    if (response.status === 401) { window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`; return; }
+    if (response.status === 401) { router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`); return; }
     const data = await response.json(); if (response.ok) setComments((current) => current.map((item) => item.id === comment.id ? { ...item, score: data.score, likedByMe: !item.likedByMe } : item));
   }
 
@@ -45,7 +47,7 @@ export function CommentsSection({ contentId }: { contentId?: string | null }) {
   async function report(comment: Comment, mode: "report" | "block" | "mute") {
     const payload = mode === "block" ? { blockUserId: comment.userId } : mode === "mute" ? { muteUserId: comment.userId } : { reason: "other", details: "Reported from the watch page." };
     const response = await fetch(`/api/comments/${comment.id}/report`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
-    if (response.status === 401) { window.location.href = `/login?next=${encodeURIComponent(window.location.pathname)}`; return; }
+    if (response.status === 401) { router.push(`/login?next=${encodeURIComponent(window.location.pathname)}`); return; }
     setMessage(response.ok ? (mode === "report" ? "Report submitted for moderation." : `${mode === "block" ? "Blocked" : "Muted"} ${comment.author}.`) : "The action could not be completed.");
     if (response.ok && mode !== "report") await load();
   }

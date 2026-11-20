@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 type Item = { id: string; kind: string; actor: string; readAt: string | null; createdAt: string; content?: { slug?: string; title_en?: string } | null };
 const copy: Record<string, string> = { comment_reply: "replied to your comment", comment_like: "liked your comment", moderation: "sent a moderation update", followed_content: "has an update" };
 
 export function NotificationsCenter({ preview = false }: { preview?: boolean }) {
+  const router = useRouter();
   const [items, setItems] = useState<Item[]>(preview ? [{ id: "preview-1", kind: "comment_reply", actor: "Ayesha", readAt: null, createdAt: "2026-07-30T20:00:00.000Z", content: { slug: "neural-network-visual-introduction", title_en: "But what is a neural network?" } }] : []);
   const [error, setError] = useState("");
 
@@ -16,16 +18,16 @@ export function NotificationsCenter({ preview = false }: { preview?: boolean }) 
     void fetch("/api/notifications", { cache: "no-store", signal: controller.signal })
       .then(async (response) => ({ response, data: await response.json() }))
       .then(({ response, data }) => {
-        if (response.status === 401) { window.location.href = "/login?next=/notifications"; return; }
+        if (response.status === 401) { router.push("/login?next=/notifications"); return; }
         if (response.ok) setItems(data.items ?? []); else setError(data.error ?? "Notifications unavailable.");
       })
       .catch((reason: unknown) => { if (!(reason instanceof DOMException && reason.name === "AbortError")) setError("Notifications unavailable."); });
     return () => controller.abort();
-  }, [preview]);
+  }, [preview, router]);
 
   async function refresh() {
     const response = await fetch("/api/notifications", { cache: "no-store" });
-    if (response.status === 401) { window.location.href = "/login?next=/notifications"; return; }
+    if (response.status === 401) { router.push("/login?next=/notifications"); return; }
     const data = await response.json();
     if (response.ok) setItems(data.items ?? []); else setError(data.error ?? "Notifications unavailable.");
   }
