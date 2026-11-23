@@ -185,7 +185,11 @@ rollback() {
 set_release "$new_tag" "$new_web_image" "$new_worker_image"
 cd "$root"
 compose config --quiet
-if ! pull_selected; then
+# Prefer already-loaded local images (e.g. docker load from CI) when registry pull is denied.
+if docker image inspect "$new_web_image" >/dev/null 2>&1 \
+  && docker image inspect "$new_worker_image" >/dev/null 2>&1; then
+  echo "Using local release images for ${new_tag} (registry pull skipped)."
+elif ! pull_selected; then
   rollback || true
   exit 1
 fi

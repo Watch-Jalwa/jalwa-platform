@@ -222,7 +222,7 @@ test.describe.serial("authenticated Premium customer", () => {
       expect(standard.body?.qualityTier).toBe("standard");
       expect(standard.body?.maxQualityHeight).toBe(480);
       expect(standard.body?.url).toContain("/480p/index.m3u8");
-      const standardToken = new URL(standard.body.url).searchParams.get("token");
+      const standardToken = new URL(standard.body.url, freePage.url()).searchParams.get("token");
       expect(standardToken).toBeTruthy();
       const standardPayload = JSON.parse(Buffer.from(standardToken.split(".")[0], "base64url").toString("utf8"));
       expect(standardPayload.pathPrefix).toMatch(/\/480p\/$/);
@@ -234,7 +234,7 @@ test.describe.serial("authenticated Premium customer", () => {
       expect(enhanced.body?.qualityTier).toBe("enhanced");
       expect(enhanced.body?.maxQualityHeight).toBe(720);
       expect(enhanced.body?.url).toContain("/master.m3u8");
-      const enhancedToken = new URL(enhanced.body.url).searchParams.get("token");
+      const enhancedToken = new URL(enhanced.body.url, premiumPage.url()).searchParams.get("token");
       expect(enhancedToken).toBeTruthy();
       const enhancedPayload = JSON.parse(Buffer.from(enhancedToken.split(".")[0], "base64url").toString("utf8"));
       expect(enhancedPayload.pathPrefix).toMatch(/00000000-0000-4000-8000-00000000b103\/$/);

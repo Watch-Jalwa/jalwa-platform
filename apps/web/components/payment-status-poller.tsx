@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
 type WalletState = { status?: "none" | "pending" | "linked" | "unlinked" | "failed"; msisdn_masked?: string | null };
@@ -14,6 +15,7 @@ type ViewState = "checking" | "ready" | "failed" | "delayed";
 const MAX_ATTEMPTS = 48;
 
 export function PaymentStatusPoller() {
+  const router = useRouter();
   const [view, setView] = useState<ViewState>("checking");
   const [detail, setDetail] = useState("Waiting for JazzCash and Jalwa billing to confirm your wallet.");
   const attempts = useRef(0);
@@ -33,7 +35,7 @@ export function PaymentStatusPoller() {
           fetch("/api/payments/status", { cache: "no-store" }),
         ]);
         if (walletResponse.status === 401 || statusResponse.status === 401) {
-          window.location.href = "/login?next=/billing/wallet-return";
+          router.push("/login?next=/billing/wallet-return");
           return;
         }
         if (walletResponse.status === 429 || statusResponse.status === 429) {
@@ -102,7 +104,7 @@ export function PaymentStatusPoller() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, []);
+  }, [router]);
 
   return <section className="panel billing-result" aria-live="polite">
     <span className={view === "failed" ? "status-mark status-mark-error" : "success-mark"}>{view === "checking" ? "…" : view === "failed" ? "!" : "✓"}</span>

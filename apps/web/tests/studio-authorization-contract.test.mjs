@@ -45,5 +45,5 @@ test("server session lookup retries once but still fails closed", async () => {
   const runtimeLookups = server.match(/await auth\.api\.getSession/g) ?? [];
   assert.equal(runtimeLookups.length, 2);
   assert.match(server, /auth_session_lookup_retry/);
-  assert.match(server, /catch \{ session = null; \}/);
+  assert.match(server, /catch\s*\{\s*session = null;\s*\}/);
 });

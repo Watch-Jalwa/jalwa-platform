@@ -53,6 +53,11 @@ test("Premium playback checks entitlement before device registration", async () 
   assert.ok(deviceIndex > entitlementIndex, "Premium entitlement must be denied before protected-device registration");
 });
 
+test("same-origin media URLs stay on the watch host behind a reverse proxy", async () => {
+  const playback = await readFile(playbackUrl, "utf8");
+  assert.match(playback, /if \(mode === "same-origin"\) return "\/api\/media";/);
+});
+
 test("frontend consumes ad-free, quality, AI and Premium hub state", async () => {
   const [layout, adSlot, premiumPage, playback, ai] = await Promise.all([layoutUrl,adSlotUrl,premiumPageUrl,playbackUrl,aiUrl].map((url) => readFile(url, "utf8")));
   assert.ok(layout.includes("JalwaAdSlot"));

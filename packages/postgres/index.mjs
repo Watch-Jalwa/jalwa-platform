@@ -8,10 +8,44 @@ function projection(input){ return splitTopLevel(input||'*').map(token=>{ const 
 function fail(error){ const e=error instanceof Error?error:new Error(String(error)); return {data:null,error:e}; }
 export function createPool(connectionString,options={}){ return new Pool({connectionString,...options}); }
 export class DatabaseClient{
-  constructor(pool,options={}){ this.pool=pool; this.userId=options.userId??null; this.role=options.role??(this.userId?'authenticated':'anon'); this.auth=options.auth??{async getUser(){return{data:{user:null},error:null}},async signOut(){return{error:null}}}; this.relCache=new Map(); this.rpcCache=new Map(); }
+  constructor(pool,options={}){ this.pool=pool; this.userId=options.userId??null; this.role=options.role??(this.userId?'authenticated':'anon'); this.auth=options.auth??{async getUser(){return{data:{user:null},error:null}},async signOut(){return{error:null}}}; this.relCache=new Map(); this.rpcCache=new Map(); this._txClient=options.client??null; }
   from(table){return new QueryBuilder(this,table);}
   async query(text,values=[]){return this.withContext(c=>c.query(text,values));}
-  async withContext(fn){const c=await this.pool.connect();try{await c.query('begin');await c.query("select set_config('request.jwt.claim.sub',$1,true), set_config('request.jwt.claim.role',$2,true)",[this.userId??'',this.role]);if(ROLES.has(this.role))await c.query(`set local role ${ident(this.role)}`);const r=await fn(c);await c.query('commit');return r;}catch(e){await c.query('rollback').catch(()=>{});throw e;}finally{c.release();}}
+  async withContext(fn){
+    if(this._txClient) return fn(this._txClient);
+    const c=await this.pool.connect();
+    try{
+      await c.query('begin');
+      await c.query("select set_config('request.jwt.claim.sub',$1,true), set_config('request.jwt.claim.role',$2,true)",[this.userId??'',this.role]);
+      if(ROLES.has(this.role)) await c.query(`set local role ${ident(this.role)}`);
+      const r=await fn(c);
+      await c.query('commit');
+      return r;
+    }catch(e){
+      await c.query('rollback').catch(()=>{});
+      throw e;
+    }finally{
+      c.release();
+    }
+  }
+  async transaction(fn){
+    if(this._txClient) throw new Error('Nested database transactions are not supported');
+    const c=await this.pool.connect();
+    try{
+      await c.query('begin');
+      await c.query("select set_config('request.jwt.claim.sub',$1,true), set_config('request.jwt.claim.role',$2,true)",[this.userId??'',this.role]);
+      if(ROLES.has(this.role)) await c.query(`set local role ${ident(this.role)}`);
+      const nested=createDatabaseClient(this.pool,{userId:this.userId,role:this.role,auth:this.auth,client:c});
+      const result=await fn(nested);
+      await c.query('commit');
+      return result;
+    }catch(e){
+      await c.query('rollback').catch(()=>{});
+      throw e;
+    }finally{
+      c.release();
+    }
+  }
   async rpc(name,args={}){try{if(!IDENT.test(name))throw new Error('Unsafe RPC name');const entries=Object.entries(args);const vals=[];const named=entries.map(([k,v])=>{if(!IDENT.test(k))throw new Error('Unsafe RPC parameter');vals.push(v);return `${ident(k)} => $${vals.length}`;});const meta=await this.rpcMeta(name);const r=await this.query(`select * from public.${ident(name)}(${named.join(',')})`,vals);if(meta?.returnsSet)return{data:r.rows,error:null};if(!r.rows.length)return{data:null,error:null};const row=r.rows[0],keys=Object.keys(row);return{data:keys.length===1?row[keys[0]]:row,error:null};}catch(e){return fail(e);}}
   async rpcMeta(name){if(this.rpcCache.has(name))return this.rpcCache.get(name);const r=await this.withContext(c=>c.query("select p.proretset from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname=$1 order by p.oid limit 1",[name]));const m=r.rows[0]?{returnsSet:Boolean(r.rows[0].proretset)}:null;this.rpcCache.set(name,m);return m;}
   async relationship(table,relation,hint){const key=`${table}:${relation}:${hint||''}`;if(this.relCache.has(key))return this.relCache.get(key);const constraintHint=hint&&hint!=='inner'?hint:null;const r=await this.withContext(c=>c.query(`select c.conname,src.relname source_table,sa.attname source_column,dst.relname target_table,da.attname target_column from pg_constraint c join pg_class src on src.oid=c.conrelid join pg_namespace sn on sn.oid=src.relnamespace join pg_class dst on dst.oid=c.confrelid join pg_namespace dn on dn.oid=dst.relnamespace join lateral unnest(c.conkey) with ordinality sk(attnum,ord) on true join lateral unnest(c.confkey) with ordinality dk(attnum,ord) on dk.ord=sk.ord join pg_attribute sa on sa.attrelid=src.oid and sa.attnum=sk.attnum join pg_attribute da on da.attrelid=dst.oid and da.attnum=dk.attnum where c.contype='f' and sn.nspname='public' and dn.nspname in ('public','auth') and ((src.relname=$1 and dst.relname=$2) or (src.relname=$2 and dst.relname=$1)) and ($3::text is null or c.conname=$3) order by c.conname,sk.ord`,[table,relation,constraintHint]));if(!r.rows.length)throw new Error(`No relationship between ${table} and ${relation}`);const x=r.rows[0];const rel=x.source_table===table?{kind:'one',currentColumn:x.source_column,relatedColumn:x.target_column}:{kind:'many',currentColumn:x.target_column,relatedColumn:x.source_column};this.relCache.set(key,rel);return rel;}

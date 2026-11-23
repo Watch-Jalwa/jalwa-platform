@@ -13,6 +13,7 @@ declare
   v_rights integer;
   v_images integer;
   v_links integer;
+  v_embeds integer;
 begin
   if current_setting('jalwa.deployment_environment', true) <> 'staging' then
     raise exception 'Approved live source fixtures may run only in staging';
@@ -55,6 +56,11 @@ begin
     and l.expected_media_type='official_link'
     and c.hosting_mode='external_link';
 
+  select count(*) into v_embeds
+  from public.live_source_configs l
+  join public.approved_live_catalogue_manifest m on m.source_key=l.source_key
+  where l.delivery_adapter='official_live_embed';
+
   if v_manifest <> 52 then raise exception 'Approved live manifest is incomplete'; end if;
   if v_direct <> 44 then raise exception 'Approved direct live entries are incomplete'; end if;
   if v_items <> 52 then raise exception 'Approved live inventory is incomplete'; end if;
@@ -62,6 +68,8 @@ begin
   if v_rights <> 52 then raise exception 'Approved live rights records are incomplete'; end if;
   if v_images <> 16 then raise exception 'Approved current-image hosting modes are incorrect'; end if;
   if v_links <> 29 then raise exception 'Conditional sources must remain official-link only'; end if;
+  if v_embeds <> 7 then raise exception 'Approved official-embed inventory must remain 7 sources'; end if;
+  if (v_images + v_links + v_embeds) <> 52 then raise exception 'Approved live delivery-mode split must total 52'; end if;
 end $$;
 
 select jsonb_build_object(
@@ -71,6 +79,7 @@ select jsonb_build_object(
   'approved_rights',52,
   'current_image_entries',16,
   'official_link_entries',29,
+  'official_embed_entries',7,
   'collections',2,
   'earliest_rights_review_expires_at',(
     select min(l.next_review_at)
