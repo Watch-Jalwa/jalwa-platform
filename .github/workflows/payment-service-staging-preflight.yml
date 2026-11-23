@@ -174,7 +174,7 @@ jobs:
           health="$(curl -fsS --max-time 30 "https://$DOMAIN/api/health")"
           jq -e --arg sha "$RELEASE_SHA" '.service == "jalwa-web" and .status == "ready" and .version == $sha' <<<"$health" >/dev/null
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
         if: steps.configure.outcome == 'success'
         with:
           node-version: 22
