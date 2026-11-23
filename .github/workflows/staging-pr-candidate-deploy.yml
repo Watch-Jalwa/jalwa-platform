@@ -139,11 +139,25 @@ jobs:
 
       - name: Authenticate host to immutable image registry
         env:
-          GHCR_TOKEN: ${{ github.token }}
+          GHCR_TOKEN: ${{ secrets.STAGING_GHCR_TOKEN || github.token }}
         run: |
           set -euo pipefail
+          ghcr_user="$(printf '%s' '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
           printf '%s' "$GHCR_TOKEN" | ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "docker login ghcr.io -u '$GITHUB_ACTOR' --password-stdin"
+            "docker login ghcr.io -u '$ghcr_user' --password-stdin"
+
+      - name: Prefetch release images onto staging host
+        env:
+          GHCR_TOKEN: ${{ secrets.STAGING_GHCR_TOKEN || github.token }}
+        run: |
+          set -euo pipefail
+          ghcr_user="$(printf '%s' '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')"
+          echo "$GHCR_TOKEN" | docker login ghcr.io -u "$ghcr_user" --password-stdin
+          docker pull "${WEB_IMAGE}:${GITHUB_SHA}"
+          docker pull "${WORKER_IMAGE}:${GITHUB_SHA}"
+          docker save "${WEB_IMAGE}:${GITHUB_SHA}" "${WORKER_IMAGE}:${GITHUB_SHA}" \
+            | gzip \
+            | ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" 'gunzip | docker load'
 
       - name: Reclaim staging host capacity safely before cutover
         run: |
@@ -187,9 +201,17 @@ jobs:
           upsert_env JALWA_COMPOSE_FILE "$compose_file"
           upsert_env JALWA_ROOT "$APP_DIR"
           upsert_env GIT_SHA "$RELEASE_SHA"
+          upsert_env APP_URL "https://$DOMAIN"
+          upsert_env NEXT_PUBLIC_APP_URL "https://$DOMAIN"
+          upsert_env BETTER_AUTH_URL "https://$DOMAIN"
+          upsert_env AUTH_REDIRECT_URL "https://$DOMAIN/auth/callback"
+          upsert_env NEXT_PUBLIC_MEDIA_GATEWAY_URL "https://$DOMAIN"
+          upsert_env MEDIA_GATEWAY_ALLOWED_ORIGINS "https://$DOMAIN"
           upsert_env PUBLIC_DOMAIN_LIVE_SOURCES_ENABLED true
           upsert_env PAYMENT_PROVIDER mock
           upsert_env ALLOW_MOCK_PAYMENTS true
+          upsert_env TIKTOK_PIXEL_ID "DBU5R83C77UCDH70PUCG"
+          upsert_env NEXT_PUBLIC_TIKTOK_PIXEL_ID "DBU5R83C77UCDH70PUCG"
           if [[ -n "${JAZZCASH_MERCHANT_ID:-}" ]]; then upsert_env JAZZCASH_MERCHANT_ID "$JAZZCASH_MERCHANT_ID"; fi
           if [[ -n "${JAZZCASH_PASSWORD:-}" ]]; then upsert_env JAZZCASH_PASSWORD "$JAZZCASH_PASSWORD"; fi
           if [[ -n "${JAZZCASH_INTEGRITY_SALT:-}" ]]; then upsert_env JAZZCASH_INTEGRITY_SALT "$JAZZCASH_INTEGRITY_SALT"; fi
