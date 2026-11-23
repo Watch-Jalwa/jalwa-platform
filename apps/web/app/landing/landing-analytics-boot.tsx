@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { trackLandingView } from "@/lib/landing-analytics.mjs";
 import { stampUtmAttribution } from "@/lib/utm-attribution.mjs";
 
 type Props = {
@@ -45,6 +46,16 @@ export function LandingAnalyticsBoot(props: Props) {
       });
       window.gtag("event", "view_item", { item_id: props.planCode, landing: props.landing });
     }
+
+    trackLandingView({
+      landing: props.landing,
+      landingPath: props.landingPath,
+      planCode: props.planCode,
+      utm: props.utm,
+      packageCode: props.packageCode,
+      parameter: props.parameter,
+      payment: props.payment,
+    });
   }, [props]);
 
   return null;

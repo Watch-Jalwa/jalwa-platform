@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useId, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { trackLandingPaymentSuccess } from "@/lib/landing-analytics.mjs";
+import { readUtmAttribution } from "@/lib/utm-attribution.mjs";
 
 /**
  * After JazzCash wallet-link success, guests land on `/` with ?premium=enabled.
@@ -16,6 +18,7 @@ export function PostJazzcashAuthPrompt({ signedIn = false }: { signedIn?: boolea
   const pathname = usePathname();
   const premium = searchParams.get("premium");
   const msisdn = searchParams.get("msisdn")?.trim() || "";
+  const orderId = searchParams.get("order")?.trim() || "";
   const [open, setOpen] = useState(false);
   const [heldMsisdn, setHeldMsisdn] = useState("");
   const [toast, setToast] = useState<{ message: string; kind: "ok" | "error" } | null>(null);
@@ -40,16 +43,32 @@ export function PostJazzcashAuthPrompt({ signedIn = false }: { signedIn?: boolea
         setToast({ kind: "ok", message: "Premium features enabled" });
         setOpen(false);
       }
+      if (premium === "enabled" && orderId) {
+        const attr = readUtmAttribution() as {
+          landing?: string;
+          utm?: string;
+          parameter?: string;
+          planCode?: string;
+        } | null;
+        trackLandingPaymentSuccess({
+          orderId,
+          landing: attr?.landing,
+          utm: attr?.utm,
+          parameter: attr?.parameter,
+          planCode: attr?.planCode || "premium-monthly-pkr",
+        });
+      }
       const params = new URLSearchParams(searchParams.toString());
       params.delete("premium");
       params.delete("msisdn");
+      params.delete("order");
       const next = pathname + (params.toString() ? `?${params.toString()}` : "");
       router.replace(next, { scroll: false });
     });
     return () => {
       active = false;
     };
-  }, [premium, msisdn, signedIn, pathname, router, searchParams]);
+  }, [premium, msisdn, orderId, signedIn, pathname, router, searchParams]);
 
   useEffect(() => {
     if (!toast) return;

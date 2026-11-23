@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { trackLandingCheckoutIntent } from "@/lib/landing-analytics.mjs";
 import { attributionForBilling } from "@/lib/landing-campaign.mjs";
 import { rememberLandingMsisdn, stampUtmAttribution } from "@/lib/utm-attribution.mjs";
 
@@ -58,6 +59,16 @@ export function LandingSubscribe({
         window.gtag("event", "add_to_cart", { item_id: campaign.planCode, landing: campaign.landing });
         window.gtag("event", "begin_checkout", { item_id: campaign.planCode, landing: campaign.landing });
       }
+
+      trackLandingCheckoutIntent({
+        landing: campaign.landing,
+        landingPath: campaign.landingPath,
+        planCode: campaign.planCode,
+        utm: campaign.utm,
+        packageCode: campaign.package,
+        parameter: campaign.parameter,
+        payment: campaign.payment,
+      });
 
       const response = await fetch("/api/v1/premium/billing/jazzcash-v11/link/start", {
         method: "POST",

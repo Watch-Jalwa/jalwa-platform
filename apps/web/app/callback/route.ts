@@ -28,11 +28,14 @@ async function handle(request: Request) {
 
   let ok = false;
   let signInHint = "";
+  let orderId = "";
   try {
     if (Object.keys(fields).some((key) => key.startsWith("pp_"))) {
       const result = await completeJazzcashLandingLink(fields);
       ok = result.ok;
       signInHint = result.signInHint ?? "";
+      // Stable id for TikTok Subscribe dedupe (marketing only — not entitlement proof).
+      orderId = String(result.subscriptionId ?? result.requestId ?? "").trim();
       if (!ok) {
         console.error("jazzcash_callback_not_ok", {
           requestId: result.requestId,
@@ -50,6 +53,7 @@ async function handle(request: Request) {
   const next = new URL("/", publicAppOrigin(request.url));
   next.searchParams.set("premium", ok ? "enabled" : "failed");
   if (signInHint) next.searchParams.set("msisdn", signInHint);
+  if (ok && orderId) next.searchParams.set("order", orderId);
   return NextResponse.redirect(next, 303);
 }
 

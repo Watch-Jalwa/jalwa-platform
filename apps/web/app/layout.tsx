@@ -11,6 +11,8 @@ import { PageMotion } from "@/components/page-motion";
 import { PremiumStatusToast } from "@/components/premium-status-toast";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { TikTokPixelBoot } from "@/components/tiktok-pixel-boot";
+import { TikTokRuntimeConfig } from "@/app/tiktok-runtime-config";
 import { Suspense } from "react";
 import "./home-sections.css";
 import { documentDirection, documentLanguage, LOCALE_COOKIE, normalizeLocale } from "@/lib/customer/locale";
@@ -71,6 +73,9 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
       data-scroll-behavior="smooth"
       suppressHydrationWarning
     >
+      <head>
+        <TikTokRuntimeConfig />
+      </head>
       <body className={campaignShell ? "campaign-shell" : undefined} suppressHydrationWarning>
         {campaignShell ? null : <PreviewBanner />}
         <SiteHeader />
@@ -84,6 +89,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <PageMotion />
         <ServiceWorkerRegister />
         <ErrorMonitor />
+        <TikTokPixelBoot />
         {campaignShell || isFrontendPreview ? null : <DeviceHeartbeat />}
         {campaignShell || isFrontendPreview || isStaging ? null : <AnalyticsBeacon />}
       </body>
