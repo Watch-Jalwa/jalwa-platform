@@ -25,7 +25,10 @@ jobs:
       - name: Configure pinned staging SSH identity
         run: |
           set -euo pipefail
-          test "$USER" = codistan
+          case "$USER" in
+            codistan|deploy) ;;
+            *) echo "Unsupported STAGING_USER=$USER (expected codistan or deploy)" >&2; exit 1 ;;
+          esac
           test "$APP_DIR" = /opt/codistan/jalwa-platform
           test -n "$HOST" && test -n "$KNOWN_HOSTS" && test -n "$SSH_KEY"
           install -m 700 -d ~/.ssh
