@@ -1,0 +1,58 @@
+name: Staging live-test 50 draft import
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  import-drafts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: staging
+    env:
+      HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+      USER: ${{ vars.STAGING_USER || 'codistan' }}
+      APP_DIR: ${{ vars.STAGING_APP_DIR || '/opt/codistan/jalwa-platform' }}
+      DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+      KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+      SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+
+      - name: Configure pinned staging SSH identity
+        run: |
+          set -euo pipefail
+          test "$USER" = codistan
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          test -n "$HOST" && test -n "$KNOWN_HOSTS" && test -n "$SSH_KEY"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o ConnectTimeout=10 -i ~/.ssh/jalwa "$USER@$HOST" true
+
+      - name: Import 50 live-test drafts with pending rights
+        run: |
+          set -euo pipefail
+          test -s scripts/import-live-test-50-drafts-staging.sql
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "docker exec -i jalwa-postgres-staging sh -lc 'psql -X -v ON_ERROR_STOP=1 -U \"\$POSTGRES_USER\" -d \"\$POSTGRES_DB\"'" \
+            < scripts/import-live-test-50-drafts-staging.sql | tee /tmp/live-test-50-import.out
+          grep -E '"draft_count": ?50' /tmp/live-test-50-import.out
+          grep -E '"pending_rights": ?50' /tmp/live-test-50-import.out
+
+      - name: Summarize
+        run: |
+          {
+            echo '### Staging live-test 50 draft import'
+            echo "- Exact SHA: \`$GITHUB_SHA\`"
+            echo "- Domain: https://$DOMAIN"
+            echo '- Mode: draft-only; rights remain pending; no publish; production unchanged'
+            echo "- Evidence: run \`$GITHUB_RUN_ID\`"
+            echo '```'
+            tail -n 20 /tmp/live-test-50-import.out || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -10,6 +10,8 @@ const audiences = new Set(["general", "family", "kids", "teens", "adults"]);
 const sensitivities = new Set(["standard", "religious_review", "farming_review", "health_review", "children_review", "current_affairs_review"]);
 const providers = new Set(["youtube", "wikimedia", "openverse", "tanzil", "nasa", "pexels", "pixabay", "blender", "original", "partner", "other"]);
 const placeholderHosts = new Set(["example.com", "www.example.com", "localhost"]);
+/** Fixture / documentation-only YouTube IDs; never import into a real catalogue without --allow-placeholders. */
+const demonstratorYoutubeIds = new Set(["M7lc1UVf-VE", "aircAruvnKk", "aqz-KE-bpKQ", "dQw4w9WgXcQ"]);
 
 function requiredString(value, field, errors, index, min = 1) {
   if (typeof value !== "string" || value.trim().length < min) errors.push(`item ${index}: ${field} is required`);
@@ -199,6 +201,9 @@ export function validateLaunchCatalogue(items, { minimumItems = 1, allowPlacehol
       }
       if (source.provider === "youtube") {
         if (!/^[A-Za-z0-9_-]{11}$/.test(source.providerContentId ?? "")) errors.push(`item ${index}: invalid YouTube video id`);
+        if (!allowPlaceholders && demonstratorYoutubeIds.has(source.providerContentId)) {
+          errors.push(`item ${index}: demonstrator YouTube id ${source.providerContentId} is not allowed for catalogue intake`);
+        }
         try {
           const embed = new URL(source.embedUrl);
           if (embed.protocol !== "https:" || embed.hostname !== "www.youtube-nocookie.com" || !embed.pathname.startsWith("/embed/")) errors.push(`item ${index}: YouTube embedUrl must use youtube-nocookie.com/embed`);
@@ -219,6 +224,17 @@ export function validateLaunchCatalogue(items, { minimumItems = 1, allowPlacehol
       requiredString(rights.attributionText, "rights.attributionText", errors, index, 8);
       requiredString(rights.evidenceReference, "rights.evidenceReference", errors, index, 4);
       requiredString(rights.takedownContact, "rights.takedownContact", errors, index, 4);
+      if (!allowPlaceholders && typeof rights.takedownContact === "string" && /example\.(com|org)/i.test(rights.takedownContact)) {
+        errors.push(`item ${index}: rights.takedownContact uses a placeholder address`);
+      }
+      if (!allowPlaceholders && typeof rights.evidenceReference === "string") {
+        try {
+          const evidenceUrl = new URL(rights.evidenceReference);
+          if (placeholderHosts.has(evidenceUrl.hostname)) errors.push(`item ${index}: rights.evidenceReference uses a placeholder host`);
+        } catch {
+          // Internal evidence paths are allowed when they are not HTTPS URLs.
+        }
+      }
       if (rights.sourceUrl) validHttps(rights.sourceUrl, "rights.sourceUrl", errors, index, allowPlaceholders);
       if (rights.expiresAt) {
         const expiry = new Date(rights.expiresAt).getTime();

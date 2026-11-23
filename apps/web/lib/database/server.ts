@@ -3,17 +3,32 @@ import { auth } from "@/lib/auth";
 import { databasePool } from "@/lib/database/pool";
 import { createDatabaseClient } from "@jalwa/postgres";
 
+function isUnreachableDatabaseError(error: unknown) {
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return code === "ENOTFOUND"
+    || code === "ECONNREFUSED"
+    || code === "ETIMEDOUT"
+    || /getaddrinfo|ECONNREFUSED|ENOTFOUND|timeout/i.test(message);
+}
+
 export async function createClient() {
   const requestHeaders = await headers();
   let session: Awaited<ReturnType<typeof auth.api.getSession>> | null = null;
   try {
     session = await auth.api.getSession({ headers: requestHeaders });
-  } catch {
-    // Better Auth can transiently fail a database-backed lookup during a
-    // certification/navigation burst. Retry once with the same signed cookie
-    // and still fail closed if the second lookup fails.
-    console.error("auth_session_lookup_retry");
-    try { session = await auth.api.getSession({ headers: requestHeaders }); } catch { session = null; }
+  } catch (error) {
+    // Unreachable DB (local without Docker DNS) — fail closed quietly.
+    if (!isUnreachableDatabaseError(error)) {
+      console.warn("auth_session_lookup_retry");
+      try {
+        session = await auth.api.getSession({ headers: requestHeaders });
+      } catch {
+        session = null;
+      }
+    } else {
+      session = null;
+    }
   }
   const user = session?.user ?? null;
   return createDatabaseClient(databasePool, {

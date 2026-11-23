@@ -84,6 +84,7 @@ test("poster route serves curated or generated catalogue art", async () => {
   assert.doesNotMatch(route, /getProcessedObject/);
   assert.match(poster, /kind: "generated"/);
   assert.match(poster, /curatedPosterUrlForSlug/);
-  assert.match(repository, /withCataloguePosterFallback/);
-  assert.match(repository, /poster-core\.mjs/);
+  assert.match(repository, /queryLimit/);
+  assert.match(repository, /p_limit: queryLimit/);
+  assert.match(repository, /filtered\.slice\(0, requested\)/);
 });

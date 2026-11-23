@@ -1,0 +1,884 @@
+.campaign-landing {
+  --landing-bg: #0a090b;
+  --landing-orange: #ff7a00;
+  --landing-orange-deep: #ff5a00;
+  --landing-ink: #ffffff;
+  --landing-muted: rgba(255, 255, 255, 0.78);
+  --landing-card: rgba(14, 14, 14, 0.94);
+  /* One visual column: banner widest, JazzCash slightly inset, footer matches banner */
+  --landing-banner-max: 880px;
+  --landing-form-max: 880px;
+  --landing-gutter: clamp(0.75rem, 2.4vw, 1.35rem);
+  --landing-stack-gap: clamp(0.85rem, 2vw, 1.2rem);
+  background: var(--landing-bg);
+  color: var(--landing-ink);
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 17px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+body.campaign-shell { background: #0a090b; }
+body.campaign-shell .site-main-campaign { background: #0a090b; }
+
+.landing-site-header {
+  height: 72px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  background: #0d0c0f;
+}
+
+.landing-page-wrap {
+  width: min(1190px, 92%);
+  height: 100%;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.landing-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: .6rem;
+  color: #fff;
+  font-size: 27px;
+  font-weight: 900;
+  letter-spacing: -.8px;
+}
+
+.landing-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: .8rem;
+  background: var(--landing-orange);
+  color: #111;
+  font-size: 27px;
+  font-weight: 900;
+}
+
+.landing-site-nav {
+  display: flex;
+  gap: 1.5rem;
+  color: #b9b5bc;
+  font-size: 15px;
+}
+
+.landing-site-nav a:hover,
+.landing-site-nav a:focus-visible { color: #fff; }
+
+body.campaign-shell .site-main-campaign,
+.site-main-campaign {
+  padding: 0;
+  margin: 0;
+  max-width: none;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* First screen: banner + JazzCash. Footer ("Jalwa par kya milega?") starts below. */
+.landing-above-fold {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  min-height: calc(100svh - 72px);
+  min-height: calc(100dvh - 72px);
+  margin-bottom: 4px;
+  box-sizing: border-box;
+  background: radial-gradient(at 50% 12%, rgb(41, 19, 14) 0, rgba(0, 0, 0, 0) 58%), #080708;
+}
+
+/* Banner on top — full graphic, never cropped.
+   Native web creatives are 1600×639; display capped for a balanced column. */
+.landing-hero {
+  display: flex;
+  justify-content: center;
+  background: transparent;
+  padding: var(--landing-stack-gap) var(--landing-gutter) 0;
+  flex: 0 0 auto;
+}
+
+.landing-hero-link {
+  display: block;
+  width: min(100%, var(--landing-banner-max));
+  max-width: 1600px;
+  cursor: pointer;
+  border-radius: clamp(0.55rem, 1.4vw, 0.9rem) clamp(0.55rem, 1.4vw, 0.9rem) 0 0;
+  overflow: hidden;
+  box-shadow: 0 10px 35px rgba(0, 0, 0, .333);
+}
+
+.landing-hero-picture {
+  display: block;
+  width: 100%;
+}
+
+.landing-hero-image {
+  width: 100%;
+  height: auto;
+  display: block;
+  aspect-ratio: auto;
+  object-fit: contain;
+}
+
+/* JazzCash in the middle — stacked form, a little narrower than banner */
+.landing-middle {
+  width: min(100% - (var(--landing-gutter) * 2), var(--landing-banner-max));
+  margin: 0 auto;
+  display: grid;
+  gap: 0;
+  justify-items: center;
+  flex: 0 0 auto;
+  padding-bottom: var(--landing-stack-gap);
+}
+
+.landing-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-height: 2.85rem;
+  padding: 0.75rem 1.25rem;
+  border: 0;
+  border-radius: 0.55rem;
+  background: #ffca19;
+  color: #141004;
+  font-weight: 900;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.landing-cta:disabled {
+  opacity: 0.7;
+  cursor: wait;
+}
+
+.landing-subscribe {
+  width: min(100%, var(--landing-form-max));
+  margin: 0 auto;
+  padding: clamp(0.9rem, 2.4vw, 1.35rem) clamp(0.95rem, 2.6vw, 1.5rem);
+  border: 1px solid #403421;
+  border-top: 3px solid var(--landing-orange);
+  border-radius: 0 0 clamp(0.85rem, 2vw, 1.15rem) clamp(0.85rem, 2vw, 1.15rem);
+  background: #131113;
+  color: #fff;
+  box-sizing: border-box;
+}
+
+.landing-subscribe-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: clamp(0.5rem, 1.5vw, 0.75rem);
+  margin-bottom: clamp(0.65rem, 1.8vw, 0.95rem);
+}
+
+.landing-subscribe-phone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(2rem, 5vw, 2.45rem);
+  height: clamp(2rem, 5vw, 2.45rem);
+  border-radius: 999px;
+  background: #ffc60a;
+  color: #111;
+  flex: 0 0 auto;
+}
+
+.landing-subscribe-phone svg {
+  width: clamp(1rem, 2.8vw, 1.35rem);
+  height: clamp(1rem, 2.8vw, 1.35rem);
+}
+
+.landing-subscribe h2 {
+  margin: 0;
+  font-size: 23px;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.2;
+}
+
+.landing-subscribe-subtitle {
+  margin: .2rem 0 0;
+  color: #a7a4aa;
+  font-size: 14px;
+}
+
+.landing-offer-badge {
+  flex: 0 0 auto;
+  padding: .4rem .65rem;
+  border: 1px solid rgba(255, 198, 10, .38);
+  border-radius: .45rem;
+  background: rgba(255, 198, 10, .1);
+  color: #ffc60a;
+  font-size: .8125rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.landing-subscribe-landscape {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem;
+}
+
+.landing-msisdn-field {
+  display: flex;
+  align-items: center;
+  gap: clamp(0.45rem, 1.5vw, 0.75rem);
+  min-height: clamp(2.85rem, 7vw, 3.25rem);
+  padding: 0.3rem clamp(0.65rem, 2vw, 0.9rem);
+  border-radius: 0.55rem;
+  border: 1px solid #4b4548;
+  background: #09090b;
+}
+
+.landing-msisdn-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding-right: clamp(0.55rem, 1.6vw, 0.85rem);
+  border-right: 1px solid rgba(255, 255, 255, 0.2);
+  flex: 0 0 auto;
+}
+
+.landing-msisdn-mark {
+  display: block;
+  width: clamp(1.65rem, 4.5vw, 2.05rem);
+  height: clamp(1.65rem, 4.5vw, 2.05rem);
+  object-fit: contain;
+  background: #000;
+  border-radius: 0.25rem;
+}
+
+.landing-msisdn-wordmark {
+  color: #fff;
+  font-size: clamp(0.86rem, 2.2vw, 1rem);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+.landing-msisdn-field input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0.5rem 0;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  font-size: 19px;
+  letter-spacing: normal;
+}
+
+.landing-msisdn-field input::placeholder {
+  color: rgba(255, 255, 255, 0.42);
+}
+
+.landing-msisdn-field input:focus {
+  outline: none;
+}
+
+.landing-msisdn-field:focus-within {
+  border-color: rgba(255, 198, 10, 0.85);
+  box-shadow: 0 0 0 2px rgba(255, 198, 10, 0.22);
+}
+
+.landing-subscribe-actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.landing-consent {
+  display: flex;
+  gap: 0.55rem;
+  align-items: flex-start;
+  margin: 0;
+  color: #e5e2df;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
+.landing-consent input {
+  width: 1.05rem;
+  height: 1.05rem;
+  margin: 0;
+  accent-color: #ffc60a;
+  flex: 0 0 auto;
+}
+
+.landing-consent a {
+  color: #ffc60a;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.landing-subscribe .landing-cta {
+  width: 100%;
+}
+
+.landing-cta-lock,
+.landing-cta-arrow {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+.landing-cta-arrow {
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.landing-offer-banner {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: clamp(0.55rem, 1.6vw, 0.8rem);
+  margin-top: clamp(0.75rem, 2vw, 1rem);
+  padding: clamp(0.65rem, 1.8vw, 0.85rem) clamp(0.7rem, 2vw, 0.95rem);
+  border-radius: 0.75rem;
+  background: rgba(255, 202, 25, 0.1);
+  border: 1px solid rgba(255, 202, 25, 0.267);
+  color: #f4ead5;
+  font-size: 13px;
+  line-height: 1.55;
+  text-align: left;
+}
+
+.landing-offer-megaphone {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(1.85rem, 4.8vw, 2.2rem);
+  height: clamp(1.85rem, 4.8vw, 2.2rem);
+  border-radius: 999px;
+  background: #ffc60a;
+  color: #111;
+  flex: 0 0 auto;
+}
+
+.landing-offer-banner p {
+  margin: 0;
+  flex: 1 1 auto;
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+  font-weight: 400;
+  text-align: left;
+  white-space: pre-line;
+}
+
+.landing-offer-banner p strong {
+  font-weight: 700;
+}
+
+.landing-offer-info {
+  display: grid;
+  place-items: center;
+  width: 21px;
+  height: 21px;
+  flex: 0 0 auto;
+  border: 1px solid rgba(255, 202, 25, .47);
+  border-radius: 50%;
+  color: var(--landing-orange);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.landing-offer-info svg {
+  display: none;
+}
+
+.landing-subscribe .form-error {
+  margin: 0.65rem 0 0;
+  color: #ff8f8f;
+  font-size: 0.88rem;
+}
+
+/* Footer content — same column width as banner */
+.landing-below {
+  width: 100%;
+  margin: 0 auto;
+  padding: 54px 0 50px;
+  background: #0e0d0f;
+}
+
+.landing-section-rule {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 0.85rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.landing-section-rule::before,
+.landing-section-rule::after {
+  content: "";
+  height: 1px;
+  background: var(--landing-orange);
+}
+
+.landing-section-rule h2 {
+  margin: 0;
+  text-align: center;
+  font-size: clamp(1.15rem, 3vw, 1.55rem);
+}
+
+.landing-section-top {
+  width: min(100% - 2rem, 1190px);
+  margin-left: auto;
+  margin-right: auto;
+  margin-bottom: 2.1rem;
+  text-align: center;
+}
+
+.landing-eyebrow {
+  display: block;
+  margin-bottom: .45rem;
+  color: var(--landing-orange);
+  font-size: .72rem;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.landing-section-top h2 {
+  margin: 0;
+  font-size: 34px;
+  letter-spacing: -1px;
+}
+
+.landing-section-top p {
+  margin: 8px 0 0;
+  color: #a7a4aa;
+  font-size: 16px;
+}
+
+.landing-category-grid {
+  display: grid;
+  width: min(100% - 2rem, 800px);
+  margin: 0 auto;
+  gap: 20px;
+  justify-content: center;
+}
+
+.landing-category-card {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  min-height: 9.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 0.6rem;
+  padding: 1.5rem;
+  background: #171619;
+}
+
+.landing-category-card span {
+  display: grid;
+  place-items: center;
+  width: 3.25rem;
+  height: 3.25rem;
+  flex: 0 0 auto;
+  border-radius: .8rem;
+  background: rgba(255, 108, 45, .1);
+  color: var(--landing-orange);
+  font-size: 1.5rem;
+}
+
+.landing-category-icon svg {
+  width: 1.7rem;
+  height: 1.7rem;
+}
+
+.landing-category-card h3 {
+  margin: 0 0 .35rem;
+  font-size: 21px;
+  letter-spacing: -.5px;
+}
+
+.landing-category-card p {
+  margin: 0;
+  color: var(--landing-muted);
+  font-size: 0.94rem;
+  line-height: 1.4;
+}
+
+.landing-mood {
+  width: min(100% - 2rem, 1190px);
+  margin: 58px auto 36px;
+  text-align: center;
+  color: #fff;
+  font-size: 34px;
+  letter-spacing: -1px;
+  font-weight: 800;
+  line-height: 1.15;
+}
+
+.landing-trust-row {
+  display: grid;
+  width: min(100% - 2rem, 1190px);
+  margin: 0 auto;
+  gap: 20px;
+}
+
+.landing-trust-row article {
+  display: grid;
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  column-gap: 1rem;
+  align-items: start;
+  padding: 24px;
+  text-align: center;
+  border: 1px solid rgba(255, 255, 255, .047);
+  border-radius: .6rem;
+  background: #171619;
+}
+
+.landing-trust-row article:first-child {
+  border-left: 1px solid rgba(255, 255, 255, .047);
+}
+
+.landing-step-number {
+  grid-row: 1 / span 2;
+  display: block;
+  align-self: center;
+  margin: 0;
+  color: var(--landing-orange);
+  font-size: .75rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.landing-trust-row strong {
+  display: block;
+  margin: 0 0 .35rem;
+  font-size: 1.1rem;
+}
+
+.landing-trust-row small {
+  grid-column: 2;
+  color: #b9b5bc;
+  font-size: .9rem;
+}
+
+.landing-legal {
+  margin: 1.35rem auto 0;
+  max-width: 36rem;
+  text-align: center;
+  color: var(--landing-muted);
+  font-size: 0.84rem;
+  line-height: 1.45;
+}
+
+.landing-legal a {
+  color: var(--landing-orange);
+}
+
+.callback-shell {
+  width: min(100% - 2rem, 28rem);
+  margin: 3rem auto;
+  padding: 1.5rem;
+  border: 1px solid rgba(255, 122, 0, 0.5);
+  border-radius: 1rem;
+  background: #0b0b0b;
+  color: #fff;
+}
+
+@media (min-width: 720px) {
+  .landing-category-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .landing-trust-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .landing-trust-row article {
+    border-top: 0;
+    border-left: 1px solid rgba(255, 255, 255, .047);
+  }
+
+  .landing-trust-row article:first-child {
+    border-left: 1px solid rgba(255, 255, 255, .047);
+  }
+
+  .landing-subscribe .landing-cta {
+    min-height: 3.3rem;
+    font-size: 19px;
+  }
+}
+
+@media (max-width: 759px) {
+  .landing-subscribe-landscape {
+    grid-template-columns: 1fr;
+  }
+
+  .landing-subscribe-actions {
+    gap: 0.65rem;
+  }
+
+  .landing-cta {
+    min-height: 2.7rem;
+    font-size: 0.95rem;
+  }
+}
+
+@media (max-width: 720px) {
+  .landing-site-header { height: 60px; }
+  .landing-brand { font-size: 1.45rem; }
+  .landing-brand-mark { width: 2.15rem; height: 2.15rem; font-size: 1.45rem; border-radius: .65rem; }
+  .landing-site-nav { gap: 1rem; font-size: .8rem; }
+
+  /* Full-bleed mobile: no side gutters / no 400px column that left black bars. */
+  .campaign-landing {
+    --landing-banner-max: 100%;
+    --landing-form-max: 100%;
+    --landing-gutter: 0;
+    --landing-stack-gap: 0.45rem;
+  }
+
+  .landing-above-fold {
+    min-height: calc(100svh - 60px);
+    min-height: calc(100dvh - 60px);
+    gap: 0.4rem;
+  }
+
+  .landing-hero {
+    padding: 0;
+    width: 100%;
+  }
+
+  /* 4:3 fold creatives — edge-to-edge, full graphic, no crop */
+  .landing-hero-link {
+    width: 100%;
+    max-width: none;
+    border-radius: 0;
+  }
+
+  .landing-hero-image {
+    width: auto;
+    max-width: 100%;
+    max-height: 52svh;
+    margin-inline: auto;
+    height: auto;
+    object-fit: contain;
+    object-position: center top;
+    background: transparent;
+  }
+
+  /* The default campaign creative is portrait. Keep its complete artwork visible
+     while reserving enough first-screen height for the JazzCash form. */
+  .campaign-landing[data-landing="mainLanding"] .landing-hero-image {
+    width: auto;
+    max-width: 100%;
+    max-height: 52svh;
+    margin-inline: auto;
+  }
+
+  .campaign-landing[data-landing="mainLanding"] .landing-middle {
+    margin-top: 0;
+  }
+
+  .landing-middle {
+    width: min(calc(100% - 1rem), 24rem);
+    margin: 0 auto;
+    padding: 0 0 0.35rem;
+    box-sizing: border-box;
+  }
+
+  .landing-category-grid {
+    justify-items: center;
+  }
+
+  .landing-category-card {
+    width: min(100%, 20rem);
+    box-sizing: border-box;
+  }
+
+  .landing-subscribe {
+    width: 100%;
+    padding: 0.7rem 0.75rem 0.8rem;
+    border-radius: 0.75rem;
+  }
+
+  .landing-subscribe-head {
+    margin-bottom: 0.5rem;
+  }
+
+  .landing-subscribe h2 {
+    font-size: 19px;
+  }
+
+  .landing-subscribe-subtitle { font-size: 13px; }
+
+  .landing-subscribe-phone {
+    width: 1.85rem;
+    height: 1.85rem;
+  }
+
+  .landing-subscribe-landscape {
+    gap: 0.55rem;
+  }
+
+  .landing-msisdn-field {
+    min-height: 2.55rem;
+  }
+
+  .landing-msisdn-field input { font-size: 17px; }
+
+  .landing-subscribe-actions {
+    gap: 0.5rem;
+  }
+
+  .landing-consent {
+    font-size: 0.78rem;
+  }
+
+  .landing-cta {
+    min-height: 2.55rem;
+    font-size: 17px;
+  }
+
+  .landing-offer-banner {
+    margin-top: 0.55rem;
+    padding: 0.5rem 0.6rem;
+  }
+
+  .landing-offer-banner p {
+    font-size: 11px;
+    line-height: 1.35;
+  }
+
+  .landing-offer-megaphone {
+    width: 1.6rem;
+    height: 1.6rem;
+  }
+
+  .landing-below {
+    width: 100%;
+    margin-top: 0;
+    padding: 35px 0.7rem 2rem;
+    box-sizing: border-box;
+  }
+
+  .landing-section-top h2 { font-size: 27px; }
+  .landing-section-top p { font-size: 14px; }
+  .landing-mood { width: 100%; margin: 42px 0 26px; font-size: 27px; }
+  .landing-category-card { min-height: 105px; padding: 18px; }
+  .landing-category-card h3 { font-size: 19px; }
+
+  .landing-msisdn-wordmark {
+    display: none;
+  }
+
+  .landing-msisdn-brand {
+    padding-right: 0.55rem;
+  }
+}
+
+@media (min-width: 721px) and (max-height: 720px) {
+  .campaign-landing {
+    --landing-banner-max: 800px;
+    --landing-form-max: 800px;
+  }
+
+  .campaign-landing .landing-site-header { height: 64px; }
+  .campaign-landing .landing-above-fold {
+    min-height: calc(100svh - 64px);
+    min-height: calc(100dvh - 64px);
+    padding: 12px 0;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .campaign-landing .landing-hero { padding: 0; }
+  .campaign-landing .landing-middle { padding-bottom: 0; }
+  .campaign-landing .landing-below { margin-top: 0; }
+  .campaign-landing .landing-hero-image {
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    margin-inline: 0;
+  }
+
+  .campaign-landing .landing-subscribe {
+    padding: 15px 20px;
+  }
+
+  .campaign-landing .landing-subscribe-head {
+    margin-bottom: 9px;
+  }
+
+  .campaign-landing .landing-subscribe h2 {
+    font-size: 1.1rem;
+  }
+
+  .campaign-landing .landing-msisdn-field {
+    min-height: 49px;
+  }
+
+  .campaign-landing .landing-subscribe-actions {
+    gap: 0.5rem;
+  }
+
+  .campaign-landing .landing-consent {
+    margin: 10px 0;
+    font-size: 0.78rem;
+  }
+
+  .campaign-landing .landing-cta {
+    min-height: 48px;
+    font-size: 0.92rem;
+  }
+
+  .campaign-landing .landing-offer-banner {
+    margin-top: 10px;
+    padding: 9px 11px;
+  }
+
+  .campaign-landing .landing-offer-banner p {
+    font-size: 0.74rem;
+    line-height: 1.35;
+  }
+}
+
+@media (max-width: 419px) {
+  .landing-offer-banner {
+    align-items: center;
+  }
+}
+
+/* Short phones: tighten JazzCash so the 4:3 banner + form stay above the fold */
+@media (max-width: 720px) and (max-height: 740px) {
+  .landing-subscribe {
+    padding: 0.55rem 0.65rem 0.65rem;
+  }
+
+  .landing-subscribe-head {
+    margin-bottom: 0.4rem;
+  }
+
+  .landing-offer-banner {
+    margin-top: 0.4rem;
+    padding: 0.4rem 0.55rem;
+  }
+
+  .landing-offer-banner p {
+    font-size: 0.7rem;
+  }
+}

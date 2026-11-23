@@ -5,13 +5,14 @@ const contentSecurityPolicy = [
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'self'",
-  "form-action 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
+  // Allow hosted JazzCash LinkWallet POST (PIN/MPIN only on JazzCash).
+  "form-action 'self' https://onlinepayments.jazzcash.com.pk https://payments.jazzcash.com.pk https://pgw.jazzcash.com.pk https://sandbox.jazzcash.com.pk",
+  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://analytics.tiktok.com",
   "style-src 'self' 'unsafe-inline'",
   "font-src 'self' data:",
-  "img-src 'self' data: blob: https:",
+  "img-src 'self' data: blob: https: https://analytics.tiktok.com",
   "media-src 'self' blob: https:",
-  "connect-src 'self' https: wss:",
+  "connect-src 'self' https: wss: https://analytics.tiktok.com https://analytics-ipv6.tiktok.com https://business-api.tiktok.com",
   "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com",
   "upgrade-insecure-requests",
 ].join("; ");

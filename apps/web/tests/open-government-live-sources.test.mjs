@@ -76,6 +76,7 @@ test("manifest and activation represent 46 user-facing entries", async () => {
   assert.match(seed, /'user_facing_entries',46/);
   assert.match(seed, /'current_image_entries',16/);
   assert.match(seed, /'official_link_entries',29/);
+  assert.match(seed, /'official_embed_entries',7/);
   assert.match(acceptance, /expectedTitles/);
   assert.match(acceptance, /officialLinkSlugs/);
   assert.match(acceptance, /NPS Devils Tower Entrance/);
