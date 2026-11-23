@@ -2,6 +2,7 @@ import { liveSourcesEnabled } from "@/lib/live-sources/registry";
 import { canUseDemoData, hasBackendConfiguration } from "@/lib/runtime";
 import { createClient } from "@/lib/database/server";
 import { categories as demoCategories, featuredContent } from "./demo-data";
+import { withCataloguePosterFallback } from "./poster-core.mjs";
 import type { CatalogueCategory, CatalogueItem, LiveCatalogueCollection, PlaybackSource, PremiumCatalogueCollection } from "./types";
 
 function asString(value: unknown) { return typeof value === "string" ? value : null; }
@@ -12,8 +13,8 @@ function asTimestamp(value: unknown) {
 }
 function asNumber(value: unknown) { return typeof value === "number" ? value : null; }
 function mapSearchRow(row: Record<string, unknown>): CatalogueItem {
-  return {
-    id: asString(row.id) ?? undefined,
+  return withCataloguePosterFallback({
+    id: row.id == null ? undefined : String(row.id),
     slug: asString(row.slug) ?? "unavailable",
     title: asString(row.title) ?? "Untitled",
     titleUrdu: asString(row.title_ur),
@@ -25,7 +26,7 @@ function mapSearchRow(row: Record<string, unknown>): CatalogueItem {
     contentType: (asString(row.content_type) ?? "video") as CatalogueItem["contentType"],
     hostingMode: (asString(row.hosting_mode) ?? "external_link") as CatalogueItem["hostingMode"],
     thumbnailUrl: asString(row.thumbnail_url),
-  };
+  });
 }
 
 function requireDatabase() {
@@ -142,7 +143,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       termsUrl: asString(liveConfig?.terms_url),
       requiredAttribution: asString(liveConfig?.required_attribution),
     } : null;
-    return {
+    return withCataloguePosterFallback({
       id: data.id,
       slug: data.slug,
       title: data.title_en,
@@ -159,7 +160,7 @@ export async function getContentBySlug(slug: string): Promise<CatalogueItem | nu
       sourceUrl: rights?.source_url ?? source?.officialSourceUrl ?? source?.externalUrl,
       attribution: rights?.attribution_text ?? source?.requiredAttribution,
       isEarlyAccess: Boolean(data.publish_at && new Date(data.publish_at).getTime() > Date.now()),
-    };
+    });
   } catch (error) {
     if (canUseDemoData()) return featuredContent.find((item) => item.slug === slug) ?? null;
     return catalogueFailure("content", error);
