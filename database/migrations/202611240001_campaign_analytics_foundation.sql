@@ -43,6 +43,8 @@ create table if not exists public.campaign_attributions (
   created_at timestamptz not null default now(),
   check (expires_at > first_seen_at)
 );
+create unique index if not exists campaign_attribution_consented_anonymous_unique
+  on public.campaign_attributions(anonymous_id) where consent_state='granted';
 create index if not exists campaign_attribution_anon_idx on public.campaign_attributions(anonymous_id, first_seen_at desc);
 create index if not exists campaign_attribution_user_idx on public.campaign_attributions(user_id, first_seen_at desc);
 
