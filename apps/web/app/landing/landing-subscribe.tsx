@@ -177,6 +177,7 @@ export function LandingSubscribe({
           <label className="landing-consent">
             <input checked={analyticsConsent} onChange={event => {
               setCampaignConsent(event.target.checked);
+              if (event.target.checked) void captureCampaignEvent("landing_view", campaign);
             }} type="checkbox" />
             <span>Allow optional campaign analytics (not required for checkout).</span>
           </label>
