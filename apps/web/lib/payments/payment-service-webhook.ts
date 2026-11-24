@@ -369,6 +369,29 @@ export async function reconcilePaymentServiceEvent(rawBody: string, event: Produ
         payments.length,
       ],
     );
+    // Signed provider lifecycle signal. Isolated so optional telemetry cannot undo a payment.
+    if (process.env.JALWA_CAMPAIGN_ANALYTICS_ENABLED === "true" &&
+      ["payment.completed","payment.failed","subscription.payment_failed"].includes(event.type)) {
+      await client.query("savepoint campaign_provider_event");
+      try {
+        const requestId = typeof event.data.requestId === "string" ? event.data.requestId :
+          typeof event.data.request_id === "string" ? event.data.request_id : null;
+        const eventName = event.type === "payment.completed" ? "payment_success" : "payment_failure";
+        await client.query(`
+          insert into public.campaign_events(event_key,event_name,attribution_id,user_id,source,metadata)
+          values($1,$2,(
+            select i.campaign_attribution_id from public.jazzcash_wallet_link_intents i
+            where i.user_id=$3::uuid and (i.request_id=$4 or i.payment_service_request_id=$4)
+            order by i.created_at asc limit 1
+          ),$3::uuid,'provider',jsonb_build_object('signal',$5::text))
+          on conflict(event_key) do nothing`,
+          ["provider:"+event.eventId,eventName,event.userId,requestId,event.type]);
+        await client.query("release savepoint campaign_provider_event");
+      } catch {
+        await client.query("rollback to savepoint campaign_provider_event");
+        await client.query("release savepoint campaign_provider_event");
+      }
+    }
     await client.query("commit");
     return { ok: true as const, idempotent: false, reconciled: true, subscriptionStatus: subscription?.status ?? null, entitledUntil: grantedUntil, paymentsReconciled: payments.length };
   } catch (error) {
