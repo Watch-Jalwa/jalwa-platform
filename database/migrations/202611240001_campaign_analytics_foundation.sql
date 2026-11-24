@@ -77,6 +77,7 @@ create table if not exists public.campaign_payment_links (
   remote_payment_id text not null,
   attribution_id uuid references public.campaign_attributions(id) on delete set null,
   order_id uuid references public.checkout_orders(id) on delete set null,
+  subscription_id uuid references public.subscriptions(id) on delete set null,
   link_source text not null check (link_source in ('verified_payment_service','verified_jazzcash')),
   linked_at timestamptz not null default now(),
   primary key (provider,remote_payment_id),
