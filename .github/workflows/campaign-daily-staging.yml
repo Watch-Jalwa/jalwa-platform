@@ -7,7 +7,7 @@ permissions:
   contents: read
 jobs:
   staged-digest:
-    if: vars.ENABLE_CAMPAIGN_STAGING_DIGEST == 'true'
+    if: vars.ENABLE_CAMPAIGN_STAGING_JOBS == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     environment: staging
@@ -25,3 +25,8 @@ jobs:
             -H "Authorization: Bearer $CRON_SECRET" \
             -H "Content-Type: application/json" \
             https://jalwa-platform.codistan.org/api/cron/campaign-daily
+          curl --fail-with-body --silent --show-error --max-time 45 \
+            -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            https://jalwa-platform.codistan.org/api/cron/campaign-ga4
