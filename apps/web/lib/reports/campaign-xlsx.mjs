@@ -149,22 +149,38 @@ export function generateCampaignXlsx(report) {
   rows.push(["Verified Gross (minor units)",report.totals.revenueMinor]);
   merges.push("A1:"+col(Math.max(3,column-1))+"1");
 
+  // Reference B: Basic View is a three-column dashboard, followed by a
+  // true cross-dimensional Detailed View. Both use the exact same paid facts.
   const breakdown=[
     [mark("CAMPAIGN TRACKING & ANALYTICS · BASIC / DETAILED",1)],
-    ["Same verified subscriptions grouped three different ways. Never sum across dimensions."],
+    ["Same verified paid subscriptions; never add platform + plan + parameter subtotals together."],
     ["Period",String(report.filters.start??"")+" to "+String(report.filters.end??""),"Total Subs",report.totals.subs],
     ["Verified Gross (minor units)",report.totals.revenueMinor,"Timezone","Asia/Karachi"],
     ...filterRows,
     [],
+    [mark("BASIC VIEW",1)],
+    [mark("Platform-wise Subs",1),mark("Subs",1),null,mark("Plan ID-wise Subs",1),mark("Subs",1),null,
+       mark("Parameter/UTM-wise Subs",1),mark("Subs",1)],
   ];
-  for(let i=0;i<3;i++){
-    const label=i===0?"Platform-wise Subs":i===1?"Plan ID-wise Subs":"Parameter/UTM-wise Subs";
-    breakdown.push([mark(label,1)]);
-    breakdown.push([mark("Dimension",1),mark("Subs",1)]);
-    for(const item of report.dimensions[dims[i]]) breakdown.push([item.label,item.subs]);
-    breakdown.push([mark("Total",1),mark(report.totals.subs,1)]);
-    breakdown.push([]);
+  const maxCount=Math.max(1,...dims.map(d=>report.dimensions[d].length));
+  for(let i=0;i<maxCount;i++){
+    const row=[];
+    for(const dimension of dims){
+      const item=report.dimensions[dimension][i];
+      row.push(item?.label??"",item?.subs??"",null);
+    }
+    breakdown.push(row.slice(0,8));
   }
+  breakdown.push([mark("TOTAL",1),mark(report.totals.subs,1),null,
+    mark("TOTAL",1),mark(report.totals.subs,1),null,mark("TOTAL",1),mark(report.totals.subs,1)]);
+  breakdown.push([]);
+  const detailedHeading=breakdown.length+1;
+  breakdown.push([mark("DETAILED VIEW",1)]);
+  breakdown.push([mark("Platform",1),mark("Plan ID",1),mark("Parameter / UTM",1),mark("Subs",1)]);
+  for(const item of report.detailed??[]) breakdown.push([item.platform,item.plan,item.parameter,item.subs]);
+  breakdown.push([mark("TOTAL",1),null,null,mark(report.totals.subs,1)]);
+  const breakdownMerges=["A1:H1","A"+(selectedFilters.length+6)+":H"+(selectedFilters.length+6),
+    "A"+detailedHeading+":H"+detailedHeading];
 
   const files=[
     ["[Content_Types].xml",'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>'],
@@ -173,7 +189,7 @@ export function generateCampaignXlsx(report) {
     ["xl/_rels/workbook.xml.rels",'<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>'],
     ["xl/styles.xml",styles],
     ["xl/worksheets/sheet1.xml",sheet(rows,merges)],
-    ["xl/worksheets/sheet2.xml",sheet(breakdown,["A1:D1"])],
+    ["xl/worksheets/sheet2.xml",sheet(breakdown,breakdownMerges)],
   ];
   return zip(files);
 }
