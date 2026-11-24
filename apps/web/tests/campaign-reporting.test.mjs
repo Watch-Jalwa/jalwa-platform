@@ -57,3 +57,12 @@ test("reject invalid calendar date and reversed ranges", () => {
   assert.throws(()=>karachiBounds("2026-02-30","2026-03-01"));
   assert.throws(()=>karachiBounds("2026-11-25","2026-11-24"));
 });
+
+test("date-wise view includes zero-Subs days in requested PKT range", () => {
+  const r=buildCampaignReport([verified("zero-gap")],{
+    start:"2026-11-24",end:"2026-11-26",
+  });
+  assert.deepEqual(r.dateWise.map(day => [day.date,day.subs]),[
+    ["2026-11-24",1],["2026-11-25",0],["2026-11-26",0],
+  ]);
+});
