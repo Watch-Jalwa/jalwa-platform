@@ -24,7 +24,7 @@ test.describe.serial("Jalwa staging campaign admin role and workflow QA",()=>{
   });
 
   test("admin email/password form renders and bad credentials cannot sign in",async({page})=>{
-    const r=await page.goto("/admin-login",{waitUntil:"networkidle"});
+    const r=await page.goto("/admin-login",{waitUntil:"domcontentloaded"});
     expect(r?.status()).toBe(200);
     await expect(page.getByRole("heading",{name:"Staff sign in"})).toBeVisible();
     await expect(page.getByLabel("Staff email")).toBeVisible();
@@ -53,7 +53,7 @@ test.describe.serial("Jalwa staging campaign admin role and workflow QA",()=>{
       ["/studio/campaigns/manage","Campaign Management"],
       ["/studio/campaigns/daily","Daily JazzCash Logs"],
     ]){
-      const r=await page.goto(path,{waitUntil:"networkidle"});
+      const r=await page.goto(path,{waitUntil:"domcontentloaded"});
       expect(r?.status(),path).toBe(200);
       await expect(page.getByRole("heading",{name:heading})).toBeVisible();
       await expect(page.locator("body")).not.toContainText(/Campaign analytics module is disabled|Campaign reporting is disabled|Campaign config migration.*unavailable/i);
@@ -72,7 +72,7 @@ test.describe.serial("Jalwa staging campaign admin role and workflow QA",()=>{
 
   test("admin creates a disabled test campaign and can activate and deactivate",async({page})=>{
     await roleSession(page,admin.email);
-    await page.goto("/studio/campaigns/manage",{waitUntil:"networkidle"});
+    await page.goto("/studio/campaigns/manage",{waitUntil:"domcontentloaded"});
     await expect(page.getByRole("heading",{name:"Create campaign"})).toBeVisible();
     const plan=page.locator('select[name="plan_code"] option').first();
     const firstPlan=await plan.getAttribute("value");
