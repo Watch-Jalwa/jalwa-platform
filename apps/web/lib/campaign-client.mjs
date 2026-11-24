@@ -27,7 +27,9 @@ export function captureCampaignEvent(eventName,ctx={}){
   const consent=campaignConsentGranted();
   const anonymousId=consent?campaignAnonymousId():null;
   const eventKey=crypto.randomUUID();
-  const body={eventName,eventKey,consent,anonymousId,
+  const googleCookie=consent?document.cookie.match(/(?:^|;\\s*)_ga=GA\\d\\.\\d\\.([0-9]+\\.[0-9]+)/):null;
+  const gaClientId=googleCookie?.[1]??null;
+  const body={eventName,eventKey,consent,anonymousId,gaClientId,
     landingPath:ctx.landingPath||window.location.pathname,
     utm:ctx.utm,utmSource:ctx.utm_source,utmMedium:ctx.utm_medium,
     utmCampaign:ctx.utm_campaign,utmContent:ctx.utm_content,
