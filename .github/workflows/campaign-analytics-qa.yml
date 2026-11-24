@@ -25,6 +25,6 @@ jobs:
           cache: npm
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Campaign unit tests
-        run: node --test apps/web/tests/campaign-reporting.test.mjs
+        run: node --test apps/web/tests/campaign-reporting.test.mjs apps/web/tests/campaign-xlsx.test.mjs
       - name: TypeScript validation
         run: npm run typecheck --workspace @jalwa/web
