@@ -72,6 +72,17 @@ create table if not exists public.campaign_events (
 create index if not exists campaign_events_date_idx on public.campaign_events(occurred_at, event_name);
 create index if not exists campaign_events_attribution_idx on public.campaign_events(attribution_id, occurred_at);
 
+-- Connect consented attribution to the existing pay-first wallet-link lifecycle.
+alter table public.jazzcash_wallet_link_intents
+  add column if not exists campaign_attribution_id uuid references public.campaign_attributions(id) on delete set null,
+  add column if not exists payment_service_request_id text;
+create index if not exists jazzcash_wallet_intent_campaign_idx
+  on public.jazzcash_wallet_link_intents(campaign_attribution_id)
+  where campaign_attribution_id is not null;
+create unique index if not exists jazzcash_wallet_intent_ps_request_unique
+  on public.jazzcash_wallet_link_intents(payment_service_request_id)
+  where payment_service_request_id is not null;
+
 -- Provider payment mapping can be recorded only after verified reconciliation;
 -- no client/browser may invent a paid conversion.
 create table if not exists public.campaign_payment_links (
