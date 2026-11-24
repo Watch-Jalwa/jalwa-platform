@@ -104,7 +104,7 @@ test("Daily digest reconciles, hides sensitive data, and SMTP mail is actually a
   });
   const mime=result.message.toString("utf8");
   assert.match(mime,/Campaign & JazzCash Daily Logs/);
-  assert.match(mime,/Content-Type: application\/vnd.openxmlformats-officedocument.spreadsheetml.sheet/);
+  assert.match(mime,/Content-Type:\s+application\/vnd\.openxmlformats-officedocument\.spreadsheetml\.sheet/);
   assert.match(mime,/jalwa-campaign-2026-11-24.xlsx/);
   assert.match(mime,/Backend verified JazzCash successes/);
   assert.doesNotMatch(mime,/Payment denied/);
