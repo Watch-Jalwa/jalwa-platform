@@ -184,7 +184,7 @@ test("Subscribe conversion is deduped by event_id", () => {
   clearDom();
 });
 
-test("landing helpers fire ViewContent, AddToCart, InitiateCheckout, Subscribe", () => {
+test("landing helpers fire only client-approved TikTok events", () => {
   installMockDom();
   __resetTikTokPixelForTests();
   const tracks = [];
@@ -231,7 +231,9 @@ test("landing helpers fire ViewContent, AddToCart, InitiateCheckout, Subscribe",
   });
 
   const names = tracks.map((t) => t.event);
-  assert.deepEqual(names, ["ViewContent", "AddToCart", "InitiateCheckout", "Subscribe"]);
+  assert.deepEqual(names, ["ViewContent", "InitiateCheckout", "AddPaymentInfo", "Subscribe"]);
+  assert.ok(!names.includes("AddToCart"));
+  assert.ok(!names.includes("CompletePayment"));
   clearDom();
 });
 
@@ -271,4 +273,11 @@ test("wiring + CSP + product record cover Jalwa Pixel ID", async () => {
   assert.match(productMd, /DBU5R83C77UCDH70PUCG/);
   assert.match(productMd, /landing1\?utm=T/);
   assert.match(productMd, /not the official source of truth/i);
+  assert.match(productMd, /AddPaymentInfo/);
+  assert.match(productMd, /Do not fire.*AddToCart/i);
+  const landingAnalytics = await readFile(new URL("../lib/landing-analytics.mjs", import.meta.url), "utf8");
+  assert.match(landingAnalytics, /logTikTokEvent\("InitiateCheckout"/);
+  assert.match(landingAnalytics, /logTikTokEvent\("AddPaymentInfo"/);
+  assert.doesNotMatch(landingAnalytics, /logTikTokEvent\("AddToCart"/);
+  assert.doesNotMatch(landingAnalytics, /logTikTokEvent\("CompletePayment"/);
 });

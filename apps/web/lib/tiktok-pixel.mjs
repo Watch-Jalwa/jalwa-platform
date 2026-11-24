@@ -152,7 +152,9 @@ export function markTikTokConversionFired(eventName, eventId) {
 
 /**
  * Track a TikTok event. Never throws.
- * For CompletePayment / Subscribe, pass options.event_id and dedupe is applied.
+ * Jalwa client-approved events: PageView, ViewContent, InitiateCheckout, AddPaymentInfo, Subscribe.
+ * Do not fire AddToCart or CompletePayment unless newly requested.
+ * For Subscribe (and CompletePayment if ever requested), pass options.event_id — dedupe is applied.
  */
 export function logTikTokEvent(eventName, payload = {}, options = {}) {
   try {
@@ -161,7 +163,7 @@ export function logTikTokEvent(eventName, payload = {}, options = {}) {
       return false;
     }
     const eventId = String(options.event_id ?? "").trim();
-    const isConversion = eventName === "CompletePayment" || eventName === "Subscribe";
+    const isConversion = eventName === "Subscribe" || eventName === "CompletePayment";
     if (isConversion && eventId && wasTikTokConversionFired(eventName, eventId)) {
       return false;
     }
