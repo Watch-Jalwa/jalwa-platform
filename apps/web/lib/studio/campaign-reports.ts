@@ -50,12 +50,14 @@ export async function getCampaignPaidReport(filters: CampaignFilters) {
       coalesce(a.landing_path,'unknown') landing_path,
       coalesce(a.referral,'unknown') referral,
       coalesce(a.utm_campaign,'unknown') campaign
-    from public.campaign_payment_links l
-    join public.payment_service_payments p on p.provider=l.provider and p.remote_payment_id=l.remote_payment_id
-    join public.subscriptions s on s.id=l.subscription_id and s.user_id=p.user_id and s.provider=p.provider
+    from public.payment_service_payments p
+    left join public.campaign_payment_links l on l.provider=p.provider and l.remote_payment_id=p.remote_payment_id
+    left join public.subscriptions s on s.id=l.subscription_id and s.user_id=p.user_id and s.provider=p.provider
     left join public.campaign_attributions a on a.id=l.attribution_id
     left join public.campaign_configs cfg on cfg.id=a.campaign_id
-    where p.status='completed' and l.link_source in ('verified_payment_service','verified_jazzcash')
+    where p.status='completed'
+      and (p.charge_kind in ('full','step') or (s.id is not null
+        and l.link_source in ('verified_payment_service','verified_jazzcash')))
       and coalesce(p.remote_updated_at,p.remote_created_at) >= $1::timestamptz
       and coalesce(p.remote_updated_at,p.remote_created_at) < $2::timestamptz
     order by p.remote_created_at asc, p.remote_payment_id asc
