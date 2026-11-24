@@ -35,7 +35,7 @@ export default async function CampaignAnalyticsPage({searchParams}:{searchParams
     <div className="section-heading"><div><span className="eyebrow">Campaign analytics</span>
       <h1>Campaign Tracking & Analytics</h1>
       <p>Backend-verified paid subscriptions, by landing, campaign, platform, plan and parameter.</p></div>
-      <Link className="button button-secondary" href="/studio/finance/reports">Premium finance</Link></div>
+      <div><Link className="button button-secondary" href="/studio/campaigns/manage">Campaign management</Link> <Link className="button button-secondary" href="/studio/finance/reports">Premium finance</Link></div></div>
     {!campaignFeatureEnabled() ? <div className="notice"><strong>Not activated:</strong> Campaign reporting is disabled until staging migrations, attribution linkage and QA are accepted. No fictitious counts are displayed.</div> : null}
     {error ? <div className="notice" role="alert">{error}</div> : null}
     <section className="panel">
@@ -53,7 +53,7 @@ export default async function CampaignAnalyticsPage({searchParams}:{searchParams
         <button type="submit" className="button button-primary">Apply filters</button>
       </form>
     </section>
-    {report ? <>
+    {report ? <><p><Link className="button button-primary" href={"/api/studio/campaigns/export?"+query.toString()}>Download Excel (.xlsx)</Link></p>
       <div className="metric-grid">
         <article><strong>{report.totals.subs}</strong><span>Verified paid Subs</span></article>
         <article><strong>{money(report.totals.revenueMinor)}</strong><span>Verified gross collections</span></article>
