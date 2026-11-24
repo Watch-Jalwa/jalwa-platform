@@ -51,7 +51,7 @@ export async function POST(request:Request) {
         window_start=case when public.campaign_ingest_rate_limits.window_start <= now()-interval '1 hour'
           then now() else public.campaign_ingest_rate_limits.window_start end,
         updated_at=now()
-      returning hits`,[requestRateKey(request,"campaign-event",anonymousId??sessionId)]);
+      returning hits`,[requestRateKey(request,"campaign-event")]);
     if ((rate.rows[0]?.hits ?? 1000)>120) {
       await client.query("rollback");
       return new NextResponse(null,{status:204});
