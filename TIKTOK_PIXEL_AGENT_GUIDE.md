@@ -2,7 +2,7 @@
 
 **Audience:** Cursor / coding agents implementing TikTok Pixel on SkillUp-like web products.  
 **Use this file as the handoff reference** when a client provides a Pixel ID and a campaign landing URL.  
-**Product example in this repo:** SkillUp (`/landing2`, Pixel `DBU5QHBC77UCDH70PUAG`).
+**Product example in this repo:** Jalwa (`/landing1`, Pixel `DBU5R83C77UCDH70PUCG`).
 
 ---
 
@@ -17,8 +17,8 @@ Install the client’s TikTok Pixel so TikTok Ads can measure visits and convers
 When a client sends something like:
 
 ```text
-https://example.com/landing2?utm=T&package=2&parameter=20percentoff&payment=jazzcash
-SkillUp pixel id: DBU5QHBC77UCDH70PUAG
+https://watch-jalwa.com/landing1?utm=T&package=1&parameter=monthly10k&payment=jazzcash
+Jalwa pixel id: DBU5R83C77UCDH70PUCG
 ```
 
 They mean:
@@ -33,7 +33,7 @@ They mean:
 
 | Platform | Typical ID shape | Example |
 | --- | --- | --- |
-| TikTok Pixel | Alphanumeric string | `DBU5QHBC77UCDH70PUAG` |
+| TikTok Pixel | Alphanumeric string | `DBU5R83C77UCDH70PUCG` |
 | Meta Pixel | Mostly numeric | `123456789012345` |
 | GA4 | Starts with `G-` | `G-XXXXXXXX` |
 
@@ -51,7 +51,13 @@ If only a TikTok Pixel ID is provided, implement **TikTok only**. Do not invent 
 ### Strongly preferred (ask if missing)
 
 3. Which **events** TikTok Ads Manager expects  
-   Default if unspecified: `PageView`, `ViewContent`, `AddToCart`, `InitiateCheckout`, `CompletePayment` / `Subscribe`
+   **Jalwa client approved set (use this when following this repo):**
+   - `PageView` — landing open
+   - `ViewContent` — landing open
+   - `InitiateCheckout` — Subscribe button click
+   - `AddPaymentInfo` — payment details submitted (JazzCash number + Subscribe)
+   - `Subscribe` — successful subscription / payment success  
+   Do **not** fire `AddToCart` or `CompletePayment` unless a different client explicitly requests them.
 4. Whether Pixel should load **site-wide** or only on the landing  
    Default: **site-wide base code** (needed because payment return often lands on `/` or `/account`, not the landing)
 5. Staging / Events Manager access for Test Events verification
@@ -69,8 +75,8 @@ If only a TikTok Pixel ID is provided, implement **TikTok only**. Do not invent 
 
 1. **Marketing only.** Pixel / GA4 must never be the official source of truth for paid subscriptions, revenue, or entitlement. Prefer payment webhooks + DB attribution.
 2. **Never throw.** Analytics failures must not break checkout, payment return, or auth.
-3. **Dedupe conversions** by stable `transaction_id` / order id (session or durable store). Fire purchase/subscribe **once** per order.
-4. **Same moment as existing analytics.** If the product already has GA4 landing events, fire TikTok at those same call sites — do not invent a second funnel.
+3. **Dedupe conversions** by stable `transaction_id` / order id (session or durable store). Fire `Subscribe` **once** per order.
+4. **Same moments as existing analytics.** If the product already has GA4 landing events, fire TikTok at those same call sites — do not invent a second funnel. Event *names* may differ (GA4 can still use `add_to_cart` / `purchase` while TikTok uses the client-approved set).
 5. **Runtime-configurable ID.** Prefer server/runtime env (`TIKTOK_PIXEL_ID`) exposed via a `<meta>` tag so container deploys can change the ID without rebuilding. Allow `NEXT_PUBLIC_TIKTOK_PIXEL_ID` as build-time fallback.
 6. **Pixel IDs are not secrets.** They appear in client HTML/JS. Still do not paste Events API tokens into the repo or chat.
 7. **Update CSP.** Production CSP must allow TikTok script/connect/image hosts or the Pixel will silently fail.
@@ -104,8 +110,8 @@ Copy this checklist into the PR / issue:
 - [ ] Confirm ID is TikTok (not GA4 / Meta)
 - [ ] Add runtime meta + env resolution for Pixel ID
 - [ ] Add browser loader (`analytics.tiktok.com/i18n/pixel/events.js`)
-- [ ] Wire events at landing view, CTA, and payment success
-- [ ] Dedupe paid conversion by order / transaction id
+- [ ] Wire **only** client-approved events (Jalwa: PageView, ViewContent, InitiateCheckout, AddPaymentInfo, Subscribe)
+- [ ] Dedupe paid conversion (`Subscribe`) by order / transaction id
 - [ ] Extend CSP (`script-src`, `connect-src`, `img-src`)
 - [ ] Add unit tests with mocked `window` / `document`
 - [ ] Write product-specific MD with client URL + Pixel ID + event map
@@ -115,24 +121,28 @@ Copy this checklist into the PR / issue:
 
 ---
 
-## 6. Standard event map
+## 6. Standard event map (Jalwa / client-approved)
 
-Use this default mapping unless the client specifies different TikTok event names:
+**Only these five TikTok events** unless a different client document says otherwise:
 
 | Product moment | TikTok event | Notes |
 | --- | --- | --- |
 | Landing / offer page open | `PageView` | Via `ttq.page()` |
 | Landing / offer page open | `ViewContent` | Include content_id, value, currency when known |
-| Primary CTA (Subscribe / Buy) | `AddToCart` | Before redirect to wallet / checkout |
-| Primary CTA | `InitiateCheckout` | Same click is fine |
-| Payment success — one-time / yearly style | `CompletePayment` | Pass `event_id` = order id |
-| Payment success — subscription / monthly style | `Subscribe` | Pass `event_id` = order id |
-| Payment failed / pending | Do **not** fire CompletePayment / Subscribe | Optional custom or skip |
+| Subscribe button click | `InitiateCheckout` | Before redirect to wallet / checkout |
+| Payment info submitted (JazzCash MSISDN + Subscribe) | `AddPaymentInfo` | Same submit as InitiateCheckout is OK |
+| Payment / subscription success | `Subscribe` | Pass `event_id` = order id; fire once per order |
+| Payment failed / pending | *(none)* | Do not fire Subscribe |
+
+### Removed / do not fire (unless newly requested)
+
+- `AddToCart`
+- `CompletePayment`
 
 ### Payload shape (browser)
 
 ```ts
-ttq.track("CompletePayment", {
+ttq.track("Subscribe", {
   contents: [
     {
       content_id: "premium-yearly",
@@ -168,10 +178,10 @@ If GA4 is also used, allow Google Tag / Analytics hosts the same way. A Pixel th
 
 ```dotenv
 # Preferred — runtime, works with standalone / container images
-TIKTOK_PIXEL_ID=DBU5QHBC77UCDH70PUAG
+TIKTOK_PIXEL_ID=DBU5R83C77UCDH70PUCG
 
 # Optional — build-time fallback for local / static embeds
-NEXT_PUBLIC_TIKTOK_PIXEL_ID=DBU5QHBC77UCDH70PUAG
+NEXT_PUBLIC_TIKTOK_PIXEL_ID=DBU5R83C77UCDH70PUCG
 ```
 
 Resolution order agents should implement:
@@ -187,10 +197,10 @@ Resolution order agents should implement:
 1. Open the exact campaign landing URL the client provided.
 2. Confirm `<meta name="…-tiktok-pixel-id" content="…">` is present.
 3. Network tab: request to `analytics.tiktok.com` succeeds (not CSP-blocked).
-4. TikTok Pixel Helper: Pixel ID matches; `PageView` / `ViewContent` on load.
-5. Click CTA: `AddToCart` + `InitiateCheckout`.
-6. Complete a **staging** payment success with an order id: one `CompletePayment` or `Subscribe`.
-7. Reload / repeat success with same order id: **no second** conversion event.
+4. Landing open: `PageView` + `ViewContent`.
+5. Click Subscribe (with payment number): **only** `InitiateCheckout` + `AddPaymentInfo` (no `AddToCart`).
+6. Complete a **staging** payment success with an order id: **one** `Subscribe` (no `CompletePayment`).
+7. Reload / repeat success with same order id: **no second** `Subscribe`.
 8. Cross-check product admin / DB attribution for the same order — Pixel count is secondary.
 
 ---
@@ -200,7 +210,8 @@ Resolution order agents should implement:
 - Do not treat Pixel totals as official subscription or revenue numbers.
 - Do not commit Events API secrets or TikTok access tokens to git.
 - Do not put real answer keys, PII, or payment credentials in Pixel payloads.
-- Do not fire `CompletePayment` on “button click” — only after confirmed payment success.
+- Do not fire `Subscribe` on “button click” — only after confirmed payment / subscription success.
+- Do not fire `AddToCart` or `CompletePayment` when the client approved the five-event set above.
 - Do not merge Pixel work with unrelated production promotion / billing flag changes.
 - Do not assume Meta Pixel is required because TikTok was requested.
 - Do not hard-block the product if Pixel ID env is missing when a documented client default exists — but do no-op safely if no valid ID is available.
@@ -212,30 +223,31 @@ Resolution order agents should implement:
 ```md
 ## Summary
 - Integrate TikTok Pixel `<PIXEL_ID>` for campaign landing `<PATH>`.
-- Fire PageView/ViewContent, AddToCart/InitiateCheckout, and CompletePayment|Subscribe (deduped by order id).
+- Fire **only** PageView, ViewContent, InitiateCheckout, AddPaymentInfo, and Subscribe (deduped by order id).
 - CSP + runtime env `TIKTOK_PIXEL_ID` + product MD guide.
 
 ## Test plan
-- [ ] Pixel Helper on landing URL
-- [ ] CTA events
-- [ ] Staging payment success → one conversion event
+- [ ] Pixel Helper on landing URL → PageView + ViewContent
+- [ ] CTA → InitiateCheckout + AddPaymentInfo only
+- [ ] Staging payment success → one Subscribe
 - [ ] Unit tests for loader + landing analytics
 ```
 
 ---
 
-## 12. SkillUp concrete reference (this repository)
+## 12. Jalwa concrete reference (this repository)
 
 | Item | Value |
 | --- | --- |
-| Landing | `/landing2?utm=T&package=2&parameter=20percentoff&payment=jazzcash` |
-| Pixel ID | `DBU5QHBC77UCDH70PUAG` |
-| Loader | `apps/web/lib/tiktok-pixel.ts` |
+| Landing | `/landing1?utm=T&package=1&parameter=monthly10k&payment=jazzcash` |
+| Pixel ID | `DBU5R83C77UCDH70PUCG` |
+| Approved events | `PageView`, `ViewContent`, `InitiateCheckout`, `AddPaymentInfo`, `Subscribe` only |
+| Loader | `apps/web/lib/tiktok-pixel.mjs` |
 | Runtime meta | `apps/web/app/tiktok-runtime-config.tsx` |
-| Funnel wiring | `apps/web/lib/landing-analytics.ts` |
+| Funnel wiring | `apps/web/lib/landing-analytics.mjs` |
 | Product record | `docs/product/TIKTOK_PIXEL_INTEGRATION.md` |
 
-When starting a **new** product, copy this guide, replace the SkillUp section with that product’s URL/ID, and follow sections 2–9.
+When starting a **new** product, copy this guide, replace the Jalwa section with that product’s URL/ID/events, and follow sections 2–9.
 
 ---
 
@@ -247,6 +259,7 @@ Follow docs/product/TIKTOK_PIXEL_AGENT_GUIDE.md.
 Client provided:
 - Landing URL: <URL>
 - TikTok Pixel ID: <PIXEL_ID>
+- Events only: PageView, ViewContent, InitiateCheckout (Subscribe button), AddPaymentInfo, Subscribe (payment success)
 
-Implement browser TikTok Pixel with runtime env, CSP allowlist, and event wiring at landing view / CTA / payment success (dedupe by order id). Write a short product-specific MD recording the URL, Pixel ID, and event map. Do not treat Pixel as source of truth for paid subs. Do not implement Meta Pixel unless a Meta Pixel ID is provided.
+Implement browser TikTok Pixel with runtime env, CSP allowlist, and those five events only (dedupe Subscribe by order id). Do not fire AddToCart or CompletePayment. Write/update the product MD. Do not treat Pixel as source of truth for paid subs. Do not implement Meta Pixel unless a Meta Pixel ID is provided.
 ```
