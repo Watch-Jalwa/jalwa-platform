@@ -33,15 +33,12 @@ export async function getCampaignDailySummary(day:string) {
     `,[startInclusiveUtc,endExclusiveUtc]),
     databasePool.query<PayAgg>(`
       select status,coalesce(response_code,'Unmapped') response_code,
-        case when response_message is null or btrim(response_message)='' then 'Unmapped'
-             else left(response_message,100) end response_message,
+        'Unmapped (code-only; provider reason mapping pending)'::text response_message,
         count(*)::text count,coalesce(sum(amount_minor),0)::text amount_minor
       from public.payment_service_payments
       where provider='jazzcash' and coalesce(remote_updated_at,remote_created_at) >= $1::timestamptz
         and coalesce(remote_updated_at,remote_created_at) < $2::timestamptz
-      group by status,coalesce(response_code,'Unmapped'),
-        case when response_message is null or btrim(response_message)='' then 'Unmapped'
-             else left(response_message,100) end
+      group by status,coalesce(response_code,'Unmapped')
     `,[startInclusiveUtc,endExclusiveUtc]),
   ]);
   const e=events.rows[0] ?? {landing_views:"0",unique_landing_visitors:"0",checkout_visits:"0",
