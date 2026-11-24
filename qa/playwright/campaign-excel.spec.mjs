@@ -100,3 +100,30 @@ test("daily prior-day dashboard totals match a captured MIME email + Excel witho
   expect(mime).toContain("jalwa-campaign-"+day+".xlsx");
   expect(mime).not.toContain("03001234567");
 });
+
+test("staging admin can save and clear an inert daily email recipient/time without enabling delivery",async({page})=>{
+  const actor=await ensureQaUser(config,process.env.STAGING_QA_ADMIN_EMAIL,"admin");
+  await authenticatePage(page,config,actor.email,"/studio/campaigns/daily");
+  await page.goto("/studio/campaigns/daily",{waitUntil:"domcontentloaded"});
+  await expect(page.getByRole("heading",{name:"Automated daily email settings"})).toBeVisible();
+  const form=page.locator('form').filter({has:page.locator('textarea[name="recipients"]')});
+  try{
+    await form.locator('textarea[name="recipients"]').fill("staging-sink@example.invalid");
+    await form.locator('input[name="hour"]').fill("9");
+    await form.locator('input[name="minute"]').fill("15");
+    await form.locator('input[name="enabled"]').uncheck();
+    await form.getByRole("button",{name:"Save schedule"}).click();
+    await page.waitForURL(/saved=1/);
+    await expect(page.locator('textarea[name="recipients"]')).toHaveValue("staging-sink@example.invalid");
+    await expect(page.locator('input[name="enabled"]')).not.toBeChecked();
+  }finally{
+    await page.goto("/studio/campaigns/daily",{waitUntil:"domcontentloaded"});
+    const restore=page.locator('form').filter({has:page.locator('textarea[name="recipients"]')});
+    await restore.locator('textarea[name="recipients"]').fill("");
+    await restore.locator('input[name="hour"]').fill("9");
+    await restore.locator('input[name="minute"]').fill("0");
+    await restore.locator('input[name="enabled"]').uncheck();
+    await restore.getByRole("button",{name:"Save schedule"}).click();
+    await page.waitForURL(/saved=1/);
+  }
+});
