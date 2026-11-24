@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import { trackLandingView } from "@/lib/landing-analytics.mjs";
 import { stampUtmAttribution } from "@/lib/utm-attribution.mjs";
-import { captureCampaignEvent, campaignConsentGranted } from "@/lib/campaign-client.mjs";
+import { captureCampaignEvent } from "@/lib/campaign-client.mjs";
 
 type Props = {
   landing: string;
@@ -44,7 +44,7 @@ export function LandingAnalyticsBoot(props: Props) {
       utm_content:props.utmContent,package:props.packageCode,
       parameter:props.parameter,ref:props.refCode,planCode:props.planCode,
     });
-    if (campaignConsentGranted() && typeof window.gtag === "function") {
+    if (typeof window.gtag === "function") {
       window.gtag("event", "landing_view", {
         landing: props.landing,
         utm: props.utm,
@@ -54,7 +54,7 @@ export function LandingAnalyticsBoot(props: Props) {
       window.gtag("event", "view_item", { item_id: props.planCode, landing: props.landing });
     }
 
-    if (campaignConsentGranted()) trackLandingView({
+    trackLandingView({
       landing: props.landing,
       landingPath: props.landingPath,
       planCode: props.planCode,
