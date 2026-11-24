@@ -17,7 +17,7 @@ import { paymentServiceEnabled, linkPaymentServiceWallet } from "./payment-servi
 
 function sanitizeAttribution(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const allow = ["utm", "utm_source", "utm_medium", "utm_campaign", "utm_content", "package", "parameter", "payment", "ref", "landing", "landingPath", "he"];
+  const allow = ["utm", "utm_source", "utm_medium", "utm_campaign", "utm_content", "package", "parameter", "payment", "ref", "landing", "landingPath", "he", "campaignAnonymousId"];
   const out = {};
   for (const key of allow) {
     if (typeof raw[key] === "string" && raw[key].trim()) {
@@ -526,6 +526,21 @@ export async function startJazzcashLandingLink({ msisdn, planCode, consentToAuto
     [requestId, learner.userId, learner.msisdn, planCode, attr.landing ?? null, JSON.stringify(attr)],
   );
 
+  // Optional consented attribution is bound to the same verified pay-first intent.
+  // A missing campaign migration must never interrupt JazzCash checkout.
+  if (process.env.JALWA_CAMPAIGN_ANALYTICS_ENABLED === "true"
+    && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(String(attr.campaignAnonymousId ?? ""))) {
+    await databasePool.query(
+      `update public.jazzcash_wallet_link_intents i
+       set campaign_attribution_id = a.id
+       from public.campaign_attributions a
+       where i.request_id = $1 and a.anonymous_id = $2::uuid
+         and a.consent_state = 'granted' and a.expires_at > now()
+         and i.user_id = $3`,
+      [requestId, attr.campaignAnonymousId, learner.userId],
+    ).catch(() => undefined);
+  }
+
   if (attr && Object.keys(attr).length) {
     await databasePool.query(
       `update public.profiles set premium_attribution = $2::jsonb, updated_at = now() where id = $1`,
@@ -539,6 +554,12 @@ export async function startJazzcashLandingLink({ msisdn, planCode, consentToAuto
       msisdn: learner.msisdn,
       planCode,
     });
+    if (process.env.JALWA_CAMPAIGN_ANALYTICS_ENABLED === "true") {
+      await databasePool.query(
+        "update public.jazzcash_wallet_link_intents set payment_service_request_id = $2 where request_id = $1",
+        [requestId, linked.requestId],
+      ).catch(() => undefined);
+    }
     return {
       checkoutMode: "payment-service",
       requestId: linked.requestId,
