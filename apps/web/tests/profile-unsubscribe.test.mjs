@@ -50,9 +50,11 @@ test("profile unsubscribe returns ok and refreshes Free plan without hard redire
   assert.match(reconcile, /\["cancelled", "expired"\]/);
 });
 
-test("homepage uses the Pakistan hero banner asset", async () => {
+test("homepage delegates to the approved Pakistan hero in the new home component", async () => {
   const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-  assert.match(page, /home-banner-hero/);
-  assert.match(page, /\/home\/homepage-hero-banner\.jpeg/);
-  assert.match(page, /Pakistan ki kahaniyan/);
+  const home = await readFile(new URL("../app/newHome1/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /NewHomePage/);
+  assert.match(home, /new-home-hero/);
+  assert.match(home, /\\/home\\/homepage-hero-banner\\.jpeg/);
+  assert.match(home, /Pakistan ki/);
 });
