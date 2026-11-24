@@ -33,3 +33,8 @@
 ## Completion gate
 Epic #174 and issue #183 remain open until complete staging tests, provider correlation evidence, CI, security/role tests, report/Excel comparisons, email test delivery, GA4 DebugView, and release SHA are attached.
 No production changes or external emails are authorized by this draft PR.
+## SMTP delivery safety and reconciliation (#182)
+- The scheduler retries up to three pre-submission failures (including SMTP connection/authentication verification). A pending attempt is never automatically retried: SMTP acceptance may have occurred even if the response or receipt update was lost.
+- All configured recipients must be accepted by SMTP before status is marked sent. Partial/ambiguous acceptance leaves the date pending with a sanitized reconciliation marker; SMTP acceptance is not mailbox receipt.
+- For an ambiguous pending row, check the deterministic message ID, provider logs and recipient mailbox receipts before any separately authorized recovery. Do not reset a pending row blindly. Do not expose recipient addresses or SMTP errors in public logs. Record per-recipient evidence in a restricted operator record. Admin resend UI and audited recovery remain separate acceptance items.
+- Live acceptance remains gated on approved recipient(s), PKT time, authorized staging SMTP configuration and real scheduled mailbox receipt. No external delivery or production activation is authorized by this change.
