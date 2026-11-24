@@ -118,7 +118,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Run real staging Admin QA in Chromium
         run: |
-          npx playwright test --config=playwright.staging.config.mjs qa/playwright/campaign-admin.spec.mjs
+          CI='' npx playwright test --config=playwright.staging.config.mjs qa/playwright/campaign-admin.spec.mjs
       - name: Restore disabled feature flag and remove test campaigns
         if: always()
         run: |
