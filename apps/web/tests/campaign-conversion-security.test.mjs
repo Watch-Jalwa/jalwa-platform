@@ -18,7 +18,7 @@ test("payment return uses a server receipt and wallet linking alone cannot fire 
   const prompt=await readFile(new URL("../components/post-jazzcash-auth-prompt.tsx",import.meta.url),"utf8");
   assert.match(callback,/result\.ok \? String\(result\.subscriptionId \?\? ""\)/);
   assert.match(prompt,/receipt\?\.verified/);
-  assert.match(prompt,/campaignConsentGranted\(\)/);
+  assert.match(prompt,/trackLandingPaymentSuccess/);
   assert.doesNotMatch(callback,/result\.subscriptionId \?\? result\.requestId/);
 });
 test("attribution stays immutable and never transfers to a different account",async()=>{
