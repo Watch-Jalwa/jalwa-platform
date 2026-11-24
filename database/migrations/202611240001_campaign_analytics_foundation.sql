@@ -103,7 +103,7 @@ create table if not exists public.campaign_ga4_outbox (
   provider public.payment_provider not null,
   remote_payment_id text not null,
   attribution_id uuid not null references public.campaign_attributions(id) on delete restrict,
-  status text not null default 'pending' check (status in ('pending','sent','failed','skipped')),
+  status text not null default 'pending' check (status in ('pending','sending','sent','failed','skipped')),
   attempts integer not null default 0,
   last_error text,
   sent_at timestamptz,
