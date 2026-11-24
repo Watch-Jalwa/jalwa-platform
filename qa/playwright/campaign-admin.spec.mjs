@@ -32,8 +32,9 @@ test.describe.serial("Jalwa staging campaign admin role and workflow QA",()=>{
     await page.getByLabel("Staff email").fill("not-a-staff-account@example.invalid");
     await page.getByLabel("Password").fill("IncorrectPassword-123!");
     await page.getByRole("button",{name:/Sign in to Studio/}).click();
-    await expect(page.locator(".policy-notice[role=alert]")).toContainText(/Sign-in failed/);
-    expect(new URL(page.url()).pathname).toBe("/admin-login");
+    // A rate-limited or unknown identity must never acquire a privileged session.
+    await expect(page).toHaveURL(/\/admin-login(?:\?|$)/);
+    expect((await page.context().request.get("/api/studio/campaigns/report")).status()).toBe(401);
   });
 
   test("anonymous cannot access campaign Studio routes or data APIs",async({page})=>{
