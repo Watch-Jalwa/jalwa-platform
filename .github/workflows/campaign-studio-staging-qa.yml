@@ -26,7 +26,7 @@ env:
   STAGING_QA_UNAUTHORIZED_EMAIL: ${{ vars.STAGING_QA_UNAUTHORIZED_EMAIL || 'acceptance+viewer@watch-jalwa.com' }}
   QA_RUN_ID: campaign-admin-${{ github.run_id }}
   CAMPAIGN_QA_PASSWORD_EMAIL: campaign-admin-qa-${{ github.run_id }}@watch-jalwa.com
-  EXPECTED_STAGING_SHA: f8665264125c7c3e31caf7800b33c850029b7a86
+  EXPECTED_STAGING_SHA: 1d20678cca2d7a9e036eda219fe2b9338911393e
 
 jobs:
   admin-qa:
