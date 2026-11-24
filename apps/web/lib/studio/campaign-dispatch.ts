@@ -3,6 +3,7 @@ import { databasePool } from "@/lib/database/pool";
 import { getCampaignDailySummary, previousKarachiDay } from "@/lib/studio/campaign-daily";
 import { getCampaignPaidReport, campaignFeatureEnabled } from "@/lib/studio/campaign-reports";
 import { generateCampaignXlsx } from "@/lib/reports/campaign-xlsx.mjs";
+import { composeCampaignDailyDigest } from "@/lib/reports/campaign-digest.mjs";
 
 type Settings = {
   enabled:boolean;timezone:string;delivery_hour:number;delivery_minute:number;recipient_emails:string[];
@@ -77,22 +78,7 @@ export async function dispatchCampaignDaily(now=new Date()) {
       getCampaignPaidReport({start:day,end:day}),
     ]);
     const attachment=generateCampaignXlsx(paid);
-    const lines=[
-      "Jalwa — Campaign & JazzCash Daily Logs",day,"Timezone: Asia/Karachi",
-      "Landing views: "+daily.landingViews,
-      "Unique attributed visitors: "+daily.uniqueLandingVisitors,
-      "HE traffic: Unknown (classification not supplied)",
-      "NON HE traffic: Unknown (classification not supplied)",
-      "Paywall visits: "+daily.paywallVisits,
-      "Unique paywall visits: "+daily.uniquePaywallVisits,
-      "MPIN reached: "+(daily.mpinCount??"Not observable from JazzCash"),
-      "Verified payment success count: "+daily.successCount,
-      "Payment failure count: "+daily.failureCount,
-      "Campaign-attributed paid Subs: "+paid.totals.subs,
-      "Failure reasons:",
-      ...daily.failureReasons.map(x=>" - "+x.code+" / "+x.reason+": "+x.count),
-      "Reporting timestamp: "+daily.generatedAt,
-    ];
+    const digest=composeCampaignDailyDigest(daily,paid,day);
     if(!process.env.SMTP_HOST) throw new Error("SMTP is not configured.");
     const mail=nodemailer.createTransport({
       host:process.env.SMTP_HOST,
@@ -105,10 +91,10 @@ export async function dispatchCampaignDaily(now=new Date()) {
     const result=await mail.sendMail({
       from:process.env.SMTP_FROM??"Jalwa <no-reply@watch-jalwa.com>",
       to:recipients.join(","),
-      subject:"Campaign & JazzCash Daily Logs | "+day,
-      text:lines.join("\n"),
+      subject:digest.subject,
+      text:digest.text,
       messageId:"<campaign-"+day+"@watch-jalwa.com>",
-      attachments:[{filename:"jalwa-campaign-"+day+".xlsx",
+      attachments:[{filename:digest.filename,
         content:attachment,contentType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}],
     });
     if(!result.accepted?.length) throw new Error("No configured recipient accepted the daily report.");
