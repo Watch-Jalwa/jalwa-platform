@@ -3,7 +3,7 @@ name: Campaign Studio staging admin QA
 on:
   push:
     branches: ["feat/campaign-analytics-admin-v1"]
-    paths: [".github/workflows/campaign-studio-staging-qa.yml", "qa/playwright/campaign-admin.spec.mjs"]
+    paths: [".github/workflows/campaign-studio-staging-qa.yml", "qa/playwright/campaign-admin.spec.mjs", "qa/playwright/campaign-excel.spec.mjs"]
 
 permissions:
   contents: read
@@ -26,7 +26,7 @@ env:
   STAGING_QA_UNAUTHORIZED_EMAIL: ${{ vars.STAGING_QA_UNAUTHORIZED_EMAIL || 'acceptance+viewer@watch-jalwa.com' }}
   QA_RUN_ID: campaign-admin-${{ github.run_id }}
   CAMPAIGN_QA_PASSWORD_EMAIL: campaign-admin-qa-${{ github.run_id }}@watch-jalwa.com
-  EXPECTED_STAGING_SHA: 1d20678cca2d7a9e036eda219fe2b9338911393e
+  EXPECTED_STAGING_SHA: 818a90d1bc79f57eda82dfa71b3a2e2a27d9483e
 
 jobs:
   admin-qa:
@@ -118,7 +118,7 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Run real staging Admin QA in Chromium
         run: |
-          CI='' npx playwright test --config=playwright.staging.config.mjs qa/playwright/campaign-admin.spec.mjs
+          CI='' npx playwright test --config=playwright.staging.config.mjs qa/playwright/campaign-admin.spec.mjs qa/playwright/campaign-excel.spec.mjs
       - name: Restore disabled feature flag and remove test campaigns
         if: always()
         run: |
@@ -141,6 +141,9 @@ jobs:
           delete from public.campaign_configs where name like 'QA-Campaign-Admin-%'
             and utm_campaign='qa-stage-admin' and created_at > now()-interval '1 day';
           delete from public."user" where email=:'qa_email';
+          update public.campaign_report_settings
+            set recipient_emails='{}'::text[],enabled=false,delivery_hour=9,delivery_minute=0
+            where 'staging-sink@example.invalid'=any(recipient_emails);
           SQL
           fi
           docker exec jalwa-web-staging sh -lc 'test "$JALWA_CAMPAIGN_ANALYTICS_ENABLED" = false && test "$JALWA_CAMPAIGN_EMAIL_ENABLED" = false && test "$JALWA_CAMPAIGN_GA4_ENABLED" = false'
