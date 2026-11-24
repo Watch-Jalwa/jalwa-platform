@@ -49,6 +49,14 @@ create unique index if not exists campaign_attribution_consented_anonymous_uniqu
 create index if not exists campaign_attribution_anon_idx on public.campaign_attributions(anonymous_id, first_seen_at desc);
 create index if not exists campaign_attribution_user_idx on public.campaign_attributions(user_id, first_seen_at desc);
 
+-- Bounded anonymous campaign event intake; hashed request key, no IP or phone stored.
+create table if not exists public.campaign_ingest_rate_limits (
+  bucket_key text primary key,
+  window_start timestamptz not null default now(),
+  hits integer not null default 1 check (hits > 0),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.campaign_events (
   id uuid primary key default gen_random_uuid(),
   event_key text not null unique check (length(event_key) between 8 and 150),
@@ -142,16 +150,17 @@ create table if not exists public.campaign_daily_dispatches (
 alter table public.campaign_configs enable row level security;
 alter table public.campaign_attributions enable row level security;
 alter table public.campaign_events enable row level security;
+alter table public.campaign_ingest_rate_limits enable row level security;
 alter table public.campaign_payment_links enable row level security;
 alter table public.campaign_ga4_outbox enable row level security;
 alter table public.campaign_report_settings enable row level security;
 alter table public.campaign_daily_dispatches enable row level security;
 
-revoke all on public.campaign_configs, public.campaign_attributions, public.campaign_events,
+revoke all on public.campaign_configs, public.campaign_attributions, public.campaign_events, public.campaign_ingest_rate_limits,
   public.campaign_payment_links, public.campaign_ga4_outbox, public.campaign_report_settings, public.campaign_daily_dispatches
   from public, anon, authenticated;
 grant select,insert,update,delete on public.campaign_configs, public.campaign_attributions,
-  public.campaign_events, public.campaign_payment_links, public.campaign_ga4_outbox, public.campaign_report_settings,
+  public.campaign_events, public.campaign_ingest_rate_limits, public.campaign_payment_links, public.campaign_ga4_outbox, public.campaign_report_settings,
   public.campaign_daily_dispatches to service_role;
 
 comment on table public.campaign_payment_links is 'Reconciled provider payment identity only. Never trust client purchase events or infer provider transaction matches from user alone.';
