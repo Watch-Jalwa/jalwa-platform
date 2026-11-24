@@ -10,6 +10,7 @@ export function setCampaignConsent(granted){
   try{
     window.localStorage.setItem(KEY,granted?"granted":"denied");
     if(!granted) window.localStorage.removeItem(ANON);
+    window.dispatchEvent(new Event("jalwa-campaign-consent"));
   }catch{/* private mode; no tracking identity */}
 }
 export function campaignAnonymousId() {
