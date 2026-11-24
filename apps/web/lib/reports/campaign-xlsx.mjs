@@ -97,14 +97,26 @@ const styles='<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'+
 '<xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/></cellXfs>'+
 '</styleSheet>';
 const mark=(value,style=0)=>({value,style});
+const reportFilters = report => {
+  const filters=report.filters??{};
+  return [
+    ["Product", filters.product??"All"],["Platform",filters.platform??"All"],
+    ["Plan ID",filters.plan??"All"],["Parameter / UTM",filters.parameter??"All"],
+    ["Landing Page",filters.landing??"All"],["Referral",filters.referral??"All"],
+    ["Campaign",filters.campaign??"All"],
+  ];
+};
 
 export function generateCampaignXlsx(report) {
   const dates=[...report.dateWise];
   const dims=["platform","plan","parameter"];
   const names=dims.map(d=>report.dimensions[d].map(x=>x.label));
+  const selectedFilters=reportFilters(report);
+  const filterRows=selectedFilters.map(([key,value])=>["Filter: "+key,value]);
   const rows=[
     [mark("CAMPAIGN TRACKING & ANALYTICS",1)],
-    ["Product: Jalwa","Date range: "+(report.filters.start??"")+" to "+(report.filters.end??""),"Timezone: Asia/Karachi"],
+    ["Product: "+(report.filters.product??"All"),"Date range: "+(report.filters.start??"")+" to "+(report.filters.end??""),"Timezone: Asia/Karachi"],
+    ...filterRows,
     [],
   ];
   const group=[mark("Date",1),mark("Total Subs",1)];
@@ -116,10 +128,11 @@ export function generateCampaignXlsx(report) {
     const count=Math.max(1,names[i].length);
     group.push(mark(category,1));
     for(let j=1;j<count;j++) group.push(null);
-    if(count>1) merges.push(col(column)+"4:"+col(column+count-1)+"4");
+    if(count>1) merges.push(col(column)+headingRow+":"+col(column+count-1)+headingRow);
     for(const n of names[i].length?names[i]:["—"]) headers.push(mark(n,1));
     column+=count;
   }
+  const headingRow=rows.length+1;
   rows.push(group,headers);
   for(const row of dates){
     const r=[row.date,row.subs];
@@ -133,12 +146,15 @@ export function generateCampaignXlsx(report) {
     total.push(mark(v,1));
   }
   rows.push(total);
+  rows.push(["Verified Gross (minor units)",report.totals.revenueMinor]);
   merges.push("A1:"+col(Math.max(3,column-1))+"1");
 
   const breakdown=[
     [mark("CAMPAIGN TRACKING & ANALYTICS · BASIC / DETAILED",1)],
     ["Same verified subscriptions grouped three different ways. Never sum across dimensions."],
     ["Period",String(report.filters.start??"")+" to "+String(report.filters.end??""),"Total Subs",report.totals.subs],
+    ["Verified Gross (minor units)",report.totals.revenueMinor,"Timezone","Asia/Karachi"],
+    ...filterRows,
     [],
   ];
   for(let i=0;i<3;i++){
