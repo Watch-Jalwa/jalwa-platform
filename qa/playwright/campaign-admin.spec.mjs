@@ -143,7 +143,7 @@ test.describe.serial("Jalwa staging campaign admin role and workflow QA",()=>{
       headers:{"content-type":"application/json","x-jalwa-qa-token":config.qaSecret},
       body:JSON.stringify({email,role:"admin",issueLink:false}),
     });
-    expect(authorized.status(),"Protected QA role assignment").toBe(200);
+    expect(authorized.status,"Protected QA role assignment").toBe(200);
     await page.context().clearCookies();
     await page.goto("/admin-login",{waitUntil:"domcontentloaded"});
     await page.getByLabel("Staff email").fill(email);
