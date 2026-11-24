@@ -328,6 +328,17 @@ export async function reconcilePaymentServiceEvent(rawBody: string, event: Produ
            on conflict(provider,remote_payment_id) do nothing`,
           [paymentId,requestId,localSubscriptionId,event.userId],
         );
+        // A unique, consented backend conversion can enter the GA4 outbox once.
+        await client.query(
+          `insert into public.campaign_ga4_outbox(provider,remote_payment_id,attribution_id)
+           select l.provider,l.remote_payment_id,l.attribution_id
+           from public.campaign_payment_links l
+           join public.campaign_attributions a on a.id=l.attribution_id
+           where l.provider='jazzcash' and l.remote_payment_id=$1
+             and a.consent_state='granted' and a.ga_client_id is not null
+           on conflict(provider,remote_payment_id) do nothing`,
+          [paymentId],
+        );
         await client.query("release savepoint campaign_attribution_optional");
         } catch {
           await client.query("rollback to savepoint campaign_attribution_optional");
