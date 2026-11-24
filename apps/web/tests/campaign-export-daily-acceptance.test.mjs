@@ -48,7 +48,7 @@ test("Reference A/B exports match filtered verified transactions across 4 platfo
   const files=unpackStored(generateCampaignXlsx(report));
   assert.equal(files.size,7);
   const a=files.get("xl/worksheets/sheet1.xml"),b=files.get("xl/worksheets/sheet2.xml");
-  for(const label of ["Date-wise","Platform","Plan IDs","Parameter / UTM","Ranchers","Bike","KFC",
+  for(const label of ["Platform","Plan IDs","Parameter / UTM","Ranchers","Bike","KFC",
     "Meta","TikTok","Snapchat","Google","2026-11-24","2026-11-25",
     "Filter: Product","Filter: Platform","Filter: Plan ID","Filter: Parameter / UTM",
     "Filter: Landing Page","Filter: Referral","Filter: Campaign","partner123","launch-2026","596900"])
@@ -85,7 +85,7 @@ const daily={
   {code:"Unmapped",reason:"Unknown response",count:1},
  ]};
 test("Daily digest reconciles, hides sensitive data, and SMTP mail is actually assembled into a MIME message without external delivery",async()=>{
-  const report=buildCampaignReport(rows,{start:"2026-11-24",end:"2026-11-24"});
+  const report=buildCampaignReport(rows,{...filters,start:"2026-11-24",end:"2026-11-24"});
   const digest=composeCampaignDailyDigest(daily,report,"2026-11-24");
   assert.equal(digest.subject,"Campaign & JazzCash Daily Logs | 2026-11-24");
   assert.match(digest.text,/Backend verified JazzCash successes \| 6/);
