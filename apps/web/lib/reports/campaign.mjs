@@ -66,6 +66,7 @@ export function buildCampaignReport(rows, filters = {}) {
   const transactions = filterCompletedTransactions(rows, filters);
   const matrix = new Map();
   const dimensions = { platform: new Map(), plan: new Map(), parameter: new Map() };
+  const crossDimensions = new Map();
   let totalRevenueMinor = 0;
 
   const inc = (map, key, value) => map.set(key, (map.get(key) ?? 0) + value);
@@ -75,6 +76,8 @@ export function buildCampaignReport(rows, filters = {}) {
     const plan = name(row.planCode);
     const parameter = name(row.parameter);
     const amountMinor = Number(row.amountMinor);
+    const crossKey=JSON.stringify([platform,plan,parameter]);
+    crossDimensions.set(crossKey,(crossDimensions.get(crossKey)??0)+1);
     if (!Number.isSafeInteger(amountMinor) || amountMinor < 0) throw new Error("Invalid verified payment amount");
     totalRevenueMinor += amountMinor;
     for (const [key, value] of [["platform", platform], ["plan", plan], ["parameter", parameter]]) {
@@ -113,6 +116,10 @@ export function buildCampaignReport(rows, filters = {}) {
       parameter: toRows(dimensions.parameter),
     },
     dateWise: [...matrix.values()].sort((a,b) => a.date.localeCompare(b.date)),
+    detailed: [...crossDimensions.entries()].map(([key,subs])=>{
+      const [platform,plan,parameter]=JSON.parse(key);
+      return {platform,plan,parameter,subs};
+    }).sort((a,b)=>a.platform.localeCompare(b.platform)||a.plan.localeCompare(b.plan)||a.parameter.localeCompare(b.parameter)),
     definitions: {
       subs: "Unique verified completed paid transactions linked to a subscription; other payment statuses excluded.",
       groupings: "Platform, plan and parameter are separate views of the same transactions.",
