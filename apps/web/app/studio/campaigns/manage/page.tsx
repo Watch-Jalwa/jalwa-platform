@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/studio/auth";
 import { createAdminClient } from "@/lib/database/admin";
 import { createCampaign, changeCampaignState } from "../actions";
+import { campaignLink } from "@/lib/landing/campaign-links.mjs";
 
 export const metadata = {title:"Campaign Management · Jalwa Studio"};
 type Campaign = {id:string;name:string;product:string;landing_path:string;source:string;
@@ -48,9 +49,10 @@ export default async function ManageCampaignsPage() {
       <section className="panel">
         <h2>Campaigns</h2>
         <div className="finance-table">
-          <table><thead><tr><th>Name</th><th>Landing</th><th>Platform</th><th>Plan</th><th>Parameter</th><th>Status</th><th>Action</th></tr></thead>
+          <table><thead><tr><th>Name</th><th>Landing</th><th>Platform</th><th>Plan</th><th>Parameter</th><th>Campaign link</th><th>Status</th><th>Action</th></tr></thead>
             <tbody>{campaigns.map(c=><tr key={c.id}>
               <td>{c.name}</td><td>{c.landing_path}</td><td>{c.source}</td><td>{c.plan_code}</td><td>{c.parameter||"—"}</td>
+              <td>{campaignLink(c) ? <input readOnly aria-label={"Link for "+c.name} value={campaignLink(c) ?? ""} size={44} /> : "Plan mapping required"}</td>
               <td>{c.is_active?"Active":"Disabled"}</td><td>
               <form action={changeCampaignState}><input type="hidden" name="campaign_id" value={c.id}/>
                 <button type="submit" name="enabled" value={String(!c.is_active)} className="button button-secondary">
