@@ -306,6 +306,8 @@ export async function reconcilePaymentServiceEvent(rawBody: string, event: Produ
         : typeof event.data.request_id === "string" ? event.data.request_id : "";
       const match = payments.find(payment => payment.id === paymentId && payment.status === "completed");
       if (requestId && match) {
+        await client.query("savepoint campaign_attribution_optional");
+        try {
         await client.query(
           `insert into public.campaign_payment_links(
              provider,remote_payment_id,attribution_id,subscription_id,link_source
@@ -326,6 +328,11 @@ export async function reconcilePaymentServiceEvent(rawBody: string, event: Produ
            on conflict(provider,remote_payment_id) do nothing`,
           [paymentId,requestId,localSubscriptionId,event.userId],
         );
+        await client.query("release savepoint campaign_attribution_optional");
+        } catch {
+          await client.query("rollback to savepoint campaign_attribution_optional");
+          await client.query("release savepoint campaign_attribution_optional");
+        }
       }
     }
 
