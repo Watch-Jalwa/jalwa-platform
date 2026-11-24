@@ -1,4 +1,5 @@
 name: Deploy campaign analytics staging candidate
+# Trigger: analytics-default-on landing consent removal
 
 on:
   push:
