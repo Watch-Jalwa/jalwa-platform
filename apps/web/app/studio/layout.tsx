@@ -31,7 +31,7 @@ export default async function StudioLayout({ children }: { children: React.React
           {canViewAi ? <Link href="/studio/ai">AI operations</Link> : null}
           {canViewFinance ? <><Link href="/studio/payments">Payment operations</Link><Link href="/studio/finance">Finance operations</Link></> : null}
           {canViewPremiumReports ? <Link href="/studio/finance/reports">Premium reports</Link> : null}
-          {canViewPremiumReports ? <Link href="/studio/campaigns">Campaign analytics</Link> : null}
+          {canViewPremiumReports ? <><Link href="/studio/campaigns">Campaign analytics</Link><Link href="/studio/campaigns/daily">Campaign daily logs</Link></> : null}
           <Link href="/">View Jalwa</Link>
         </nav>
       </aside>
