@@ -52,7 +52,7 @@ jobs:
         run: |
           set -euo pipefail
           current="$(curl -fsS --max-time 30 "https://$DOMAIN/api/health")"
-          jq -e --arg sha 'f8665264125c7c3e31caf7800b33c850029b7a86' '.service=="jalwa-web" and .status=="ready" and .version==$sha' <<<"$current" >/dev/null ||
+          jq -e --arg sha '1d20678cca2d7a9e036eda219fe2b9338911393e' '.service=="jalwa-web" and .status=="ready" and .version==$sha' <<<"$current" >/dev/null ||
             { echo 'Shared staging has changed from the verified November 23 release; refusing to overwrite.' >&2; exit 1; }
 
 
