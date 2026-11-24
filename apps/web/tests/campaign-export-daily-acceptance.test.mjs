@@ -45,6 +45,7 @@ test("Reference A/B exports match filtered verified transactions across 4 platfo
   ]);
   for(const dimension of ["platform","plan","parameter"])
     assert.equal(report.dimensions[dimension].reduce((s,x)=>s+x.subs,0),report.totals.subs);
+  assert.equal(report.detailed.reduce((sum,x)=>sum+x.subs,0),report.totals.subs);
   const files=unpackStored(generateCampaignXlsx(report));
   assert.equal(files.size,7);
   const a=files.get("xl/worksheets/sheet1.xml"),b=files.get("xl/worksheets/sheet2.xml");
@@ -53,7 +54,7 @@ test("Reference A/B exports match filtered verified transactions across 4 platfo
     "Filter: Product","Filter: Platform","Filter: Plan ID","Filter: Parameter / UTM",
     "Filter: Landing Page","Filter: Referral","Filter: Campaign","partner123","launch-2026","596900"])
     assert.ok(a.includes(label)||b.includes(label),"Missing exported evidence "+label);
-  for(const label of ["Platform-wise Subs","Plan ID-wise Subs","Parameter/UTM-wise Subs",
+  for(const label of ["BASIC VIEW","DETAILED VIEW","Platform-wise Subs","Plan ID-wise Subs","Parameter/UTM-wise Subs",
     "Verified Gross","596900","Filter: Landing Page"]) assert.ok(b.includes(label),label);
   assert.match(a,/<mergeCell ref="A1:/);
   assert.match(a,/<mergeCell ref="[A-Z]+11:[A-Z]+11"/);
