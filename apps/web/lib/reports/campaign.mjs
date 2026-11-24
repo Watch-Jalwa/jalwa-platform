@@ -8,7 +8,7 @@ export function normalizePlatform(source) {
   const s = String(source ?? "").trim().toLowerCase();
   if (s === "t" || s === "tiktok" || s === "tik tok") return "TikTok";
   if (s === "m" || s === "meta" || s === "facebook" || s === "instagram" || s === "fb" || s === "ig") return "Meta";
-  if (s === "snapchat" || s === "snap") return "Snapchat";
+  if (s === "s" || s === "snapchat" || s === "snap") return "Snapchat";
   if (s === "g" || s === "google" || s === "google ads") return "Google";
   if (s === "d" || s === "direct" || s === "organic") return "Direct";
   return UNKNOWN;
