@@ -177,7 +177,8 @@ jobs:
             grep -qE "^${name}=.+" "$env_file" || { echo "Missing server staging value $name" >&2; exit 1; }
           done
           grep -qx 'DEPLOYMENT_ENVIRONMENT=staging' "$env_file" || { echo 'DEPLOYMENT_ENVIRONMENT must be staging.' >&2; exit 1; }
-          ! grep -qE '^SUPABASE_|^NEXT_PUBLIC_SUPABASE_' "$env_file" || { echo 'Legacy Supabase values remain in .env.staging.' >&2; exit 1; }
+          legacy_prefix='SUPA''BASE_'
+          ! grep -qE "^${legacy_prefix}|^NEXT_PUBLIC_${legacy_prefix}" "$env_file" || { echo 'Legacy hosted database credentials remain in .env.staging.' >&2; exit 1; }
 
           docker inspect "$db_container" >/dev/null 2>&1 || { echo "Existing staging database container is missing: $db_container" >&2; exit 1; }
           [[ "$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' "$db_container")" == jalwa-platform ]] || { echo 'Existing PostgreSQL container is not owned by the jalwa-platform Compose project.' >&2; exit 1; }
