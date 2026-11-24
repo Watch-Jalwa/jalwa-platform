@@ -1,0 +1,27 @@
+name: Staging campaign daily digest scheduler
+on:
+  schedule:
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  staged-digest:
+    if: vars.ENABLE_CAMPAIGN_STAGING_DIGEST == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: staging
+    steps:
+      - name: Call staging-only digest endpoint
+        env:
+          CRON_SECRET: ${{ secrets.JALWA_CAMPAIGN_CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_SECRET" ]; then
+            echo "Staging campaign digest secret is not configured"
+            exit 1
+          fi
+          curl --fail-with-body --silent --show-error --max-time 45 \
+            -X POST \
+            -H "Authorization: Bearer $CRON_SECRET" \
+            -H "Content-Type: application/json" \
+            https://jalwa-platform.codistan.org/api/cron/campaign-daily
