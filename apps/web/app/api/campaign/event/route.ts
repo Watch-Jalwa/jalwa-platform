@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/database/admin";
 import { createClient } from "@/lib/database/server";
 import { databasePool } from "@/lib/database/pool";
 import { requestRateKey, safeSessionId } from "@/lib/security/request-key";
@@ -28,12 +27,6 @@ export async function POST(request:Request) {
     ? b.anonymousId : null;
   if(consent && !anonymousId) return NextResponse.json({error:"Invalid anonymous ID"},{status:400});
   const sessionId=safeSessionId(b.sessionId);
-  const admin=createAdminClient();
-  const {data:allowed,error:rateError}=await admin.rpc("consume_rate_limit",{
-    p_bucket_key:requestRateKey(request,"campaign-event",anonymousId??sessionId),
-    p_limit:120,p_window_seconds:3600,
-  });
-  if(rateError || !allowed) return new NextResponse(null,{status:204});
   const db=await createClient();
   const {data:{user}}=await db.auth.getUser();
   const source=normalizePlatform(value(b.utmSource)||value(b.utm));
@@ -49,6 +42,20 @@ export async function POST(request:Request) {
   const client=await databasePool.connect();
   try{
     await client.query("begin");
+    const rate = await client.query<{hits:number}>(`
+      insert into public.campaign_ingest_rate_limits(bucket_key,window_start,hits,updated_at)
+      values($1,now(),1,now())
+      on conflict(bucket_key) do update set
+        hits=case when public.campaign_ingest_rate_limits.window_start <= now()-interval '1 hour'
+          then 1 else public.campaign_ingest_rate_limits.hits+1 end,
+        window_start=case when public.campaign_ingest_rate_limits.window_start <= now()-interval '1 hour'
+          then now() else public.campaign_ingest_rate_limits.window_start end,
+        updated_at=now()
+      returning hits`,[requestRateKey(request,"campaign-event",anonymousId??sessionId)]);
+    if ((rate.rows[0]?.hits ?? 1000)>120) {
+      await client.query("rollback");
+      return new NextResponse(null,{status:204});
+    }
     let attributionId:string|null=null;
     if(consent && anonymousId){
       const record=await client.query<{id:string}>(`
