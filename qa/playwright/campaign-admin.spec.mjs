@@ -156,23 +156,16 @@ test.describe.serial("Jalwa staging campaign admin role and workflow QA",()=>{
     });
     expect(authorized.status,"Protected QA role assignment").toBe(200);
     await page.context().clearCookies();
-    // Verify the actual Better Auth password endpoint before exercising the form,
-    // separating backend credential failures from client navigation failures.
-    const direct=await page.context().request.post("/api/auth/sign-in/email",{
-      data:{email,password,callbackURL:"/studio"},
-    });
-    if(direct.status()!==200) {
-      const detail=await direct.json().catch(()=>({}));
-      throw new Error("Email/password backend rejected valid staging QA credentials: HTTP "+
-        direct.status()+" "+String(detail.code??detail.message??"unknown"));
-    }
-    await page.context().clearCookies();
+    // Test the real browser credential flow once; avoid consuming extra auth rate-limit budget.
     await page.goto("/admin-login",{waitUntil:"domcontentloaded"});
+    await expect(page.getByRole("button",{name:/Sign in to Studio/})).toBeEnabled();
     await page.getByLabel("Staff email").fill(email);
     await page.getByLabel("Password").fill(password);
     const signInResponse=page.waitForResponse(response=>response.url().includes("/api/auth/sign-in/email"),{timeout:15000});
     await page.getByRole("button",{name:/Sign in to Studio/}).click();
     const authHttp=await signInResponse;
+    const requestBody=authHttp.request().postDataJSON();
+    expect(requestBody.email===email,"Browser submitted the typed staff email").toBe(true);
     const authBody=await authHttp.json().catch(()=>({}));
     expect(authHttp.status(),"Browser email/password authentication HTTP response: "+
       String(authBody.code??authBody.message??"no error code")).toBe(200);

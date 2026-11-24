@@ -1,15 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
+
+const subscribe=()=>()=>{};
+const clientReady=()=>true;
+const serverReady=()=>false;
 
 export default function AdminLoginPage() {
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const ready=useSyncExternalStore(subscribe,clientReady,serverReady);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   async function signIn(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy) return;
+    if (busy || !ready) return;
+    const fields=new FormData(event.currentTarget);
+    const email=String(fields.get("email")??"").trim().toLowerCase();
+    const password=String(fields.get("password")??"");
+    if(!email || !password){setError("Enter your staff email and password.");return;}
     setBusy(true); setError("");
     try {
       // Use Better Auth's existing server-side credential validation directly,
@@ -19,7 +26,7 @@ export default function AdminLoginPage() {
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
         cache: "no-store",
-        body: JSON.stringify({ email: email.trim().toLowerCase(), password, callbackURL: "/studio" }),
+        body: JSON.stringify({ email, password, callbackURL: "/studio" }),
       });
       if (!response.ok) {
         setError("Sign-in failed or this account is not authorized.");
@@ -37,15 +44,13 @@ export default function AdminLoginPage() {
       <h1>Staff sign in</h1>
       <p>Authorized staff accounts only. Admin roles are assigned by existing Studio administrators, not by this form.</p>
     </section>
-    <form className="form-shell signup-form" onSubmit={signIn}>
+    <form className="form-shell signup-form" method="post" onSubmit={signIn}>
       <label className="form-field"><span>Staff email</span>
-        <input type="email" autoComplete="username" required maxLength={254} value={email}
-          onChange={event=>setEmail(event.target.value)} /></label>
+        <input name="email" type="email" autoComplete="username" required maxLength={254} disabled={!ready} /></label>
       <label className="form-field"><span>Password</span>
-        <input type="password" autoComplete="current-password" required value={password}
-          onChange={event=>setPassword(event.target.value)} /></label>
+        <input name="password" type="password" autoComplete="current-password" required disabled={!ready} /></label>
       {error ? <p role="alert" className="policy-notice">{error}</p> : null}
-      <button className="button button-primary" type="submit" disabled={busy}>{busy ? "Signing in…" : "Sign in to Studio"}</button>
+      <button className="button button-primary" type="submit" disabled={busy || !ready}>{busy ? "Signing in…" : "Sign in to Studio"}</button>
     </form>
   </main>;
 }

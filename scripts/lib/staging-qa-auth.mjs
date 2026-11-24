@@ -7,6 +7,7 @@ const required = (name) => {
 const retryableQaStatuses = new Set([429, 502, 503, 504]);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const qaSessionCookies = new Map();
+let lastMagicNavigation=0;
 
 const signedSessionCookies = (cookies) => cookies.filter(
   (cookie) => cookie.name.includes("better-auth.session_token") && cookie.value,
@@ -101,18 +102,25 @@ export async function authenticatePage(page, config, email, nextPath = "/") {
   const key = qaSessionKey(config, email);
   if (await restoreQaSession(page, config, email, nextPath)) return;
 
-  const actionLink = await generateMagicLink(config, email, nextPath);
-  const response = await page.goto(actionLink, { waitUntil: "domcontentloaded" });
-  if (!response || response.status() >= 500) throw new Error("Staging QA authentication navigation failed.");
-  if (new URL(page.url()).pathname === "/login") throw new Error("Staging QA authentication did not create a session.");
-
-  // Verify the signed Better Auth browser state directly. Polling the public session
-  // endpoint here can trip production-like auth rate limits during the full QA suite.
-  const deadline = Date.now() + 15_000;
-  while (Date.now() < deadline) {
-    if (await rememberQaSession(page, config, key)) return;
-    await page.waitForTimeout(250);
+  // Keep browser verification inside the normal auth rate limit. Do not bypass it.
+  const pace=process.env.CAMPAIGN_QA_AUTH_PACING==="true";
+  const attempts=pace?2:1;
+  for(let attempt=0;attempt<attempts;attempt++){
+    if(pace && attempt>0)await sleep(65_000);
+    if(pace)await sleep(Math.max(0,15_000-(Date.now()-lastMagicNavigation)));
+    const actionLink=await generateMagicLink(config,email,nextPath);
+    if(new URL(actionLink).origin!==new URL(config.baseUrl).origin)
+      throw new Error("Staging QA authentication origin differs from the verified staging origin.");
+    lastMagicNavigation=Date.now();
+    const response=await page.goto(actionLink,{waitUntil:"domcontentloaded"});
+    if(!response || response.status()>=500)throw new Error("Staging QA authentication navigation failed.");
+    const deadline=Date.now()+15_000;
+    while(Date.now()<deadline){
+      if(await rememberQaSession(page,config,key) && new URL(page.url()).pathname!=="/login")return;
+      await page.waitForTimeout(250);
+    }
+    qaSessionCookies.delete(key);
+    await page.context().clearCookies();
   }
-
-  throw new Error("Staging QA authentication did not establish a signed browser session cookie.");
+  throw new Error("Staging QA authentication did not establish a signed browser session cookie after bounded retry.");
 }

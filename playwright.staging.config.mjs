@@ -9,7 +9,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: process.env.CI ? 1 : 0,
-  timeout: 60_000,
+  timeout: process.env.CAMPAIGN_QA_AUTH_PACING==="true" ? 180_000 : 60_000,
   expect: { timeout: 12_000 },
   forbidOnly: Boolean(process.env.CI),
   outputDir: process.env.PLAYWRIGHT_OUTPUT_DIR || "test-results/staging-playwright",

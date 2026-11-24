@@ -21,6 +21,7 @@ env:
   QA_RUN_ID: campaign-admin-${{ github.run_id }}
   CAMPAIGN_QA_PASSWORD_EMAIL: campaign-admin-qa-${{ github.run_id }}@watch-jalwa.com
   EXPECTED_STAGING_SHA: ${{ github.sha }}
+  CAMPAIGN_QA_AUTH_PACING: "true"
 
 jobs:
   admin-qa:
