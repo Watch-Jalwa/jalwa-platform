@@ -1,0 +1,140 @@
+name: Campaign Studio staging admin QA
+
+on:
+  push:
+    branches: ["feat/campaign-analytics-admin-v1"]
+    paths: [".github/workflows/campaign-studio-staging-qa.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: jalwa-staging
+  cancel-in-progress: false
+
+env:
+  STAGING_BASE_URL: https://${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
+  HOST: ${{ vars.STAGING_HOST || 'jalwa-platform.codistan.org' }}
+  USER: ${{ vars.STAGING_USER || 'deploy' }}
+  APP_DIR: /opt/codistan/jalwa-platform
+  SSH_KEY: ${{ secrets.STAGING_SSH_KEY }}
+  KNOWN_HOSTS: ${{ vars.STAGING_SSH_KNOWN_HOSTS }}
+  STAGING_QA_SECRET: ${{ secrets.STAGING_QA_SECRET }}
+  STAGING_QA_ADMIN_EMAIL: ${{ vars.STAGING_QA_ADMIN_EMAIL || 'acceptance+admin@watch-jalwa.com' }}
+  STAGING_QA_FINANCE_EMAIL: ${{ vars.STAGING_QA_FINANCE_EMAIL || 'acceptance+premium-finance@watch-jalwa.com' }}
+  STAGING_QA_RESTRICTED_EMAIL: ${{ vars.STAGING_QA_RESTRICTED_EMAIL || 'acceptance+rights@watch-jalwa.com' }}
+  STAGING_QA_UNAUTHORIZED_EMAIL: ${{ vars.STAGING_QA_UNAUTHORIZED_EMAIL || 'acceptance+viewer@watch-jalwa.com' }}
+  QA_RUN_ID: campaign-admin-${{ github.run_id }}
+  EXPECTED_STAGING_SHA: f8665264125c7c3e31caf7800b33c850029b7a86
+
+jobs:
+  admin-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: staging
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Verify deployed release and guard staging-only QA
+        run: |
+          set -euo pipefail
+          test -n "$SSH_KEY" && test -n "$KNOWN_HOSTS"
+          test "$APP_DIR" = /opt/codistan/jalwa-platform
+          test "$USER" = deploy
+          curl -fsS --max-time 25 "$STAGING_BASE_URL/api/health" |
+            jq -e --arg sha "$EXPECTED_STAGING_SHA" '.status=="ready" and .version==$sha' >/dev/null
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/jalwa
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/jalwa ~/.ssh/known_hosts
+          ssh-keygen -F "$HOST" -f ~/.ssh/known_hosts >/dev/null
+          ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" true
+      - name: Resolve staging QA token (never print)
+        run: |
+          set -euo pipefail
+          if [[ -z "${STAGING_QA_SECRET:-}" ]]; then
+            value="$(ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+              "awk -F= '\$1==\"STAGING_QA_SECRET\" {print substr(\$0,index(\$0,\"=\")+1);exit}' '$APP_DIR/.env.staging'")"
+            [[ -n "$value" ]] || { echo 'Staging QA secret unavailable'; exit 1; }
+            echo "::add-mask::$value"
+            printf 'STAGING_QA_SECRET=%s\n' "$value" >> "$GITHUB_ENV"
+          fi
+      - name: Temporarily enable ONLY campaign analytics on staging
+        run: |
+          set -euo pipefail
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' EXPECTED_STAGING_SHA='$EXPECTED_STAGING_SHA' RUN_ID='$GITHUB_RUN_ID' bash -s" <<'REMOTE'
+          set -euo pipefail
+          cd "$APP_DIR"
+          env_file="$APP_DIR/.env.staging"
+          backup="$APP_DIR/.env.staging.campaign-admin-qa-$RUN_ID.backup"
+          test -s "$env_file" && test ! -e "$backup"
+          docker exec jalwa-web-staging sh -lc 'test "$DEPLOYMENT_ENVIRONMENT" = staging && test "$ALLOW_MOCK_PAYMENTS" = true'
+          docker exec jalwa-web-staging sh -lc "test \"\$GIT_SHA\" = \"$EXPECTED_STAGING_SHA\""
+          test "$(grep -c '^JALWA_CAMPAIGN_EMAIL_ENABLED=false$' "$env_file")" -eq 1
+          test "$(grep -c '^JALWA_CAMPAIGN_GA4_ENABLED=false$' "$env_file")" -eq 1
+          cp -p "$env_file" "$backup"
+          chmod 600 "$backup"
+          awk '/^JALWA_CAMPAIGN_ANALYTICS_ENABLED=/{next} {print} END{print "JALWA_CAMPAIGN_ANALYTICS_ENABLED=true"}' "$env_file" > "$env_file.tmp-$RUN_ID"
+          chmod 600 "$env_file.tmp-$RUN_ID"
+          mv "$env_file.tmp-$RUN_ID" "$env_file"
+          compose="$APP_DIR/docker-compose.staging.yml"
+          if [[ ! -s "$compose" ]]; then compose="$APP_DIR/docker-compose.yml"; fi
+          test -s "$compose"
+          COMPOSE_PROJECT_NAME=jalwa-platform docker compose -f "$compose" --env-file "$env_file" up -d --no-deps --force-recreate web
+          docker exec jalwa-web-staging sh -lc 'test "$JALWA_CAMPAIGN_ANALYTICS_ENABLED" = true && test "$JALWA_CAMPAIGN_EMAIL_ENABLED" = false && test "$JALWA_CAMPAIGN_GA4_ENABLED" = false'
+          REMOTE
+      - name: Wait for staging web readiness
+        run: |
+          set -euo pipefail
+          ready=false
+          for n in {1..45}; do
+            if curl -fsS --max-time 10 "$STAGING_BASE_URL/api/readiness" |
+              jq -e --arg sha "$EXPECTED_STAGING_SHA" '.status=="ready" and .version==$sha' >/dev/null 2>&1; then ready=true;break;fi
+            sleep 4
+          done
+          test "$ready" = true
+      - name: Install browser harness
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npx playwright install --with-deps chromium
+      - name: Run real staging Admin QA in Chromium
+        run: |
+          npx playwright test --config=playwright.staging.config.mjs qa/playwright/campaign-admin.spec.mjs
+      - name: Restore disabled feature flag and remove test campaigns
+        if: always()
+        run: |
+          if [[ ! -s ~/.ssh/jalwa ]]; then exit 0; fi
+          ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
+            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' bash -s" <<'REMOTE'
+          set -euo pipefail
+          backup="$APP_DIR/.env.staging.campaign-admin-qa-$RUN_ID.backup"
+          if [[ -s "$backup" ]]; then
+            mv -f "$backup" "$APP_DIR/.env.staging"
+            compose="$APP_DIR/docker-compose.staging.yml"
+            if [[ ! -s "$compose" ]]; then compose="$APP_DIR/docker-compose.yml";fi
+            COMPOSE_PROJECT_NAME=jalwa-platform docker compose -f "$compose" --env-file "$APP_DIR/.env.staging" up -d --no-deps --force-recreate web
+          fi
+          db_user="$(docker exec jalwa-postgres-staging sh -lc 'printf %s "$POSTGRES_USER"')"
+          db_name="$(docker exec jalwa-postgres-staging sh -lc 'printf %s "$POSTGRES_DB"')"
+          if [[ -n "$db_user" && -n "$db_name" ]]; then
+            docker exec -i jalwa-postgres-staging psql -X -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" <<'SQL'
+          delete from public.campaign_configs where name like 'QA-Campaign-Admin-%'
+            and utm_campaign='qa-stage-admin' and created_at > now()-interval '1 day';
+          SQL
+          fi
+          docker exec jalwa-web-staging sh -lc 'test "$JALWA_CAMPAIGN_ANALYTICS_ENABLED" = false && test "$JALWA_CAMPAIGN_EMAIL_ENABLED" = false && test "$JALWA_CAMPAIGN_GA4_ENABLED" = false'
+          REMOTE
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: campaign-staging-admin-qa-${{ github.run_id }}
+          path: |
+            test-results/staging-playwright/
+            playwright-report/staging/
+          if-no-files-found: warn
+          retention-days: 14
