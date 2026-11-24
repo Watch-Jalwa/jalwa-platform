@@ -24,7 +24,7 @@ export function campaignAnonymousId() {
   }catch{return null;}
 }
 export function captureCampaignEvent(eventName,ctx={}){
-  if(typeof window==="undefined") return;
+  if(typeof window==="undefined") return Promise.resolve();
   const consent=campaignConsentGranted();
   const anonymousId=consent?campaignAnonymousId():null;
   const eventKey=crypto.randomUUID();
@@ -35,7 +35,7 @@ export function captureCampaignEvent(eventName,ctx={}){
     utm:ctx.utm,utmSource:ctx.utm_source,utmMedium:ctx.utm_medium,
     utmCampaign:ctx.utm_campaign,utmContent:ctx.utm_content,
     package:ctx.package,planCode:ctx.planCode,parameter:ctx.parameter,ref:ctx.ref};
-  fetch("/api/campaign/event",{
+  return fetch("/api/campaign/event",{
     method:"POST",headers:{"content-type":"application/json"},
     credentials:"same-origin",keepalive:true,body:JSON.stringify(body),
   }).catch(()=>{ /* analytics must not interrupt checkout */ });
