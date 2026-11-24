@@ -61,8 +61,14 @@ export async function POST(request:Request) {
       const record=await client.query<{id:string}>(`
         insert into public.campaign_attributions(
           anonymous_id,user_id,landing_path,source,utm_source,utm_medium,utm_campaign,utm_content,
-          legacy_utm,package_code,plan_code,parameter,referral,consent_state,ga_client_id
-        ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'granted',$14)
+          legacy_utm,package_code,plan_code,parameter,referral,consent_state,ga_client_id,campaign_id
+        ) values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'granted',$14,
+          (select cfg.id from public.campaign_configs cfg
+           where cfg.is_active=true
+             and cfg.landing_path=$3 and lower(cfg.source)=lower($4)
+             and cfg.plan_code=$11 and cfg.utm_campaign=$7
+             and cfg.parameter=$12 and cfg.referral=$13
+           order by cfg.created_at desc limit 1))
         on conflict (anonymous_id) where consent_state='granted' do update set
           user_id=coalesce(excluded.user_id,public.campaign_attributions.user_id),
           first_seen_at=case when public.campaign_attributions.expires_at<=now() then now() else public.campaign_attributions.first_seen_at end,
@@ -78,7 +84,8 @@ export async function POST(request:Request) {
           plan_code=case when public.campaign_attributions.expires_at<=now() then excluded.plan_code else public.campaign_attributions.plan_code end,
           parameter=case when public.campaign_attributions.expires_at<=now() then excluded.parameter else public.campaign_attributions.parameter end,
           referral=case when public.campaign_attributions.expires_at<=now() then excluded.referral else public.campaign_attributions.referral end,
-          ga_client_id=case when public.campaign_attributions.expires_at<=now() then excluded.ga_client_id else coalesce(public.campaign_attributions.ga_client_id,excluded.ga_client_id) end
+          ga_client_id=case when public.campaign_attributions.expires_at<=now() then excluded.ga_client_id else coalesce(public.campaign_attributions.ga_client_id,excluded.ga_client_id) end,
+          campaign_id=case when public.campaign_attributions.expires_at<=now() then excluded.campaign_id else public.campaign_attributions.campaign_id end
         returning id`,
         [attrs.anonymous_id,attrs.user_id,attrs.landing_path,attrs.source,attrs.utm_source,
          attrs.utm_medium,attrs.utm_campaign,attrs.utm_content,attrs.legacy_utm,
