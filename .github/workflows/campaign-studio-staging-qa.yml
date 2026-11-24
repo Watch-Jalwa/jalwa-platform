@@ -25,6 +25,7 @@ env:
   STAGING_QA_RESTRICTED_EMAIL: ${{ vars.STAGING_QA_RESTRICTED_EMAIL || 'acceptance+rights@watch-jalwa.com' }}
   STAGING_QA_UNAUTHORIZED_EMAIL: ${{ vars.STAGING_QA_UNAUTHORIZED_EMAIL || 'acceptance+viewer@watch-jalwa.com' }}
   QA_RUN_ID: campaign-admin-${{ github.run_id }}
+  CAMPAIGN_QA_PASSWORD_EMAIL: campaign-admin-qa-${{ github.run_id }}@watch-jalwa.com
   EXPECTED_STAGING_SHA: f8665264125c7c3e31caf7800b33c850029b7a86
 
 jobs:
@@ -66,7 +67,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "APP_DIR='$APP_DIR' EXPECTED_STAGING_SHA='$EXPECTED_STAGING_SHA' RUN_ID='$GITHUB_RUN_ID' bash -s" <<'REMOTE'
+            "APP_DIR='$APP_DIR' EXPECTED_STAGING_SHA='$EXPECTED_STAGING_SHA' RUN_ID='$GITHUB_RUN_ID' CAMPAIGN_QA_PASSWORD_EMAIL='$CAMPAIGN_QA_PASSWORD_EMAIL' bash -s" <<'REMOTE'
           set -euo pipefail
           cd "$APP_DIR"
           env_file="$APP_DIR/.env.staging"
@@ -78,7 +79,18 @@ jobs:
           test "$(grep -c '^JALWA_CAMPAIGN_GA4_ENABLED=false$' "$env_file")" -eq 1
           cp -p "$env_file" "$backup"
           chmod 600 "$backup"
-          awk '/^JALWA_CAMPAIGN_ANALYTICS_ENABLED=/{next} {print} END{print "JALWA_CAMPAIGN_ANALYTICS_ENABLED=true"}' "$env_file" > "$env_file.tmp-$RUN_ID"
+          grep -q '^STAGING_QA_ALLOWED_EMAILS=' "$env_file"
+          awk -v extra="$CAMPAIGN_QA_PASSWORD_EMAIL" '
+            /^JALWA_CAMPAIGN_ANALYTICS_ENABLED=/{next}
+            /^STAGING_QA_ALLOWED_EMAILS=/ {
+              value=substr($0,index($0,"=")+1)
+              gsub(/^["\047]|["\047]$/,"",value)
+              print "STAGING_QA_ALLOWED_EMAILS=" value "," extra
+              next
+            }
+            {print}
+            END{print "JALWA_CAMPAIGN_ANALYTICS_ENABLED=true"}
+          ' "$env_file" > "$env_file.tmp-$RUN_ID"
           chmod 600 "$env_file.tmp-$RUN_ID"
           mv "$env_file.tmp-$RUN_ID" "$env_file"
           test -s "$APP_DIR/docker-compose.yml"
@@ -112,7 +124,7 @@ jobs:
         run: |
           if [[ ! -s ~/.ssh/jalwa ]]; then exit 0; fi
           ssh -o StrictHostKeyChecking=yes -i ~/.ssh/jalwa "$USER@$HOST" \
-            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' bash -s" <<'REMOTE'
+            "APP_DIR='$APP_DIR' RUN_ID='$GITHUB_RUN_ID' CAMPAIGN_QA_PASSWORD_EMAIL='$CAMPAIGN_QA_PASSWORD_EMAIL' bash -s" <<'REMOTE'
           set -euo pipefail
           backup="$APP_DIR/.env.staging.campaign-admin-qa-$RUN_ID.backup"
           if [[ -s "$backup" ]]; then
@@ -125,9 +137,10 @@ jobs:
           db_user="$(docker exec jalwa-postgres-staging sh -lc 'printf %s "$POSTGRES_USER"')"
           db_name="$(docker exec jalwa-postgres-staging sh -lc 'printf %s "$POSTGRES_DB"')"
           if [[ -n "$db_user" && -n "$db_name" ]]; then
-            docker exec -i jalwa-postgres-staging psql -X -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" <<'SQL'
+            docker exec -i jalwa-postgres-staging psql -X -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name" -v qa_email="$CAMPAIGN_QA_PASSWORD_EMAIL" <<'SQL'
           delete from public.campaign_configs where name like 'QA-Campaign-Admin-%'
             and utm_campaign='qa-stage-admin' and created_at > now()-interval '1 day';
+          delete from public."user" where email=:'qa_email';
           SQL
           fi
           docker exec jalwa-web-staging sh -lc 'test "$JALWA_CAMPAIGN_ANALYTICS_ENABLED" = false && test "$JALWA_CAMPAIGN_EMAIL_ENABLED" = false && test "$JALWA_CAMPAIGN_GA4_ENABLED" = false'
