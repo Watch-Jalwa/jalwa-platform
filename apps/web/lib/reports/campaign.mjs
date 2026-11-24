@@ -90,6 +90,18 @@ export function buildCampaignReport(rows, filters = {}) {
       bucket[dimension][value] = (bucket[dimension][value] ?? 0) + 1;
     }
   }
+  // Date-wise export must show every selected PKT calendar day, including zero-Subs days.
+  if (filters.start && filters.end) {
+    const bounds = karachiBounds(filters.start, filters.end);
+    const startMs = Date.parse(filters.start + "T00:00:00.000Z");
+    const count = (Date.parse(filters.end + "T00:00:00.000Z") - startMs) / DAY_MS + 1;
+    if (bounds && count > 0) {
+      for (let i=0; i<count; i++) {
+        const day=new Date(startMs + i*DAY_MS).toISOString().slice(0,10);
+        if (!matrix.has(day)) matrix.set(day,{date:day,subs:0,revenueMinor:0,platform:{},plan:{},parameter:{}});
+      }
+    }
+  }
   const toRows = map => [...map].sort((a,b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([label, subs]) => ({ label, subs }));
   return {
     timezone: REPORT_TIMEZONE,
