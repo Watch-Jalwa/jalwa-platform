@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { randomBytes } from "node:crypto";
 import { authenticatePage, ensureQaUser, qaConfig } from "./helpers/staging.mjs";
 
 const config=qaConfig();
@@ -126,4 +127,33 @@ test.describe.serial("Jalwa staging campaign admin role and workflow QA",()=>{
     const e=await r.json();
     expect(e.error).toMatch(/Invalid/);
   });
+  test("email/password succeeds only after protected admin role provisioning",async({page})=>{
+    const email=(process.env.CAMPAIGN_QA_PASSWORD_EMAIL??"").trim().toLowerCase();
+    expect(email).toMatch(/^campaign-admin-qa-[0-9]+@watch-jalwa\.com$/);
+    const password="QASafe-"+randomBytes(20).toString("hex")+"!";
+    const signup=await page.context().request.post("/api/auth/sign-up/email",{
+      data:{name:"Campaign Staging QA",email,password},
+    });
+    expect(signup.status(),"Temporary email/password registration").toBe(200);
+    // A new account must not self-assign any Studio role.
+    await page.goto("/studio",{waitUntil:"domcontentloaded"});
+    expect(new URL(page.url()).pathname).not.toBe("/studio");
+    const authorized=await fetch(config.baseUrl+"/api/internal/qa/session",{
+      method:"POST",
+      headers:{"content-type":"application/json","x-jalwa-qa-token":config.qaSecret},
+      body:JSON.stringify({email,role:"admin",issueLink:false}),
+    });
+    expect(authorized.status(),"Protected QA role assignment").toBe(200);
+    await page.context().clearCookies();
+    await page.goto("/admin-login",{waitUntil:"domcontentloaded"});
+    await page.getByLabel("Staff email").fill(email);
+    await page.getByLabel("Password").fill(password);
+    await page.getByRole("button",{name:/Sign in to Studio/}).click();
+    await expect.poll(()=>new URL(page.url()).pathname,{timeout:15000}).toBe("/studio");
+    const report=await page.context().request.get("/api/studio/campaigns/report");
+    expect(report.status()).toBe(200);
+    await page.goto("/studio/campaigns/manage",{waitUntil:"domcontentloaded"});
+    await expect(page.getByRole("heading",{name:"Campaign Management"})).toBeVisible();
+  });
+
 });
