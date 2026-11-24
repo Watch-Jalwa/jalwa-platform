@@ -32,7 +32,7 @@ test.describe.serial("Jalwa staging campaign admin role and workflow QA",()=>{
     await page.getByLabel("Staff email").fill("not-a-staff-account@example.invalid");
     await page.getByLabel("Password").fill("IncorrectPassword-123!");
     await page.getByRole("button",{name:/Sign in to Studio/}).click();
-    await expect(page.getByRole("alert")).toContainText(/Sign-in failed/);
+    await expect(page.locator(".policy-notice[role=alert]")).toContainText(/Sign-in failed/);
     expect(new URL(page.url()).pathname).toBe("/admin-login");
   });
 
