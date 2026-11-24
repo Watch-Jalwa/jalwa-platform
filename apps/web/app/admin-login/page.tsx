@@ -1,9 +1,11 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { authClient } from "@/lib/auth-client";
 
 export default function AdminLoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -19,7 +21,8 @@ export default function AdminLoginPage() {
       if (result.error) {
         setError("Sign-in failed or this account is not authorized.");
       } else {
-        window.location.assign("/studio");
+        router.push("/studio");
+        router.refresh();
       }
     } catch {
       setError("Sign-in failed. Check your credentials and try again.");
