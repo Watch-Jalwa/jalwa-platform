@@ -492,6 +492,16 @@ export async function grantPremiumForJazzcashIntent(intent, { chargeTxnRef, prov
   }
 }
 
+async function recordCampaignJazzcashInitiated(requestId) {
+  if (process.env.JALWA_CAMPAIGN_ANALYTICS_ENABLED !== "true") return;
+  await databasePool.query(`
+    insert into public.campaign_events(event_key,event_name,attribution_id,user_id,landing_path,source,metadata)
+    select 'wallet-init:'||i.request_id,'jazzcash_initiated',i.campaign_attribution_id,i.user_id,
+      coalesce(nullif(i.attribution->>'landingPath',''),'/mainLanding'),'server',
+      jsonb_build_object('planCode',i.plan_code)
+    from public.jazzcash_wallet_link_intents i where i.request_id=$1
+    on conflict(event_key) do nothing`,[requestId]).catch(() => undefined);
+}
 export async function startJazzcashLandingLink({ msisdn, planCode, consentToAutoPay, attribution, idempotencyKey }) {
   if (!consentToAutoPay) {
     const error = new Error("consent_required");
@@ -560,6 +570,7 @@ export async function startJazzcashLandingLink({ msisdn, planCode, consentToAuto
         [requestId, linked.requestId],
       ).catch(() => undefined);
     }
+    await recordCampaignJazzcashInitiated(requestId);
     return {
       checkoutMode: "payment-service",
       requestId: linked.requestId,
@@ -579,6 +590,7 @@ export async function startJazzcashLandingLink({ msisdn, planCode, consentToAuto
     msisdn: learner.msisdn,
   });
 
+  await recordCampaignJazzcashInitiated(requestId);
   return {
     checkoutMode: "jazzcash-v11",
     requestId: form.requestId,
