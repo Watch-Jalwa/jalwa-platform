@@ -1,5 +1,7 @@
 import {test,expect} from "@playwright/test";
 import {authenticatePage,ensureQaUser,qaConfig} from "./helpers/staging.mjs";
+import nodemailer from "nodemailer";
+import {composeCampaignDailyDigest} from "../../apps/web/lib/reports/campaign-digest.mjs";
 const config=qaConfig();
 function filesFromXlsx(buffer) {
   const out=new Map();let offset=0;
@@ -64,4 +66,37 @@ test("non-finance staff cannot download campaign XLSX",async({page})=>{
   const actor=await ensureQaUser(config,process.env.STAGING_QA_RESTRICTED_EMAIL,"rights_reviewer");
   await authenticatePage(page,config,actor.email,"/studio");
   expect((await page.context().request.get("/api/studio/campaigns/export?start=2026-11-24&end=2026-11-24")).status()).toBe(403);
+});
+
+test("daily prior-day dashboard totals match a captured MIME email + Excel without sending to external recipients",async({page})=>{
+  const actor=await ensureQaUser(config,process.env.STAGING_QA_ADMIN_EMAIL,"admin");
+  await authenticatePage(page,config,actor.email,"/studio/campaigns/daily");
+  const day="2026-11-23";
+  const [dailyResponse,reportResponse]=await Promise.all([
+    page.context().request.get("/api/studio/campaigns/daily?date="+day),
+    page.context().request.get("/api/studio/campaigns/report?start="+day+"&end="+day),
+  ]);
+  expect(dailyResponse.status()).toBe(200);
+  expect(reportResponse.status()).toBe(200);
+  const daily=await dailyResponse.json(), report=await reportResponse.json();
+  const digest=composeCampaignDailyDigest(daily,report,day);
+  expect(digest.text).toContain("Backend verified JazzCash successes | "+daily.successCount);
+  expect(digest.text).toContain("Backend JazzCash failures | "+daily.failureCount);
+  expect(digest.text).toContain("Campaign report paid Subs | "+report.totals.subs);
+  const exported=await page.context().request.get("/api/studio/campaigns/export?start="+day+"&end="+day);
+  expect(exported.status()).toBe(200);
+  const excel=await exported.body();
+  expect(excel.subarray(0,4).toString("hex")).toBe("504b0304");
+  const transport=nodemailer.createTransport({streamTransport:true,buffer:true});
+  const receipt=await transport.sendMail({
+    from:"qa-only@example.invalid",to:"staging-sink@example.invalid",
+    subject:digest.subject,text:digest.text,
+    attachments:[{filename:digest.filename,content:excel,
+      contentType:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}],
+  });
+  expect(receipt.envelope.to).toEqual(["staging-sink@example.invalid"]);
+  const mime=receipt.message.toString();
+  expect(mime).toContain("Backend verified JazzCash successes");
+  expect(mime).toContain("jalwa-campaign-"+day+".xlsx");
+  expect(mime).not.toContain("03001234567");
 });
