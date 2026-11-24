@@ -17,8 +17,8 @@ Source: Campaign Tracking & Analytics developer specification (2 pages). Epic #1
 - Events must be idempotent; no sensitive fields in metadata; consent required for marketing identity.
 
 ## Metric contracts
-- Subs = unique backend-verified completed paid transactions linked to actual subscription; pending/failed/manual grants excluded.
-- Revenue = sum completed payment amount_minor from backend, with refunds and renewals separate dimensions.
+- Subs = unique backend-verified completed payment-service Premium full/step charge transactions or transactions explicitly linked to a subscription; pending, failed, refunded and manual grants excluded. Unattributed paid charges appear under Unknown; never guess source from user/time/amount.
+- Revenue = gross sum of captured completed payment amount_minor. Refunds are excluded from gross and require a separate net measure. Renewal versus new-activation classification cannot be claimed until provider supplies the agreed transaction-type field.
 - Platform, Plan and Parameter breakdowns are different projections of the SAME paid subscriptions; NEVER sum totals across the three dimensions.
 - Landing visits are count of accepted landing_view events; unique visitors are distinct attributable anonymous IDs. Anonymous-unidentified counted separately.
 - Paywall visits = observed checkout visits, total and unique session counts separately.
