@@ -54,6 +54,13 @@ EOF
 set -Eeuo pipefail
 printf '%s\n' "$*" >> "${DOCKER_LOG:?}"
 
+if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
+  # The normal mock case simulates an empty local Docker image cache.
+  # Otherwise deploy-release legitimately skips the registry pull.
+  if [[ "${MOCK_IMAGES_ALREADY_LOADED:-false}" == "true" ]]; then exit 0; fi
+  exit 1
+fi
+
 if [[ "${1:-}" == "compose" ]]; then
   joined=" $* "
   if [[ "$joined" == *" ps -q web "* ]]; then
