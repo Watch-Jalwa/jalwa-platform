@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { trackLandingCheckoutIntent } from "@/lib/landing-analytics.mjs";
 import { attributionForBilling } from "@/lib/landing-campaign.mjs";
 import { rememberLandingMsisdn, stampUtmAttribution } from "@/lib/utm-attribution.mjs";
+import { campaignAnonymousId, campaignConsentGranted, setCampaignConsent, captureCampaignEvent } from "@/lib/campaign-client.mjs";
 
 type Campaign = {
   utm: string;
@@ -36,6 +37,8 @@ export function LandingSubscribe({
   const [msisdn, setMsisdn] = useState("");
   const [consent, setConsent] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [analyticsConsent, setAnalyticsConsent] = useState(false);
+  useEffect(() => setAnalyticsConsent(campaignConsentGranted()), []);
   const [error, setError] = useState<string | null>(null);
   const attribution = useMemo(() => attributionForBilling(campaign), [campaign]);
 
@@ -52,15 +55,18 @@ export function LandingSubscribe({
         return;
       }
 
+      captureCampaignEvent("landing_cta", campaign);
+      captureCampaignEvent("subscribe", campaign);
       stampUtmAttribution(attribution);
       rememberLandingMsisdn(msisdn);
 
-      if (typeof window !== "undefined" && typeof window.gtag === "function") {
+      if (campaignConsentGranted() && typeof window !== "undefined" && typeof window.gtag === "function") {
         window.gtag("event", "add_to_cart", { item_id: campaign.planCode, landing: campaign.landing });
         window.gtag("event", "begin_checkout", { item_id: campaign.planCode, landing: campaign.landing });
       }
 
-      trackLandingCheckoutIntent({
+      captureCampaignEvent("begin_checkout", campaign);
+      if (campaignConsentGranted()) trackLandingCheckoutIntent({
         landing: campaign.landing,
         landingPath: campaign.landingPath,
         planCode: campaign.planCode,
@@ -78,7 +84,7 @@ export function LandingSubscribe({
           msisdn,
           consentToAutoPay: true,
           // Server generates JazzCash-valid pp_RequestID (ReqId + ≤20 chars). Do not invent one here.
-          attribution,
+          attribution: { ...attribution, ...(campaignConsentGranted() ? { campaignAnonymousId: campaignAnonymousId() } : {}) },
         }),
       });
       const payload = await response.json().catch(() => ({}));
@@ -154,6 +160,14 @@ export function LandingSubscribe({
             <span>
               I agree to Jalwa <Link href="/legal/terms">Terms and Conditions</Link> .
             </span>
+          </label>
+
+          <label className="landing-consent">
+            <input checked={analyticsConsent} onChange={event => {
+              setAnalyticsConsent(event.target.checked);
+              setCampaignConsent(event.target.checked);
+            }} type="checkbox" />
+            <span>Allow optional campaign analytics (not required for checkout).</span>
           </label>
 
           <button className="landing-cta" disabled={busy} onClick={() => void subscribe()} type="button">
