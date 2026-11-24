@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { trackLandingCheckoutIntent } from "@/lib/landing-analytics.mjs";
 import { attributionForBilling } from "@/lib/landing-campaign.mjs";
 import { rememberLandingMsisdn, stampUtmAttribution } from "@/lib/utm-attribution.mjs";
@@ -37,8 +37,18 @@ export function LandingSubscribe({
   const [msisdn, setMsisdn] = useState("");
   const [consent, setConsent] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [analyticsConsent, setAnalyticsConsent] = useState(false);
-  useEffect(() => setAnalyticsConsent(campaignConsentGranted()), []);
+  const analyticsConsent = useSyncExternalStore(
+    (onChange) => {
+      window.addEventListener("storage", onChange);
+      window.addEventListener("jalwa-campaign-consent", onChange);
+      return () => {
+        window.removeEventListener("storage", onChange);
+        window.removeEventListener("jalwa-campaign-consent", onChange);
+      };
+    },
+    campaignConsentGranted,
+    () => false,
+  );
   const [error, setError] = useState<string | null>(null);
   const attribution = useMemo(() => attributionForBilling(campaign), [campaign]);
 
@@ -164,7 +174,6 @@ export function LandingSubscribe({
 
           <label className="landing-consent">
             <input checked={analyticsConsent} onChange={event => {
-              setAnalyticsConsent(event.target.checked);
               setCampaignConsent(event.target.checked);
             }} type="checkbox" />
             <span>Allow optional campaign analytics (not required for checkout).</span>
