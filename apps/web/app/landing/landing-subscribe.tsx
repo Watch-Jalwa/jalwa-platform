@@ -75,7 +75,9 @@ export function LandingSubscribe({
         window.gtag("event", "begin_checkout", { item_id: campaign.planCode, landing: campaign.landing });
       }
 
-      captureCampaignEvent("begin_checkout", campaign);
+      // Persist consented first-touch before the wallet-link request is submitted.
+      // Tracking network failures never prevent checkout.
+      await captureCampaignEvent("begin_checkout", campaign);
       if (campaignConsentGranted()) trackLandingCheckoutIntent({
         landing: campaign.landing,
         landingPath: campaign.landingPath,
