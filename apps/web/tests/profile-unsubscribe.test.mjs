@@ -55,6 +55,6 @@ test("homepage delegates to the approved Pakistan hero in the new home component
   const home = await readFile(new URL("../app/newHome1/page.tsx", import.meta.url), "utf8");
   assert.match(page, /NewHomePage/);
   assert.match(home, /new-home-hero/);
-  assert.match(home, /\\/home\\/homepage-hero-banner\\.jpeg/);
+  assert.ok(home.includes("/home/homepage-hero-banner.jpeg"));
   assert.match(home, /Pakistan ki/);
 });
