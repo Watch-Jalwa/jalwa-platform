@@ -159,8 +159,22 @@ test.describe.serial("Jalwa staging campaign admin role and workflow QA",()=>{
     await page.goto("/admin-login",{waitUntil:"domcontentloaded"});
     await page.getByLabel("Staff email").fill(email);
     await page.getByLabel("Password").fill(password);
+    const signInResponse=page.waitForResponse(response=>response.url().includes("/api/auth/sign-in/email"),{timeout:15000});
     await page.getByRole("button",{name:/Sign in to Studio/}).click();
-    await expect.poll(()=>new URL(page.url()).pathname,{timeout:15000}).toBe("/studio");
+    const authHttp=await signInResponse;
+    const authBody=await authHttp.json().catch(()=>({}));
+    expect(authHttp.status(),"Browser email/password authentication HTTP response: "+
+      String(authBody.code??authBody.message??"no error code")).toBe(200);
+    try{
+      await expect.poll(()=>new URL(page.url()).pathname,{timeout:10000}).toBe("/studio");
+    }catch{
+      const session=await page.context().request.get("/api/auth/get-session");
+      const json=await session.json().catch(()=>({}));
+      const alert=await page.locator(".policy-notice[role=alert]").allTextContents();
+      throw new Error("Login client navigation failed: path="+new URL(page.url()).pathname+
+        " sessionHTTP="+session.status()+" hasSession="+Boolean(json?.user?.id)+
+        " alert="+alert.join("|"));
+    }
     const report=await page.context().request.get("/api/studio/campaigns/report");
     expect(report.status()).toBe(200);
     await page.goto("/studio/campaigns/manage",{waitUntil:"domcontentloaded"});
