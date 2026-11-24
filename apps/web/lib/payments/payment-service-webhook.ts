@@ -296,6 +296,39 @@ export async function reconcilePaymentServiceEvent(rawBody: string, event: Produ
       }
     }
 
+    // Only an explicitly correlated, signed provider payment may become a Campaign Subs fact.
+    // If request/payment IDs are unavailable, leave the payment unattributed rather than guessing
+    // from phone number, date, amount or the latest user campaign.
+    if (process.env.JALWA_CAMPAIGN_ANALYTICS_ENABLED === "true" && localSubscriptionId) {
+      const paymentId = typeof event.data.paymentId === "string" ? event.data.paymentId
+        : typeof event.data.payment_id === "string" ? event.data.payment_id : "";
+      const requestId = typeof event.data.requestId === "string" ? event.data.requestId
+        : typeof event.data.request_id === "string" ? event.data.request_id : "";
+      const match = payments.find(payment => payment.id === paymentId && payment.status === "completed");
+      if (requestId && match) {
+        await client.query(
+          `insert into public.campaign_payment_links(
+             provider,remote_payment_id,attribution_id,subscription_id,link_source
+           )
+           select 'jazzcash',$1::text,i.campaign_attribution_id,$3::uuid,'verified_payment_service'
+           from public.jazzcash_wallet_link_intents i
+           join public.campaign_attributions a on a.id=i.campaign_attribution_id
+           join public.subscriptions s on s.id=$3::uuid and s.user_id=i.user_id
+           where i.user_id=$4::uuid
+             and (i.request_id=$2 or i.payment_service_request_id=$2)
+             and i.campaign_attribution_id is not null
+             and a.consent_state='granted'
+             and exists (
+               select 1 from public.payment_service_payments p
+               where p.provider='jazzcash' and p.remote_payment_id=$1 and p.user_id=$4::uuid
+                 and p.status='completed'
+             )
+           on conflict(provider,remote_payment_id) do nothing`,
+          [paymentId,requestId,localSubscriptionId,event.userId],
+        );
+      }
+    }
+
     await client.query(
       `update public.webhook_events set status='processed',processed_at=now(),error_message=null
        where provider='jazzcash' and provider_event_id=$1`,
