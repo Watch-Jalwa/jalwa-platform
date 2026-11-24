@@ -1,9 +1,7 @@
 name: Campaign Studio staging admin QA
 
 on:
-  push:
-    branches: ["feat/campaign-analytics-admin-v1"]
-    paths: [".github/workflows/campaign-studio-staging-qa.yml", "qa/playwright/campaign-admin.spec.mjs", "qa/playwright/campaign-excel.spec.mjs"]
+  workflow_dispatch:
 
 permissions:
   contents: read

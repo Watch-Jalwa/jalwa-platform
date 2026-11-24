@@ -819,7 +819,7 @@ export async function completeJazzcashLandingLink(fields) {
     throw error;
   }
 
-  const hashValid = !fields.pp_SecureHash || !jazzcashV11Configured() || verifyJazzcashSecureHash(fields);
+  const hashValid = jazzcashV11Configured() && Boolean(fields.pp_SecureHash) && verifyJazzcashSecureHash(fields);
   if (!hashValid && !mockJazzcashChargeAllowed()) {
     const error = new Error("invalid_hash");
     error.status = 400;

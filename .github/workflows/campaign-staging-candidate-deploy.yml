@@ -46,14 +46,24 @@ jobs:
           done
           grep -Fq "$HOST" <<<"$KNOWN_HOSTS" || { echo 'Pinned SSH host key does not contain the staging host.' >&2; exit 1; }
           infrastructure/production/scripts/validate-production.sh
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Validate exact candidate before deployment
+        run: |
+          npm ci --ignore-scripts --no-audit --no-fund
+          npm run lint --workspace @jalwa/web
+          npm run typecheck --workspace @jalwa/web
+          npm test --workspace @jalwa/web
       - name: Prevent overwriting a newer shared staging release
         env:
           DOMAIN: ${{ vars.STAGING_DOMAIN || 'jalwa-platform.codistan.org' }}
         run: |
           set -euo pipefail
           current="$(curl -fsS --max-time 30 "https://$DOMAIN/api/health")"
-          jq -e --arg sha '5c96c32491df952bcc86ac022a2018174aa6019a' '.service=="jalwa-web" and .status=="ready" and .version==$sha' <<<"$current" >/dev/null ||
-            { echo 'Shared staging has changed from the verified November 23 release; refusing to overwrite.' >&2; exit 1; }
+          jq -e --arg sha '818a90d1bc79f57eda82dfa71b3a2e2a27d9483e' '.service=="jalwa-web" and .status=="ready" and .version==$sha' <<<"$current" >/dev/null ||
+            { echo 'Shared staging has changed from the last certified campaign staging release; refusing to overwrite.' >&2; exit 1; }
 
 
   build:
@@ -312,3 +322,8 @@ jobs:
             echo '- Public edge: external HTTPS health, readiness, exact SHA and security headers verified'
             echo '- Campaign analytics feature, GA4 and email remain disabled pending integration QA'
           } >> "$GITHUB_STEP_SUMMARY"
+
+  certify:
+    needs: deploy
+    uses: ./.github/workflows/campaign-studio-exact-sha-qa.yml
+    secrets: inherit

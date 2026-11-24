@@ -48,6 +48,17 @@ test.describe.serial("Jalwa staging campaign admin role and workflow QA",()=>{
     }
   });
 
+  test("forged URL order and unauthorized scheduler cannot trigger a conversion or digest",async({page})=>{
+    await page.context().clearCookies();
+    const receipt=await page.context().request.post("/api/campaign/conversion-receipt",{data:{orderId:"forged-subscription-123"}});
+    expect(receipt.status()).toBe(403);
+    expect((await receipt.json()).verified).toBe(false);
+    for(const path of ["/api/cron/campaign-daily","/api/cron/campaign-ga4"]){
+      const response=await page.context().request.post(path,{headers:{authorization:"Bearer unauthorized-test-only"}});
+      expect([401,403]).toContain(response.status());
+    }
+  });
+
   test("admin can view campaign overview and daily logs without server errors",async({page})=>{
     await roleSession(page,admin.email);
     for(const [path,heading] of [
