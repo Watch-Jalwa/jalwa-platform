@@ -18,6 +18,7 @@ export type CampaignReport = {
  totals:{subs:number;revenueMinor:number};
  dimensions:Record<"platform"|"plan"|"parameter",Array<{label:string;subs:number}>>;
  dateWise:Array<{date:string;subs:number;revenueMinor:number;platform:Record<string,number>;plan:Record<string,number>;parameter:Record<string,number>}>;
+ detailed:Array<{platform:string;plan:string;parameter:string;subs:number}>;
  definitions:Record<string,string>;
 };
 export function filterCompletedTransactions(rows:VerifiedCampaignPayment[],filters?:CampaignFilters):VerifiedCampaignPayment[];
