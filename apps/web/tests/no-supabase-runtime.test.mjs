@@ -36,7 +36,7 @@ function sourceForDependencyScan(relative, source) {
     assert.ok(source.includes(guard), "Importer must reject legacy Supabase env vars before any write.");
     return source.replace(guard, "");
   }
-  if (relative !== ".github/workflows/deploy-staging.yml") return source;
+  if (![".github/workflows/deploy-staging.yml", ".github/workflows/campaign-staging-candidate-deploy.yml"].includes(relative)) return source;
   const guard = /^\s*! grep -qE '\^SUPABASE_\|\^NEXT_PUBLIC_SUPABASE_' "\$env_file" \|\| \{ echo 'Legacy Supabase values remain in \.env\.staging\.' >&2; exit 1; \}\s*$/m;
   assert.match(source, guard, "The only permitted legacy-name reference must be a fail-closed staging environment rejection guard.");
   return source.replace(guard, "");
