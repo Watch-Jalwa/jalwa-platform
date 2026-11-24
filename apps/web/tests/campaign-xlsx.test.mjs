@@ -36,7 +36,7 @@ test("two-sheet Office Open XML file includes matching date wise and detailed to
   assert.match(content.get("xl/workbook.xml"),/Basic and Detailed/);
   assert.match(content.get("xl/worksheets/sheet1.xml"),/Platform/);
   assert.match(content.get("xl/worksheets/sheet1.xml"),/Ranchers/);
-  assert.match(content.get("xl/worksheets/sheet2.xml"),/Basic \/ DETAILED/);
+  assert.match(content.get("xl/worksheets/sheet2.xml"),/BASIC \/ DETAILED/);
   assert.match(content.get("xl/worksheets/sheet2.xml"),/Total/);
 });
 test("spreadsheet strings are XML escaped and treated as literal text",()=>{
