@@ -1,5 +1,5 @@
 name: Deploy campaign analytics staging candidate
-# Trigger: analytics-default-on landing consent removal
+# Trigger: Subscribe receipt cv fallback after JazzCash cross-site return
 
 on:
   push:
@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           current="$(curl -fsS --max-time 30 "https://$DOMAIN/api/health")"
-          jq -e --arg sha 'c7496b0de060f7ccfbd8cf78b8986156a18f77ac' '.service=="jalwa-web" and .status=="ready" and .version==$sha' <<<"$current" >/dev/null ||
+          jq -e --arg sha '90c4931beaa41ef516be0ccb4a0558b152a04e24' '.service=="jalwa-web" and .status=="ready" and .version==$sha' <<<"$current" >/dev/null ||
             { echo 'Shared staging has changed from the last verified deployed campaign staging release; refusing to overwrite.' >&2; exit 1; }
 
 
