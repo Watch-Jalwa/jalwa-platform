@@ -26,5 +26,23 @@ jobs:
       - run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Campaign unit tests
         run: node --test apps/web/tests/campaign-reporting.test.mjs apps/web/tests/campaign-xlsx.test.mjs apps/web/tests/campaign-links.test.mjs
+      - name: Independently validate XLSX ZIP and OOXML sheets
+        run: |
+          node apps/web/tests/fixtures/make-campaign-xlsx.mjs /tmp/campaign-sample.xlsx
+          python3 - <<'PY'
+          import zipfile, xml.etree.ElementTree as ET
+          path='/tmp/campaign-sample.xlsx'
+          with zipfile.ZipFile(path) as z:
+              assert z.testzip() is None
+              parts=set(z.namelist())
+              assert {'xl/workbook.xml','xl/worksheets/sheet1.xml','xl/worksheets/sheet2.xml','xl/styles.xml'} <= parts
+              for part in ('xl/workbook.xml','xl/worksheets/sheet1.xml','xl/worksheets/sheet2.xml'):
+                  ET.fromstring(z.read(part))
+              workbook=z.read('xl/workbook.xml').decode()
+              summary=z.read('xl/worksheets/sheet1.xml').decode()
+              assert 'Date-wise Subs' in workbook and 'Basic and Detailed' in workbook
+              assert 'Ranchers' in summary and 'Bike' in summary
+          print('XLSX ZIP/XML structure passed')
+          PY
       - name: TypeScript validation
         run: npm run typecheck --workspace @jalwa/web
