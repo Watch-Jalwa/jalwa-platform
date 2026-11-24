@@ -71,8 +71,8 @@ export function trackLandingCheckoutIntent(ctx) {
       package: ctx.packageCode,
       payment: ctx.payment,
     };
-    logTikTokEvent("AddToCart", base);
     logTikTokEvent("InitiateCheckout", base);
+    logTikTokEvent("AddPaymentInfo", base);
   } catch {
     /* never break checkout */
   }
