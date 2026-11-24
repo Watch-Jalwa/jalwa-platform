@@ -115,3 +115,30 @@ test("Daily digest rejects unmatched totals or invalid timezone before delivery"
   assert.throws(()=>composeCampaignDailyDigest({...daily,failureCount:4}, {totals:{subs:3,revenueMinor:398900}},"2026-11-24"),/do not reconcile/);
   assert.throws(()=>composeCampaignDailyDigest({...daily,timezone:"UTC"}, {totals:{subs:3,revenueMinor:398900}},"2026-11-24"),/date\/timezone/);
 });
+
+test("multi-landing matrix supports four sources, three plans and changing parameters without overcounting",()=>{
+  const extra=[
+    fixture("fifth","Google","premium-seasonal-pkr","Mobile Data","2026-11-24T04:30:00Z",149900,
+      {landingPath:"/mainLanding",referral:"partnerX"}),
+    fixture("sixth","S","premium-seasonal-pkr","Free Delivery","2026-11-24T08:30:00Z",149900,
+      {landingPath:"/landing1",referral:"partnerY"}),
+  ];
+  const report=buildCampaignReport([...rows,...extra],{start:"2026-11-24",end:"2026-11-25",product:"jalwa"});
+  const sources=new Set(report.dimensions.platform.map(x=>x.label));
+  assert.ok(["Meta","TikTok","Snapchat","Google"].every(p=>sources.has(p)));
+  assert.equal(report.dimensions.plan.length,3);
+  assert.ok(report.dimensions.parameter.length>=4);
+  assert.equal(report.totals.subs,7);
+  assert.equal(report.detailed.reduce((sum,x)=>sum+x.subs,0),7);
+  assert.equal(report.dateWise.reduce((sum,x)=>sum+x.subs,0),7);
+  assert.equal(new Set(report.detailed.map(x=>x.platform)).size,4);
+  const files=unpackStored(generateCampaignXlsx(report));
+  const basic=files.get("xl/worksheets/sheet2.xml");
+  assert.match(basic,/BASIC VIEW/);
+  assert.match(basic,/DETAILED VIEW/);
+  assert.match(basic,/premium-seasonal-pkr/);
+  assert.match(basic,/Free Delivery/);
+  assert.match(basic,/Mobile Data/);
+  for(const dimension of ["platform","plan","parameter"])
+    assert.equal(report.dimensions[dimension].reduce((sum,x)=>sum+x.subs,0),7);
+});
