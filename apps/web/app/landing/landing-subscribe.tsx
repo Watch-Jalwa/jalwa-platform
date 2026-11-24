@@ -71,7 +71,8 @@ export function LandingSubscribe({
       rememberLandingMsisdn(msisdn);
 
       if (campaignConsentGranted() && typeof window !== "undefined" && typeof window.gtag === "function") {
-        window.gtag("event", "add_to_cart", { item_id: campaign.planCode, landing: campaign.landing });
+        window.gtag("event", "landing_cta", { item_id: campaign.planCode, landing: campaign.landing });
+        window.gtag("event", "subscribe", { item_id: campaign.planCode, landing: campaign.landing });
         window.gtag("event", "begin_checkout", { item_id: campaign.planCode, landing: campaign.landing });
       }
 

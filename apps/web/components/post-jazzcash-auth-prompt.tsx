@@ -5,6 +5,7 @@ import { useEffect, useId, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { trackLandingPaymentSuccess } from "@/lib/landing-analytics.mjs";
 import { readUtmAttribution } from "@/lib/utm-attribution.mjs";
+import { campaignConsentGranted } from "@/lib/campaign-client.mjs";
 
 /**
  * After JazzCash wallet-link success, guests land on `/` with ?premium=enabled.
@@ -43,20 +44,26 @@ export function PostJazzcashAuthPrompt({ signedIn = false }: { signedIn?: boolea
         setToast({ kind: "ok", message: "Premium features enabled" });
         setOpen(false);
       }
-      if (premium === "enabled" && orderId) {
+      if (premium === "enabled" && orderId && campaignConsentGranted()) {
         const attr = readUtmAttribution() as {
           landing?: string;
           utm?: string;
           parameter?: string;
           planCode?: string;
         } | null;
-        trackLandingPaymentSuccess({
+        // URL parameters are UI hints only. Require a server-issued, verified payment receipt.
+        void fetch("/api/campaign/conversion-receipt",{method:"POST",headers:{"content-type":"application/json"},
+          body:JSON.stringify({orderId}),credentials:"same-origin",cache:"no-store"})
+          .then(async response=>response.ok?response.json():null).then(receipt=>{
+          if(!receipt?.verified || receipt.orderId!==orderId || !campaignConsentGranted())return;
+          trackLandingPaymentSuccess({
           orderId,
           landing: attr?.landing,
           utm: attr?.utm,
           parameter: attr?.parameter,
-          planCode: attr?.planCode || "premium-monthly-pkr",
+          planCode: receipt.planCode,
         });
+        }).catch(()=>{});
       }
       const params = new URLSearchParams(searchParams.toString());
       params.delete("premium");

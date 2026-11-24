@@ -27,16 +27,18 @@ export function captureCampaignEvent(eventName,ctx={}){
   if(typeof window==="undefined") return Promise.resolve();
   const consent=campaignConsentGranted();
   const anonymousId=consent?campaignAnonymousId():null;
-  const eventKey=crypto.randomUUID();
-  const googleCookie=consent?document.cookie.match(/(?:^|;\\s*)_ga=GA\\d\\.\\d\\.([0-9]+\\.[0-9]+)/):null;
+  let eventKey;
+  try{eventKey=crypto.randomUUID();}catch{return Promise.resolve();}
+  let googleCookie=null;
+  try{googleCookie=consent?document.cookie.match(/(?:^|;\s*)_ga=GA\d\.\d\.([0-9]+\.[0-9]+)/):null;}catch{/* blocked cookies */}
   const gaClientId=googleCookie?.[1]??null;
   const body={eventName,eventKey,consent,anonymousId,gaClientId,
     landingPath:ctx.landingPath||window.location.pathname,
     utm:ctx.utm,utmSource:ctx.utm_source,utmMedium:ctx.utm_medium,
     utmCampaign:ctx.utm_campaign,utmContent:ctx.utm_content,
     package:ctx.package,planCode:ctx.planCode,parameter:ctx.parameter,ref:ctx.ref};
-  return fetch("/api/campaign/event",{
+  return Promise.resolve().then(()=>fetch("/api/campaign/event",{
     method:"POST",headers:{"content-type":"application/json"},
     credentials:"same-origin",keepalive:true,body:JSON.stringify(body),
-  }).catch(()=>{ /* analytics must not interrupt checkout */ });
+  })).catch(()=>{ /* analytics must not interrupt checkout */ });
 }

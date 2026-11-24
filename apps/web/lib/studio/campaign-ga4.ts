@@ -63,19 +63,19 @@ export async function dispatchVerifiedCampaignGa4() {
         {method:"POST",headers:{"content-type":"application/json"},
           body:JSON.stringify(payload),signal:AbortSignal.timeout(10000),cache:"no-store"},
       );
-      if(!res.ok)throw new Error("GA4 accepted HTTP status "+res.status);
+      if(!res.ok)throw new Error("GA4 rejected HTTP status "+res.status);
       await databasePool.query(`
         update public.campaign_ga4_outbox set status='sent',sent_at=now(),updated_at=now(),last_error=null
         where provider=$1::public.payment_provider and remote_payment_id=$2 and status='sending'`,
         [row.provider,row.remote_payment_id]);
       sent++;
-    }catch(error){
-      failed.push(row.provider+":"+row.remote_payment_id);
+    }catch{
+      failed.push(true);
       await databasePool.query(`
         update public.campaign_ga4_outbox set status='failed',last_error=$3,updated_at=now()
         where provider=$1::public.payment_provider and remote_payment_id=$2 and status='sending'`,
         [row.provider,row.remote_payment_id,
-         (error instanceof Error?error.message:"dispatch failure").slice(0,150)]).catch(()=>{});
+         "ga4_dispatch_failure"]).catch(()=>{});
     }
   }
   return {sent,failedCount:failed.length};

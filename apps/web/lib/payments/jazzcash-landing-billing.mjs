@@ -539,14 +539,20 @@ export async function startJazzcashLandingLink({ msisdn, planCode, consentToAuto
   // Optional consented attribution is bound to the same verified pay-first intent.
   // A missing campaign migration must never interrupt JazzCash checkout.
   if (process.env.JALWA_CAMPAIGN_ANALYTICS_ENABLED === "true"
-    && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(String(attr.campaignAnonymousId ?? ""))) {
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(attr.campaignAnonymousId ?? ""))) {
     await databasePool.query(
-      `update public.jazzcash_wallet_link_intents i
+      `with owned_attribution as (
+         update public.campaign_attributions a
+         set user_id=coalesce(a.user_id,$3::uuid)
+         where a.anonymous_id=$2::uuid and a.consent_state='granted'
+           and a.expires_at>now() and (a.user_id is null or a.user_id=$3::uuid)
+         returning id
+       )
+       update public.jazzcash_wallet_link_intents i
        set campaign_attribution_id = a.id
-       from public.campaign_attributions a
-       where i.request_id = $1 and a.anonymous_id = $2::uuid
-         and a.consent_state = 'granted' and a.expires_at > now()
-         and i.user_id = $3`,
+       from owned_attribution a
+       where i.request_id=$1 and i.user_id=$3::uuid
+         and i.campaign_attribution_id is null`,
       [requestId, attr.campaignAnonymousId, learner.userId],
     ).catch(() => undefined);
   }

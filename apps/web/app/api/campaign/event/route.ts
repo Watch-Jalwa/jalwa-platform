@@ -16,7 +16,10 @@ export async function POST(request:Request) {
     return new NextResponse(null,{status:204});
   if(Number(request.headers.get("content-length")||0)>8192)
     return NextResponse.json({error:"Event too large"},{status:413});
-  const b=await request.json().catch(()=>null) as Record<string,unknown>|null;
+  const raw=await request.text().catch(()=>"");
+  if(Buffer.byteLength(raw,"utf8")>8192)return NextResponse.json({error:"Event too large"},{status:413});
+  let b:Record<string,unknown>|null=null;
+  try{const parsed=JSON.parse(raw);if(parsed && typeof parsed==="object" && !Array.isArray(parsed))b=parsed;}catch{/* invalid body */}
   if(!b || !browserEvents.has(String(b.eventName??"")) || !uuid.test(String(b.eventKey??"")))
     return NextResponse.json({error:"Invalid event"},{status:400});
   const path=value(b.landingPath,180);
@@ -70,22 +73,11 @@ export async function POST(request:Request) {
              and cfg.parameter=$12 and cfg.referral=$13
            order by cfg.created_at desc limit 1))
         on conflict (anonymous_id) where consent_state='granted' do update set
-          user_id=coalesce(excluded.user_id,public.campaign_attributions.user_id),
-          first_seen_at=case when public.campaign_attributions.expires_at<=now() then now() else public.campaign_attributions.first_seen_at end,
-          expires_at=case when public.campaign_attributions.expires_at<=now() then now()+interval '30 days' else public.campaign_attributions.expires_at end,
-          landing_path=case when public.campaign_attributions.expires_at<=now() then excluded.landing_path else public.campaign_attributions.landing_path end,
-          source=case when public.campaign_attributions.expires_at<=now() then excluded.source else public.campaign_attributions.source end,
-          utm_source=case when public.campaign_attributions.expires_at<=now() then excluded.utm_source else public.campaign_attributions.utm_source end,
-          utm_medium=case when public.campaign_attributions.expires_at<=now() then excluded.utm_medium else public.campaign_attributions.utm_medium end,
-          utm_campaign=case when public.campaign_attributions.expires_at<=now() then excluded.utm_campaign else public.campaign_attributions.utm_campaign end,
-          utm_content=case when public.campaign_attributions.expires_at<=now() then excluded.utm_content else public.campaign_attributions.utm_content end,
-          legacy_utm=case when public.campaign_attributions.expires_at<=now() then excluded.legacy_utm else public.campaign_attributions.legacy_utm end,
-          package_code=case when public.campaign_attributions.expires_at<=now() then excluded.package_code else public.campaign_attributions.package_code end,
-          plan_code=case when public.campaign_attributions.expires_at<=now() then excluded.plan_code else public.campaign_attributions.plan_code end,
-          parameter=case when public.campaign_attributions.expires_at<=now() then excluded.parameter else public.campaign_attributions.parameter end,
-          referral=case when public.campaign_attributions.expires_at<=now() then excluded.referral else public.campaign_attributions.referral end,
-          ga_client_id=case when public.campaign_attributions.expires_at<=now() then excluded.ga_client_id else coalesce(public.campaign_attributions.ga_client_id,excluded.ga_client_id) end,
-          campaign_id=case when public.campaign_attributions.expires_at<=now() then excluded.campaign_id else public.campaign_attributions.campaign_id end
+          user_id=coalesce(public.campaign_attributions.user_id,excluded.user_id),
+          ga_client_id=coalesce(public.campaign_attributions.ga_client_id,excluded.ga_client_id)
+        where public.campaign_attributions.expires_at>now()
+          and (public.campaign_attributions.user_id is null
+            or public.campaign_attributions.user_id=excluded.user_id)
         returning id`,
         [attrs.anonymous_id,attrs.user_id,attrs.landing_path,attrs.source,attrs.utm_source,
          attrs.utm_medium,attrs.utm_campaign,attrs.utm_content,attrs.legacy_utm,

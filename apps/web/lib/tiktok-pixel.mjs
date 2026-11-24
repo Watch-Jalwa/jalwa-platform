@@ -134,8 +134,10 @@ function conversionKey(eventName, eventId) {
 
 export function wasTikTokConversionFired(eventName, eventId) {
   try {
-    if (!eventId || typeof sessionStorage === "undefined") return false;
-    return sessionStorage.getItem(conversionKey(eventName, eventId)) === "1";
+    if (!eventId) return false;
+    const key=conversionKey(eventName,eventId);
+    return (typeof localStorage!=="undefined" && localStorage.getItem(key)==="1") ||
+      (typeof sessionStorage!=="undefined" && sessionStorage.getItem(key)==="1");
   } catch {
     return false;
   }
@@ -143,8 +145,10 @@ export function wasTikTokConversionFired(eventName, eventId) {
 
 export function markTikTokConversionFired(eventName, eventId) {
   try {
-    if (!eventId || typeof sessionStorage === "undefined") return;
-    sessionStorage.setItem(conversionKey(eventName, eventId), "1");
+    if (!eventId) return;
+    const key=conversionKey(eventName,eventId);
+    if(typeof localStorage!=="undefined")localStorage.setItem(key,"1");
+    if(typeof sessionStorage!=="undefined")sessionStorage.setItem(key,"1");
   } catch {
     /* ignore */
   }
@@ -164,7 +168,7 @@ export function logTikTokEvent(eventName, payload = {}, options = {}) {
     }
     const eventId = String(options.event_id ?? "").trim();
     const isConversion = eventName === "Subscribe" || eventName === "CompletePayment";
-    if (isConversion && eventId && wasTikTokConversionFired(eventName, eventId)) {
+    if (isConversion && (!eventId || wasTikTokConversionFired(eventName, eventId))) {
       return false;
     }
     if (eventId) {
