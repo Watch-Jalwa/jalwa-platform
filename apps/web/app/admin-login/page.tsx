@@ -1,11 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
-import { authClient } from "@/lib/auth-client";
 
 export default function AdminLoginPage() {
-  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -15,14 +12,19 @@ export default function AdminLoginPage() {
     if (busy) return;
     setBusy(true); setError("");
     try {
-      const result = await authClient.signIn.email({
-        email: email.trim().toLowerCase(), password, callbackURL: "/studio",
+      // Use Better Auth's existing server-side credential validation directly,
+      // then force a fresh request so the Studio guard sees the new session cookie.
+      const response = await fetch("/api/auth/sign-in/email", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ email: email.trim().toLowerCase(), password, callbackURL: "/studio" }),
       });
-      if (result.error) {
+      if (!response.ok) {
         setError("Sign-in failed or this account is not authorized.");
       } else {
-        router.push("/studio");
-        router.refresh();
+        window.location.replace("/studio");
       }
     } catch {
       setError("Sign-in failed. Check your credentials and try again.");
