@@ -16,9 +16,16 @@ test("conversion receipt authenticates verified order and plan; forged, mismatch
 test("payment return uses a server receipt and wallet linking alone cannot fire Subscribe",async()=>{
   const callback=await readFile(new URL("../app/callback/route.ts",import.meta.url),"utf8");
   const prompt=await readFile(new URL("../components/post-jazzcash-auth-prompt.tsx",import.meta.url),"utf8");
+  const receiptRoute=await readFile(new URL("../app/api/campaign/conversion-receipt/route.ts",import.meta.url),"utf8");
   assert.match(callback,/result\.ok \? String\(result\.subscriptionId \?\? ""\)/);
+  assert.match(callback,/searchParams\.set\("cv", receipt\)/);
+  assert.match(callback,/sameSite: next\.protocol==="https:" \? "none" : "lax"/);
   assert.match(prompt,/receipt\?\.verified/);
   assert.match(prompt,/trackLandingPaymentSuccess/);
+  assert.match(prompt,/conversionReceipt \? \{ receipt: conversionReceipt \}/);
+  assert.match(prompt,/params\.delete\("cv"\)/);
+  assert.match(receiptRoute,/verifyConversionReceipt\(fromBody,orderId,secret\)/);
+  assert.match(receiptRoute,/verifyConversionReceipt\(fromCookie,orderId,secret\)/);
   assert.doesNotMatch(callback,/result\.subscriptionId \?\? result\.requestId/);
 });
 test("attribution stays immutable and never transfers to a different account",async()=>{

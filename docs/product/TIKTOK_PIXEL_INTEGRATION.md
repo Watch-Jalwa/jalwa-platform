@@ -28,12 +28,14 @@ Resolution: runtime meta (`jalwa-tiktok-pixel-id`) ← `TIKTOK_PIXEL_ID` ← `NE
 | Any page (site-wide boot) | `PageView` via `ttq.page()` | `TikTokPixelBoot` |
 | Landing open | `ViewContent` | `LandingAnalyticsBoot` → `trackLandingView` |
 | JazzCash number + Subscribe Now | `InitiateCheckout` + `AddPaymentInfo` | `LandingSubscribe` → `trackLandingCheckoutIntent` |
-| JazzCash payment success (`?premium=enabled&order=…`) | `Subscribe` (deduped by `order`) | `PostJazzcashAuthPrompt` → `trackLandingPaymentSuccess` |
-| Payment failed / pending | _(none)_ | — |
+| JazzCash payment success (`?premium=enabled&order=…&cv=…`) | `Subscribe` (deduped by `order`) | `PostJazzcashAuthPrompt` → verified conversion receipt → `trackLandingPaymentSuccess` |
+| Payment failed / pending / wallet-link only (no subscription id) | _(none)_ | — |
 
 **Do not fire** `AddToCart` or `CompletePayment` unless newly requested.
 
-`order` on the return URL is `subscriptionId` or JazzCash `requestId` from `/callback` — used only as TikTok `event_id` for dedupe.
+`order` on the return URL is the granted `subscriptionId` from `/callback` — used only as TikTok `event_id` for dedupe. Wallet linking alone never fires `Subscribe`.
+
+`cv` is a short-lived signed conversion receipt. JazzCash returns via cross-site POST, so SameSite=Lax cookies are unreliable; the client posts `cv` (or the receipt cookie) to `/api/campaign/conversion-receipt` before tracking.
 
 ## Code map
 

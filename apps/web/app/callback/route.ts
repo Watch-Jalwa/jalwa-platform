@@ -60,8 +60,26 @@ async function handle(request: Request) {
   next.searchParams.set("premium", ok ? "enabled" : "failed");
   if (signInHint) next.searchParams.set("msisdn", signInHint);
   if (ok && orderId) next.searchParams.set("order", orderId);
+  // JazzCash posts cross-site into /callback. SameSite=Lax cookies set on that
+  // response are often dropped, so also pass the short-lived signed receipt on
+  // the redirect URL for Subscribe verification (marketing only, 10 min TTL).
+  if (ok && orderId && receipt) next.searchParams.set("cv", receipt);
+  if (ok && !orderId) {
+    console.error("jazzcash_callback_ok_without_subscription", {
+      hasReceipt: Boolean(receipt),
+    });
+  }
   const response=NextResponse.redirect(next,303);
-  if(receipt)response.cookies.set(RECEIPT_COOKIE,receipt,{httpOnly:true,secure:next.protocol==="https:",sameSite:"lax",path:"/api/campaign/conversion-receipt",maxAge:600});
+  if(receipt){
+    response.cookies.set(RECEIPT_COOKIE,receipt,{
+      httpOnly:true,
+      secure:next.protocol==="https:",
+      // None so the cookie can stick after a cross-site JazzCash POST return.
+      sameSite: next.protocol==="https:" ? "none" : "lax",
+      path:"/api/campaign/conversion-receipt",
+      maxAge:600,
+    });
+  }
   return response;
 }
 

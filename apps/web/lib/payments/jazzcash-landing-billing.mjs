@@ -897,8 +897,14 @@ export async function completeJazzcashLandingLink(fields) {
     };
   }
 
+  // Pass post-callback status/token flags — in-memory intent still has pre-update values.
   const charged = await chargeAndGrantJazzcashIntent(
-    { ...intent, payment_token: paymentToken || intent.payment_token },
+    {
+      ...intent,
+      status: "completed",
+      payment_token_present: tokenPresent || Boolean(intent.payment_token_present),
+      payment_token: paymentToken || intent.payment_token,
+    },
     paymentToken,
   );
 
