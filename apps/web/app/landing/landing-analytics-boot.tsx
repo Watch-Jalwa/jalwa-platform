@@ -38,7 +38,12 @@ export function LandingAnalyticsBoot(props: Props) {
       he: props.he,
     });
 
-    captureCampaignEvent("landing_view", {...props,package:props.packageCode});
+    captureCampaignEvent("landing_view", {
+      landingPath:props.landingPath, utm:props.utm, utm_source:props.utmSource,
+      utm_medium:props.utmMedium,utm_campaign:props.utmCampaign,
+      utm_content:props.utmContent,package:props.packageCode,
+      parameter:props.parameter,ref:props.refCode,planCode:props.planCode,
+    });
     if (campaignConsentGranted() && typeof window.gtag === "function") {
       window.gtag("event", "landing_view", {
         landing: props.landing,
