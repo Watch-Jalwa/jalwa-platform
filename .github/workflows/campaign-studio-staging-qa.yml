@@ -81,10 +81,12 @@ jobs:
           awk '/^JALWA_CAMPAIGN_ANALYTICS_ENABLED=/{next} {print} END{print "JALWA_CAMPAIGN_ANALYTICS_ENABLED=true"}' "$env_file" > "$env_file.tmp-$RUN_ID"
           chmod 600 "$env_file.tmp-$RUN_ID"
           mv "$env_file.tmp-$RUN_ID" "$env_file"
-          compose="$APP_DIR/docker-compose.staging.yml"
-          if [[ ! -s "$compose" ]]; then compose="$APP_DIR/docker-compose.yml"; fi
-          test -s "$compose"
-          COMPOSE_PROJECT_NAME=jalwa-platform docker compose -f "$compose" --env-file "$env_file" up -d --no-deps --force-recreate web
+          test -s "$APP_DIR/docker-compose.yml"
+          test -s "$APP_DIR/docker-compose.codistan-staging.yml"
+          cd "$APP_DIR"
+          export COMPOSE_FILE="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml"
+          export JALWA_ENV_FILE="$env_file"
+          COMPOSE_PROJECT_NAME=jalwa-platform docker compose --env-file "$env_file" up -d --no-build --pull never --no-deps --force-recreate web
           docker exec jalwa-web-staging sh -lc 'test "$JALWA_CAMPAIGN_ANALYTICS_ENABLED" = true && test "$JALWA_CAMPAIGN_EMAIL_ENABLED" = false && test "$JALWA_CAMPAIGN_GA4_ENABLED" = false'
           REMOTE
       - name: Wait for staging web readiness
@@ -114,9 +116,10 @@ jobs:
           backup="$APP_DIR/.env.staging.campaign-admin-qa-$RUN_ID.backup"
           if [[ -s "$backup" ]]; then
             mv -f "$backup" "$APP_DIR/.env.staging"
-            compose="$APP_DIR/docker-compose.staging.yml"
-            if [[ ! -s "$compose" ]]; then compose="$APP_DIR/docker-compose.yml";fi
-            COMPOSE_PROJECT_NAME=jalwa-platform docker compose -f "$compose" --env-file "$APP_DIR/.env.staging" up -d --no-deps --force-recreate web
+            cd "$APP_DIR"
+            export COMPOSE_FILE="$APP_DIR/docker-compose.yml:$APP_DIR/docker-compose.codistan-staging.yml"
+            export JALWA_ENV_FILE="$APP_DIR/.env.staging"
+            COMPOSE_PROJECT_NAME=jalwa-platform docker compose --env-file "$APP_DIR/.env.staging" up -d --no-build --pull never --no-deps --force-recreate web
           fi
           db_user="$(docker exec jalwa-postgres-staging sh -lc 'printf %s "$POSTGRES_USER"')"
           db_name="$(docker exec jalwa-postgres-staging sh -lc 'printf %s "$POSTGRES_DB"')"
