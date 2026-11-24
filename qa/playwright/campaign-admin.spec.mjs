@@ -145,6 +145,17 @@ test.describe.serial("Jalwa staging campaign admin role and workflow QA",()=>{
     });
     expect(authorized.status,"Protected QA role assignment").toBe(200);
     await page.context().clearCookies();
+    // Verify the actual Better Auth password endpoint before exercising the form,
+    // separating backend credential failures from client navigation failures.
+    const direct=await page.context().request.post("/api/auth/sign-in/email",{
+      data:{email,password,callbackURL:"/studio"},
+    });
+    if(direct.status()!==200) {
+      const detail=await direct.json().catch(()=>({}));
+      throw new Error("Email/password backend rejected valid staging QA credentials: HTTP "+
+        direct.status()+" "+String(detail.code??detail.message??"unknown"));
+    }
+    await page.context().clearCookies();
     await page.goto("/admin-login",{waitUntil:"domcontentloaded"});
     await page.getByLabel("Staff email").fill(email);
     await page.getByLabel("Password").fill(password);
