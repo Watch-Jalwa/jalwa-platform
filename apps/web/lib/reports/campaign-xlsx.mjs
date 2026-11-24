@@ -122,6 +122,7 @@ export function generateCampaignXlsx(report) {
   const group=[mark("Date",1),mark("Total Subs",1)];
   const headers=[mark("Date",1),mark("Subs",1)];
   const merges=[];
+  const headingRow=rows.length+1;
   let column=3;
   for(let i=0;i<3;i++){
     const category=i===0?"Platform":i===1?"Plan IDs":"Parameter / UTM";
@@ -132,7 +133,6 @@ export function generateCampaignXlsx(report) {
     for(const n of names[i].length?names[i]:["—"]) headers.push(mark(n,1));
     column+=count;
   }
-  const headingRow=rows.length+1;
   rows.push(group,headers);
   for(const row of dates){
     const r=[row.date,row.subs];
