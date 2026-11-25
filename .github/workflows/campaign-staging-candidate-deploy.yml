@@ -1,5 +1,5 @@
 name: Deploy campaign analytics staging candidate
-# Trigger: KFC voucher landing1 creative (parameter=kfcvoucher) + landing1Creative types
+# Trigger: refresh KFC mobile banner (Watch and Win)
 
 on:
   push:
@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           current="$(curl -fsS --max-time 30 "https://$DOMAIN/api/health")"
-          jq -e --arg sha 'ec408044fda67b38ccb9cc60e66f35f38be43299' '.service=="jalwa-web" and .status=="ready" and .version==$sha' <<<"$current" >/dev/null ||
+          jq -e --arg sha '587c8cea4fc66a252ddfa433e87586e7e022ddac' '.service=="jalwa-web" and .status=="ready" and .version==$sha' <<<"$current" >/dev/null ||
             { echo 'Shared staging has changed from the last verified deployed campaign staging release; refusing to overwrite.' >&2; exit 1; }
 
 
