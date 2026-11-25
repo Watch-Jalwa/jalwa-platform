@@ -35,6 +35,18 @@ export function normalizeLanding1Campaign(
   searchParams: Record<string, string | string[] | undefined> | URLSearchParams,
 ): ReturnType<typeof normalizeLandingCampaign>;
 
+export function landing1Creative(parameter: string): {
+  title: string;
+  description: string;
+  ogTitle: string;
+  ogDescription: string;
+  h1: string;
+  webBannerSrc: string;
+  mobileBannerSrc: string;
+  imageAlt: string;
+  offerNotice: string;
+};
+
 export function attributionForBilling(campaign: {
   utm: string;
   package: string;

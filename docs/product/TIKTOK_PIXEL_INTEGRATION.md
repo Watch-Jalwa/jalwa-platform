@@ -7,10 +7,12 @@
 | Item | Value |
 | --- | --- |
 | Landing URL | `https://watch-jalwa.com/landing1?utm=T&package=1&parameter=monthly10k&payment=jazzcash` |
+| KFC variant | `https://watch-jalwa.com/landing1?utm=T&package=1&parameter=kfcvoucher&payment=jazzcash` |
 | Path | `/landing1` |
 | TikTok Pixel ID | `DBU5R83C77UCDH70PUCG` |
 | Traffic marker | `utm=T` |
 | Approved events | `PageView`, `ViewContent`, `InitiateCheckout`, `AddPaymentInfo`, `Subscribe` only |
+| KFC banners | web `/landing/kfc-web-banner.png`, mobile `/landing/kfc-mobile-banner.png` |
 
 ## Env
 
@@ -47,7 +49,8 @@ Resolution: runtime meta (`jalwa-tiktok-pixel-id`) ← `TIKTOK_PIXEL_ID` ← `NE
 | Site-wide boot | `apps/web/components/tiktok-pixel-boot.tsx` |
 | CSP (Next) | `apps/web/next.config.ts` |
 | CSP (Caddy) | `infrastructure/production/Caddyfile` |
-| Agent playbook | `TIKTOK_PIXEL_AGENT_GUIDE.md` |
+| Agent playbook (Jalwa) | `TIKTOK_PIXEL_AGENT_GUIDE.md` |
+| Portable playbook + §3A | `resources/TIKTOK_PIXEL_AGENT_GUIDE.md` |
 
 ## Verification
 
@@ -55,4 +58,19 @@ Resolution: runtime meta (`jalwa-tiktok-pixel-id`) ← `TIKTOK_PIXEL_ID` ← `NE
 2. Confirm `<meta name="jalwa-tiktok-pixel-id" content="DBU5R83C77UCDH70PUCG">`.
 3. Network: `analytics.tiktok.com` not CSP-blocked.
 4. Pixel Helper: PageView + ViewContent on load; **only** InitiateCheckout + AddPaymentInfo on CTA (no AddToCart).
-5. Staging success with `order` id → one Subscribe (no CompletePayment); reload same order → no second Subscribe.
+5. Staging success that grants `subscriptionId`: return URL includes `order=` + `cv=` → one `Subscribe` beacon (no CompletePayment); reload same order → no second Subscribe.
+6. Events Manager Overview may lag ~30 minutes; use Test Events / network for immediate proof.
+
+## Incident — `Subscribe` missing (Nov 2026)
+
+**Observed:** Events Manager Active for `ViewContent` / `InitiateCheckout` / `AddPaymentInfo`, but no `Subscribe`, after JazzCash on the campaign landing URL above.
+
+**Why:** Not a wrong Pixel ID. (1) `Subscribe` is gated on granted `subscriptionId` + verified conversion receipt — wallet-link alone must not fire it. (2) JazzCash returns via cross-site POST; a `SameSite=Lax` receipt cookie set on `/callback` was often dropped, so the client never called `ttq.track('Subscribe')`.
+
+**Fix:** Pass signed `cv` on redirect; accept `cv` or cookie at `/api/campaign/conversion-receipt`; use `SameSite=None; Secure` receipt cookie on HTTPS. Portable write-up + checklist for other products: `resources/TIKTOK_PIXEL_AGENT_GUIDE.md` §3A (repo copy: `TIKTOK_PIXEL_AGENT_GUIDE.md` §3A).
+
+| Concern | Path |
+| --- | --- |
+| Callback + `cv` + cookie | `apps/web/app/callback/route.ts` |
+| Receipt verify | `apps/web/app/api/campaign/conversion-receipt/route.ts` |
+| Fire Subscribe after verify | `apps/web/components/post-jazzcash-auth-prompt.tsx` |

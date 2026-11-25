@@ -16,6 +16,7 @@ export function landingContentName(planCode, parameter) {
   const code = String(planCode ?? "");
   if (code.includes("annual") || code.includes("yearly")) return "Jalwa Premium Annual";
   if (parameter === "monthly10k") return "Jalwa Premium Monthly (10k credits)";
+  if (parameter === "kfcvoucher") return "Jalwa Premium Monthly (KFC voucher)";
   return "Jalwa Premium Monthly";
 }
 

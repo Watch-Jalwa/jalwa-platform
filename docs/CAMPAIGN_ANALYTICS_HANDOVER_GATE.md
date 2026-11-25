@@ -17,7 +17,7 @@ Production and live payment/email/GA4 are NOT authorized by this checklist.
 ## Product/operations inputs still required
 1. Approved real report recipients, daily PKT send time, staging SMTP credentials and controlled mailbox access; audited recovery/resend and receipt across two reporting days.
 2. Payment-service sandbox/test credentials and exact signed requestId + paymentId + verified subscription contract, including failures/replays and renewal/refund rules; no guessed attribution. Wallet-link-only is not paid.
-3. Authorized GA4 property and API secret/custom dimensions, approved TikTok test pixel/Events Manager access; real paid callback and conversion dedupe evidence. HE and MPIN definitions remain explicitly unknown/not observable.
+3. Authorized GA4 property and API secret/custom dimensions, approved TikTok test pixel/Events Manager access; real paid callback and conversion dedupe evidence. HE and MPIN definitions remain explicitly unknown/not observable. **TikTok note (Nov 2026):** CTA events Active with missing `Subscribe` was caused by wallet-link≠grant plus JazzCash cross-site POST dropping the Lax conversion-receipt cookie — fixed via `?cv=` + `SameSite=None` receipt path (`ec40804…` on watch-jalwa). Re-verify one granted-subscription return + Test Events; see `resources/TIKTOK_PIXEL_AGENT_GUIDE.md` §3A and `docs/product/TIKTOK_PIXEL_INTEGRATION.md`.
 4. Staff admin provisioning through the existing identity system, least privilege, secure credential sharing out-of-band, product-owner staging UAT.
 5. Review/merge #184 only after #174 and child issues reconciled with exact SHA and evidence. Separate explicit production release approval, rollback plan and smoke tests.
 

@@ -49,6 +49,7 @@ export function LandingShell({
   h1,
   webBannerSrc,
   mobileBannerSrc,
+  imageAlt = "Jalwa campaign banner",
   offerNotice,
   ctaHref = "/explore",
   subscribeCta = "Subscribe Now",
@@ -57,13 +58,14 @@ export function LandingShell({
   h1: string;
   webBannerSrc: string;
   mobileBannerSrc: string;
+  imageAlt?: string;
   offerNotice?: string;
   ctaHref?: string;
   ctaLabel?: string;
   subscribeCta?: string;
 }) {
   return (
-    <div className="campaign-landing" data-landing={campaign.landing}>
+    <div className="campaign-landing" data-landing={campaign.landing} data-parameter={campaign.parameter}>
       <LandingAnalyticsBoot
         landing={campaign.landing}
         landingPath={campaign.landingPath}
@@ -90,7 +92,7 @@ export function LandingShell({
               <img
                 className="landing-hero-image"
                 src={webBannerSrc}
-                alt="Jalwa — Scroll se aagay. Jalwa dekho."
+                alt={imageAlt}
               />
             </picture>
           </Link>

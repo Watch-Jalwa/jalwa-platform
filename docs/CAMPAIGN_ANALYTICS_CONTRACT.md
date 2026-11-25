@@ -6,6 +6,7 @@ Source: Campaign Tracking & Analytics developer specification (2 pages). Epic #1
 - Extend existing Studio /studio. No second admin.
 - Staging feature-flagged rollout only. No production deployment, live merchant operations, or outbound emails without separate authorization.
 - Premium finance backend payments are authoritative for paid subscriptions and revenue. GA4/TikTok/browser events are attribution comparisons only.
+- TikTok `Subscribe` is marketing-only and must follow a granted subscription id + verified conversion receipt that survives JazzCash cross-site return (`?cv=` / `SameSite=None`). Wallet-link alone is not paid and must not emit `Subscribe`. See `resources/TIKTOK_PIXEL_AGENT_GUIDE.md` §3A.
 - Never collect/store/forward OTP, MPIN, payment tokens, or merchant secrets.
 
 ## Attribution and events
