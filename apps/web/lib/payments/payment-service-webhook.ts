@@ -296,6 +296,57 @@ export async function reconcilePaymentServiceEvent(rawBody: string, event: Produ
       }
     }
 
+    // Only an explicitly correlated, signed provider payment may become a Campaign Subs fact.
+    // If request/payment IDs are unavailable, leave the payment unattributed rather than guessing
+    // from phone number, date, amount or the latest user campaign.
+    if (process.env.JALWA_CAMPAIGN_ANALYTICS_ENABLED === "true" && localSubscriptionId) {
+      const paymentId = typeof event.data.paymentId === "string" ? event.data.paymentId
+        : typeof event.data.payment_id === "string" ? event.data.payment_id : "";
+      const requestId = typeof event.data.requestId === "string" ? event.data.requestId
+        : typeof event.data.request_id === "string" ? event.data.request_id : "";
+      const match = payments.find(payment => payment.id === paymentId && payment.status === "completed");
+      if (requestId && match) {
+        await client.query("savepoint campaign_attribution_optional");
+        try {
+        await client.query(
+          `insert into public.campaign_payment_links(
+             provider,remote_payment_id,attribution_id,subscription_id,link_source
+           )
+           select 'jazzcash',$1::text,i.campaign_attribution_id,$3::uuid,'verified_payment_service'
+           from public.jazzcash_wallet_link_intents i
+           join public.campaign_attributions a on a.id=i.campaign_attribution_id
+           join public.subscriptions s on s.id=$3::uuid and s.user_id=i.user_id
+           where i.user_id=$4::uuid
+             and (i.request_id=$2 or i.payment_service_request_id=$2)
+             and i.campaign_attribution_id is not null
+             and a.consent_state='granted'
+             and exists (
+               select 1 from public.payment_service_payments p
+               where p.provider='jazzcash' and p.remote_payment_id=$1 and p.user_id=$4::uuid
+                 and p.status='completed'
+             )
+           on conflict(provider,remote_payment_id) do nothing`,
+          [paymentId,requestId,localSubscriptionId,event.userId],
+        );
+        // A unique, consented backend conversion can enter the GA4 outbox once.
+        await client.query(
+          `insert into public.campaign_ga4_outbox(provider,remote_payment_id,attribution_id)
+           select l.provider,l.remote_payment_id,l.attribution_id
+           from public.campaign_payment_links l
+           join public.campaign_attributions a on a.id=l.attribution_id
+           where l.provider='jazzcash' and l.remote_payment_id=$1
+             and a.consent_state='granted' and a.ga_client_id is not null
+           on conflict(provider,remote_payment_id) do nothing`,
+          [paymentId],
+        );
+        await client.query("release savepoint campaign_attribution_optional");
+        } catch {
+          await client.query("rollback to savepoint campaign_attribution_optional");
+          await client.query("release savepoint campaign_attribution_optional");
+        }
+      }
+    }
+
     await client.query(
       `update public.webhook_events set status='processed',processed_at=now(),error_message=null
        where provider='jazzcash' and provider_event_id=$1`,
@@ -318,6 +369,29 @@ export async function reconcilePaymentServiceEvent(rawBody: string, event: Produ
         payments.length,
       ],
     );
+    // Signed provider lifecycle signal. Isolated so optional telemetry cannot undo a payment.
+    if (process.env.JALWA_CAMPAIGN_ANALYTICS_ENABLED === "true" &&
+      ["payment.completed","payment.failed","subscription.payment_failed"].includes(event.type)) {
+      await client.query("savepoint campaign_provider_event");
+      try {
+        const requestId = typeof event.data.requestId === "string" ? event.data.requestId :
+          typeof event.data.request_id === "string" ? event.data.request_id : null;
+        const eventName = event.type === "payment.completed" ? "payment_success" : "payment_failure";
+        await client.query(`
+          insert into public.campaign_events(event_key,event_name,attribution_id,user_id,source,metadata)
+          values($1,$2,(
+            select i.campaign_attribution_id from public.jazzcash_wallet_link_intents i
+            where i.user_id=$3::uuid and (i.request_id=$4 or i.payment_service_request_id=$4)
+            order by i.created_at asc limit 1
+          ),$3::uuid,'provider',jsonb_build_object('signal',$5::text))
+          on conflict(event_key) do nothing`,
+          ["provider:"+event.eventId,eventName,event.userId,requestId,event.type]);
+        await client.query("release savepoint campaign_provider_event");
+      } catch {
+        await client.query("rollback to savepoint campaign_provider_event");
+        await client.query("release savepoint campaign_provider_event");
+      }
+    }
     await client.query("commit");
     return { ok: true as const, idempotent: false, reconciled: true, subscriptionStatus: subscription?.status ?? null, entitledUntil: grantedUntil, paymentsReconciled: payments.length };
   } catch (error) {

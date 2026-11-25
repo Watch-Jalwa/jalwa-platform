@@ -19,6 +19,7 @@ export function PostJazzcashAuthPrompt({ signedIn = false }: { signedIn?: boolea
   const premium = searchParams.get("premium");
   const msisdn = searchParams.get("msisdn")?.trim() || "";
   const orderId = searchParams.get("order")?.trim() || "";
+  const conversionReceipt = searchParams.get("cv")?.trim() || "";
   const [open, setOpen] = useState(false);
   const [heldMsisdn, setHeldMsisdn] = useState("");
   const [toast, setToast] = useState<{ message: string; kind: "ok" | "error" } | null>(null);
@@ -50,25 +51,43 @@ export function PostJazzcashAuthPrompt({ signedIn = false }: { signedIn?: boolea
           parameter?: string;
           planCode?: string;
         } | null;
-        trackLandingPaymentSuccess({
-          orderId,
-          landing: attr?.landing,
-          utm: attr?.utm,
-          parameter: attr?.parameter,
-          planCode: attr?.planCode || "premium-monthly-pkr",
-        });
+        // order/premium are UI hints only. Require a server-issued, verified payment receipt
+        // (cookie and/or ?cv= token — JazzCash cross-site returns often drop Lax cookies).
+        void fetch("/api/campaign/conversion-receipt", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            orderId,
+            ...(conversionReceipt ? { receipt: conversionReceipt } : {}),
+          }),
+          credentials: "same-origin",
+          cache: "no-store",
+        })
+          .then(async (response) => (response.ok ? response.json() : null))
+          .then((receipt) => {
+            if (!receipt?.verified || receipt.orderId !== orderId) return;
+            trackLandingPaymentSuccess({
+              orderId,
+              landing: attr?.landing,
+              utm: attr?.utm,
+              parameter: attr?.parameter,
+              planCode: receipt.planCode,
+            });
+          })
+          .catch(() => {});
       }
       const params = new URLSearchParams(searchParams.toString());
       params.delete("premium");
       params.delete("msisdn");
       params.delete("order");
+      params.delete("cv");
       const next = pathname + (params.toString() ? `?${params.toString()}` : "");
       router.replace(next, { scroll: false });
     });
     return () => {
       active = false;
     };
-  }, [premium, msisdn, orderId, signedIn, pathname, router, searchParams]);
+  }, [premium, msisdn, orderId, conversionReceipt, signedIn, pathname, router, searchParams]);
 
   useEffect(() => {
     if (!toast) return;

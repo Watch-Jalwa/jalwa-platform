@@ -86,6 +86,44 @@ export function normalizeLanding1Campaign(searchParams) {
   });
 }
 
+const MONTHLY_10K_OFFER =
+  "Subscribe Now click kartay hi Rs. 1 kat lia jayega. Ye limited offer sirf aaj ke din ke liye valid hai. Us ke baad PKR 990/month, tax inclusive, lagu hon gay.";
+
+const KFC_VOUCHER_OFFER =
+  "Subscribe Now click kartay hi Rs. 1 kat lia jayega. Jalwa dekho aur KFC vouchers jeetne ka mauqa pao. Us ke baad PKR 990/month, tax inclusive, lagu hon gay. T&Cs apply.";
+
+/**
+ * Landing1 creative variants by ?parameter=.
+ * monthly10k keeps the JazzCash credits campaign; kfcvoucher swaps KFC Watch & Win banners.
+ */
+export function landing1Creative(parameter) {
+  const param = String(parameter ?? "").trim().toLowerCase();
+  if (param === "kfcvoucher") {
+    return {
+      title: "Jalwa × KFC — Subscribe, Watch & Win Vouchers",
+      description: "Jalwa dekho. KFC vouchers jeetne ka mauqa pao. JazzCash se subscribe karein.",
+      ogTitle: "Subscribe, Watch & Win KFC Vouchers",
+      ogDescription: "Jalwa dekho. Jeetne ka mauqa pao.",
+      h1: "Jalwa × KFC — Subscribe, Watch & Win KFC vouchers. Jalwa dekho. Jeetne ka mauqa pao.",
+      webBannerSrc: "/landing/kfc-web-banner.png",
+      mobileBannerSrc: "/landing/kfc-mobile-banner.png",
+      imageAlt: "Jalwa × KFC — Subscribe, Watch & Win KFC vouchers",
+      offerNotice: KFC_VOUCHER_OFFER,
+    };
+  }
+  return {
+    title: "Jalwa × JazzCash — 10,000 credits every month",
+    description: "Jalwa dekho. Jeetne ka mauqa pao. Monthly JazzCash credits with Premium.",
+    ogTitle: "Win 10,000 JazzCash credits every month",
+    ogDescription: "Jalwa dekho. Jeetne ka mauqa pao.",
+    h1: "Jalwa × JazzCash — 10,000 credits every month. Jalwa dekho. Jeetne ka mauqa pao.",
+    webBannerSrc: "/landing/tiktok-web-banner.jpeg",
+    mobileBannerSrc: "/landing/tiktok-mobile-banner.jpeg",
+    imageAlt: "Jalwa — Scroll se aagay. Jalwa dekho.",
+    offerNotice: MONTHLY_10K_OFFER,
+  };
+}
+
 export function attributionForBilling(campaign) {
   return {
     utm: campaign.utm,

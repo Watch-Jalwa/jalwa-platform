@@ -17,7 +17,7 @@ import { paymentServiceEnabled, linkPaymentServiceWallet } from "./payment-servi
 
 function sanitizeAttribution(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const allow = ["utm", "utm_source", "utm_medium", "utm_campaign", "utm_content", "package", "parameter", "payment", "ref", "landing", "landingPath", "he"];
+  const allow = ["utm", "utm_source", "utm_medium", "utm_campaign", "utm_content", "package", "parameter", "payment", "ref", "landing", "landingPath", "he", "campaignAnonymousId"];
   const out = {};
   for (const key of allow) {
     if (typeof raw[key] === "string" && raw[key].trim()) {
@@ -492,6 +492,16 @@ export async function grantPremiumForJazzcashIntent(intent, { chargeTxnRef, prov
   }
 }
 
+async function recordCampaignJazzcashInitiated(requestId) {
+  if (process.env.JALWA_CAMPAIGN_ANALYTICS_ENABLED !== "true") return;
+  await databasePool.query(`
+    insert into public.campaign_events(event_key,event_name,attribution_id,user_id,landing_path,source,metadata)
+    select 'wallet-init:'||i.request_id,'jazzcash_initiated',i.campaign_attribution_id,i.user_id,
+      coalesce(nullif(i.attribution->>'landingPath',''),'/mainLanding'),'server',
+      jsonb_build_object('planCode',i.plan_code)
+    from public.jazzcash_wallet_link_intents i where i.request_id=$1
+    on conflict(event_key) do nothing`,[requestId]).catch(() => undefined);
+}
 export async function startJazzcashLandingLink({ msisdn, planCode, consentToAutoPay, attribution, idempotencyKey }) {
   if (!consentToAutoPay) {
     const error = new Error("consent_required");
@@ -526,6 +536,27 @@ export async function startJazzcashLandingLink({ msisdn, planCode, consentToAuto
     [requestId, learner.userId, learner.msisdn, planCode, attr.landing ?? null, JSON.stringify(attr)],
   );
 
+  // Optional consented attribution is bound to the same verified pay-first intent.
+  // A missing campaign migration must never interrupt JazzCash checkout.
+  if (process.env.JALWA_CAMPAIGN_ANALYTICS_ENABLED === "true"
+    && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(attr.campaignAnonymousId ?? ""))) {
+    await databasePool.query(
+      `with owned_attribution as (
+         update public.campaign_attributions a
+         set user_id=coalesce(a.user_id,$3::uuid)
+         where a.anonymous_id=$2::uuid and a.consent_state='granted'
+           and a.expires_at>now() and (a.user_id is null or a.user_id=$3::uuid)
+         returning id
+       )
+       update public.jazzcash_wallet_link_intents i
+       set campaign_attribution_id = a.id
+       from owned_attribution a
+       where i.request_id=$1 and i.user_id=$3::uuid
+         and i.campaign_attribution_id is null`,
+      [requestId, attr.campaignAnonymousId, learner.userId],
+    ).catch(() => undefined);
+  }
+
   if (attr && Object.keys(attr).length) {
     await databasePool.query(
       `update public.profiles set premium_attribution = $2::jsonb, updated_at = now() where id = $1`,
@@ -539,6 +570,13 @@ export async function startJazzcashLandingLink({ msisdn, planCode, consentToAuto
       msisdn: learner.msisdn,
       planCode,
     });
+    if (process.env.JALWA_CAMPAIGN_ANALYTICS_ENABLED === "true") {
+      await databasePool.query(
+        "update public.jazzcash_wallet_link_intents set payment_service_request_id = $2 where request_id = $1",
+        [requestId, linked.requestId],
+      ).catch(() => undefined);
+    }
+    await recordCampaignJazzcashInitiated(requestId);
     return {
       checkoutMode: "payment-service",
       requestId: linked.requestId,
@@ -558,6 +596,7 @@ export async function startJazzcashLandingLink({ msisdn, planCode, consentToAuto
     msisdn: learner.msisdn,
   });
 
+  await recordCampaignJazzcashInitiated(requestId);
   return {
     checkoutMode: "jazzcash-v11",
     requestId: form.requestId,
@@ -780,7 +819,7 @@ export async function completeJazzcashLandingLink(fields) {
     throw error;
   }
 
-  const hashValid = !fields.pp_SecureHash || !jazzcashV11Configured() || verifyJazzcashSecureHash(fields);
+  const hashValid = jazzcashV11Configured() && Boolean(fields.pp_SecureHash) && verifyJazzcashSecureHash(fields);
   if (!hashValid && !mockJazzcashChargeAllowed()) {
     const error = new Error("invalid_hash");
     error.status = 400;
@@ -858,8 +897,14 @@ export async function completeJazzcashLandingLink(fields) {
     };
   }
 
+  // Pass post-callback status/token flags — in-memory intent still has pre-update values.
   const charged = await chargeAndGrantJazzcashIntent(
-    { ...intent, payment_token: paymentToken || intent.payment_token },
+    {
+      ...intent,
+      status: "completed",
+      payment_token_present: tokenPresent || Boolean(intent.payment_token_present),
+      payment_token: paymentToken || intent.payment_token,
+    },
     paymentToken,
   );
 

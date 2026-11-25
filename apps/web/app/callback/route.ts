@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { completeJazzcashLandingLink } from "@/lib/payments/jazzcash-landing-billing.mjs";
 import { publicAppOrigin } from "@/lib/public-app-origin.mjs";
+import { createConversionReceipt, RECEIPT_COOKIE } from "@/lib/reports/campaign-conversion-receipt.mjs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,13 +30,18 @@ async function handle(request: Request) {
   let ok = false;
   let signInHint = "";
   let orderId = "";
+  let receipt:string|null=null;
   try {
     if (Object.keys(fields).some((key) => key.startsWith("pp_"))) {
       const result = await completeJazzcashLandingLink(fields);
       ok = result.ok;
       signInHint = result.signInHint ?? "";
       // Stable id for TikTok Subscribe dedupe (marketing only — not entitlement proof).
-      orderId = String(result.subscriptionId ?? result.requestId ?? "").trim();
+      // Linking a wallet is not a successful charge. Only a completed local subscription qualifies.
+      orderId = result.ok ? String(result.subscriptionId ?? "").trim() : "";
+      if(orderId && result.planCode && process.env.BETTER_AUTH_SECRET){
+        receipt=createConversionReceipt(orderId,result.planCode,process.env.BETTER_AUTH_SECRET);
+      }
       if (!ok) {
         console.error("jazzcash_callback_not_ok", {
           requestId: result.requestId,
@@ -54,7 +60,27 @@ async function handle(request: Request) {
   next.searchParams.set("premium", ok ? "enabled" : "failed");
   if (signInHint) next.searchParams.set("msisdn", signInHint);
   if (ok && orderId) next.searchParams.set("order", orderId);
-  return NextResponse.redirect(next, 303);
+  // JazzCash posts cross-site into /callback. SameSite=Lax cookies set on that
+  // response are often dropped, so also pass the short-lived signed receipt on
+  // the redirect URL for Subscribe verification (marketing only, 10 min TTL).
+  if (ok && orderId && receipt) next.searchParams.set("cv", receipt);
+  if (ok && !orderId) {
+    console.error("jazzcash_callback_ok_without_subscription", {
+      hasReceipt: Boolean(receipt),
+    });
+  }
+  const response=NextResponse.redirect(next,303);
+  if(receipt){
+    response.cookies.set(RECEIPT_COOKIE,receipt,{
+      httpOnly:true,
+      secure:next.protocol==="https:",
+      // None so the cookie can stick after a cross-site JazzCash POST return.
+      sameSite: next.protocol==="https:" ? "none" : "lax",
+      path:"/api/campaign/conversion-receipt",
+      maxAge:600,
+    });
+  }
+  return response;
 }
 
 export async function GET(request: Request) {

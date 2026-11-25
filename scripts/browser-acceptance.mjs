@@ -135,9 +135,9 @@ try {
   await assertNoHorizontalOverflow(mobilePage, "mobile home");
   const mobileNavigation = mobilePage.getByRole("navigation", { name: /Mobile navigation/i });
   await mobileNavigation.waitFor();
-  const profileLink = mobileNavigation.getByRole("link", { name: /Profile/i });
-  await profileLink.focus();
-  assert.equal(await profileLink.evaluate((element) => element === document.activeElement), true);
+  const exploreLink = mobileNavigation.getByRole("link", { name: /Explore Jalwa/i });
+  await exploreLink.focus();
+  assert.equal(await exploreLink.evaluate((element) => element === document.activeElement), true);
 
   await mobilePage.goto("/login", { waitUntil: "networkidle" });
   await mobilePage.getByLabel(/^Mobile number$/i).waitFor();

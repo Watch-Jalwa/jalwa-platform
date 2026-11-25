@@ -22,7 +22,7 @@ test("staging infrastructure is explicitly on-prem while production cloud provis
   assert.match(staging, /No infrastructure was changed/);
   assert.doesNotMatch(staging, /terraform apply|-var="project_name=jalwa-staging"|digitalocean\.tfstate/);
   assert.match(deployStaging, /HOST: \$\{\{ vars\.STAGING_HOST \|\| 'jalwa-platform\.codistan\.org' \}\}/);
-  assert.match(deployStaging, /USER: \$\{\{ vars\.STAGING_USER \|\| 'codistan' \}\}/);
+  assert.match(deployStaging, /USER: \$\{\{ vars\.STAGING_USER \|\| 'deploy' \}\}/);
   assert.match(deployStaging, /APP_DIR: \$\{\{ vars\.STAGING_APP_DIR \|\| '\/opt\/codistan\/jalwa-platform' \}\}/);
   assert.match(deployStaging, /db_container=jalwa-postgres-staging/);
   assert.match(deployStaging, /expected_volume=jalwa-platform_jalwa_staging_pgdata/);

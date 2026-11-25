@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { trackLandingCheckoutIntent } from "@/lib/landing-analytics.mjs";
 import { attributionForBilling } from "@/lib/landing-campaign.mjs";
 import { rememberLandingMsisdn, stampUtmAttribution } from "@/lib/utm-attribution.mjs";
+import { campaignAnonymousId, captureCampaignEvent } from "@/lib/campaign-client.mjs";
 
 type Campaign = {
   utm: string;
@@ -52,14 +53,20 @@ export function LandingSubscribe({
         return;
       }
 
+      captureCampaignEvent("landing_cta", campaign);
+      captureCampaignEvent("subscribe", campaign);
       stampUtmAttribution(attribution);
       rememberLandingMsisdn(msisdn);
 
       if (typeof window !== "undefined" && typeof window.gtag === "function") {
-        window.gtag("event", "add_to_cart", { item_id: campaign.planCode, landing: campaign.landing });
+        window.gtag("event", "landing_cta", { item_id: campaign.planCode, landing: campaign.landing });
+        window.gtag("event", "subscribe", { item_id: campaign.planCode, landing: campaign.landing });
         window.gtag("event", "begin_checkout", { item_id: campaign.planCode, landing: campaign.landing });
       }
 
+      // Persist first-touch before the wallet-link request is submitted.
+      // Tracking network failures never prevent checkout.
+      await captureCampaignEvent("begin_checkout", campaign);
       trackLandingCheckoutIntent({
         landing: campaign.landing,
         landingPath: campaign.landingPath,
@@ -78,7 +85,7 @@ export function LandingSubscribe({
           msisdn,
           consentToAutoPay: true,
           // Server generates JazzCash-valid pp_RequestID (ReqId + ≤20 chars). Do not invent one here.
-          attribution,
+          attribution: { ...attribution, campaignAnonymousId: campaignAnonymousId() },
         }),
       });
       const payload = await response.json().catch(() => ({}));

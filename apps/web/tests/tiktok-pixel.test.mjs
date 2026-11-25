@@ -179,6 +179,7 @@ test("Subscribe conversion is deduped by event_id", () => {
   assert.equal(logTikTokEvent("Subscribe", { value: 990 }, { event_id: "order-1" }), true);
   assert.equal(logTikTokEvent("Subscribe", { value: 990 }, { event_id: "order-1" }), false);
   assert.equal(wasTikTokConversionFired("Subscribe", "order-1"), true);
+  assert.equal(logTikTokEvent("Subscribe", {value:990}),false);
   assert.equal(tracks.length, 1);
   assert.equal(tracks[0].options.event_id, "order-1");
   clearDom();
