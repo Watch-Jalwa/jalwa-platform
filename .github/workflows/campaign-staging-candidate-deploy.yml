@@ -1,5 +1,5 @@
 name: Deploy campaign analytics staging candidate
-# Trigger: KFC voucher landing1 creative (parameter=kfcvoucher)
+# Trigger: KFC voucher landing1 creative (parameter=kfcvoucher) + landing1Creative types
 
 on:
   push:
