@@ -1,5 +1,5 @@
 name: Deploy campaign analytics staging candidate
-# Trigger: Subscribe receipt cv fallback after JazzCash cross-site return
+# Trigger: KFC voucher landing1 creative (parameter=kfcvoucher)
 
 on:
   push:
@@ -63,7 +63,7 @@ jobs:
         run: |
           set -euo pipefail
           current="$(curl -fsS --max-time 30 "https://$DOMAIN/api/health")"
-          jq -e --arg sha '90c4931beaa41ef516be0ccb4a0558b152a04e24' '.service=="jalwa-web" and .status=="ready" and .version==$sha' <<<"$current" >/dev/null ||
+          jq -e --arg sha 'ec408044fda67b38ccb9cc60e66f35f38be43299' '.service=="jalwa-web" and .status=="ready" and .version==$sha' <<<"$current" >/dev/null ||
             { echo 'Shared staging has changed from the last verified deployed campaign staging release; refusing to overwrite.' >&2; exit 1; }
 
 
