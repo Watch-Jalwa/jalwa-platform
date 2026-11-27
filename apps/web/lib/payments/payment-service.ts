@@ -112,7 +112,23 @@ function requiredConfiguration() {
 }
 
 export function paymentServiceEnabled() {
-  return process.env.PAYMENT_SERVICE_ENABLED === "true";
+  // Playbook alias: PREMIUM_PREFERRED_CHECKOUT=digisphere (or PROJECT_PREFERRED_CHECKOUT).
+  return (
+    process.env.PAYMENT_SERVICE_ENABLED === "true" ||
+    process.env.PREMIUM_PREFERRED_CHECKOUT === "digisphere" ||
+    process.env.PROJECT_PREFERRED_CHECKOUT === "digisphere"
+  );
+}
+
+/** Map Jalwa catalogue codes (premium-monthly-pkr) → Digisphere plan codes (monthly/yearly). */
+export function toPaymentServicePlanCode(jalwaPlanCode?: string | null) {
+  const code = String(jalwaPlanCode ?? "").trim().toLowerCase();
+  if (!code) return process.env.PAYMENT_PLAN_MONTHLY_CODE?.trim() || "monthly";
+  if (code.includes("annual") || code.includes("yearly")) {
+    return process.env.PAYMENT_PLAN_YEARLY_CODE?.trim() || "yearly";
+  }
+  if (code === "monthly" || code === "yearly" || code === "weekly") return code;
+  return process.env.PAYMENT_PLAN_MONTHLY_CODE?.trim() || "monthly";
 }
 
 export function paymentServiceAppReturnUrl() {
@@ -287,7 +303,11 @@ export async function getPaymentServicePlans() {
 }
 
 export async function linkPaymentServiceWallet(input: { userId: string; msisdn: string; planCode?: string }) {
-  const payload = await paymentServiceRequest("/v1/wallets/link", { method: "POST", body: { ...input, appReturnUrl: paymentServiceAppReturnUrl() } });
+  const planCode = input.planCode ? toPaymentServicePlanCode(input.planCode) : undefined;
+  const payload = await paymentServiceRequest("/v1/wallets/link", {
+    method: "POST",
+    body: { userId: input.userId, msisdn: input.msisdn, ...(planCode ? { planCode } : {}), appReturnUrl: paymentServiceAppReturnUrl() },
+  });
   if (!isObject(payload) || typeof payload.requestId !== "string" || typeof payload.returnUrl !== "string" || typeof payload.portalUrl !== "string" || payload.method !== "POST" || !isObject(payload.fields)) {
     throw new PaymentServiceError(502, "payment_service_invalid_response", "Payment service returned an invalid wallet link response.");
   }
@@ -305,6 +325,67 @@ export async function linkPaymentServiceWallet(input: { userId: string; msisdn: 
   return { requestId: payload.requestId, returnUrl: payload.returnUrl, portalUrl: portal.toString(), method: "POST" as const, fields } satisfies WalletLinkResponse;
 }
 
+/**
+ * Merchant callback bridge (playbook §4B): JazzCash posts to Jalwa /callback;
+ * forward form body to Digisphere wallet-return without following redirects.
+ * Do not send X-Api-Key — this is a JazzCash merchant return, not a product API call.
+ */
+export async function forwardJazzcashWalletReturnToPaymentService(input: {
+  productId: string;
+  userId: string;
+  fields: Record<string, string>;
+}) {
+  const baseUrl = process.env.PAYMENT_SERVICE_BASE_URL?.trim();
+  if (!baseUrl) {
+    throw new PaymentServiceError(503, "payment_service_unconfigured", "Payment service is not configured.");
+  }
+  const productId = String(input.productId ?? "").trim();
+  const userId = String(input.userId ?? "").trim();
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(productId) || !/^[A-Za-z0-9_-]{1,128}$/.test(userId)) {
+    throw new PaymentServiceError(400, "invalid_fields", "Invalid Digisphere product or user id.");
+  }
+  const target = new URL(`${baseUrl.replace(/\/$/, "")}/v1/jazzcash/wallet-return`);
+  target.searchParams.set("productId", productId);
+  target.searchParams.set("userId", userId);
+  const body = new URLSearchParams();
+  for (const [key, value] of Object.entries(input.fields ?? {})) {
+    if (typeof value === "string" && key.length > 0 && key.length <= 100 && value.length <= 4096) {
+      body.set(key, value);
+    }
+  }
+  const controller = new AbortController();
+  const timeout = Number(process.env.PAYMENT_SERVICE_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), Number.isFinite(timeout) && timeout > 0 ? timeout : DEFAULT_TIMEOUT_MS);
+  try {
+    const response = await fetch(target.toString(), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Accept: "text/html,application/json,*/*",
+      },
+      body: body.toString(),
+      redirect: "manual",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    const location = response.headers.get("location") || response.headers.get("Location");
+    return {
+      status: response.status,
+      location: location ? String(location) : null,
+      ok: response.status >= 200 && response.status < 400,
+    };
+  } catch (error) {
+    const timeoutError = error instanceof Error && (error.name === "AbortError" || /aborted/i.test(error.message));
+    throw new PaymentServiceError(
+      503,
+      timeoutError ? "payment_service_timeout" : "payment_service_unavailable",
+      timeoutError ? "Payment service timed out." : "Payment service is temporarily unavailable.",
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export async function getPaymentServiceWallet(userId: string) {
   return parseWallet(await paymentServiceRequest(`/v1/wallets/${encodeURIComponent(userId)}`));
 }
@@ -318,7 +399,12 @@ export async function getPaymentServiceStatus(userId: string) {
 }
 
 export async function createPaymentServiceSubscription(input: { userId: string; planCode: string; skipTrial?: boolean }) {
-  return parseSubscription(await paymentServiceRequest("/v1/subscriptions", { method: "POST", body: input }));
+  return parseSubscription(
+    await paymentServiceRequest("/v1/subscriptions", {
+      method: "POST",
+      body: { userId: input.userId, planCode: toPaymentServicePlanCode(input.planCode), skipTrial: input.skipTrial },
+    }),
+  );
 }
 
 export async function cancelPaymentServiceSubscription(subscriptionId: string) {

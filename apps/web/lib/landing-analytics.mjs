@@ -103,6 +103,7 @@ export function trackLandingPaymentSuccess(args) {
         currency: "PKR",
         traffic_source: args.utm,
         landing: args.landing,
+        ...(args.checkoutMode ? { checkout_mode: args.checkoutMode } : {}),
       },
       { event_id: orderId },
     );

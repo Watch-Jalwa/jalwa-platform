@@ -17,13 +17,26 @@ The payment-service contract is authoritative for wallet state, remote subscript
 Server-only values:
 
 - `PAYMENT_SERVICE_ENABLED` — explicit integration flag; ordinary mock staging keeps the integration disabled except during the protected payment-service preflight.
-- `PAYMENT_SERVICE_BASE_URL` — HTTPS payment-service origin ending before `/v1`.
+- `PREMIUM_PREFERRED_CHECKOUT=digisphere` (or `PROJECT_PREFERRED_CHECKOUT`) — playbook alias that also enables the payment-service path.
+- `PAYMENT_SERVICE_BASE_URL` — HTTPS payment-service origin ending before `/v1` (Codistan Digisphere: `https://payments.codistan.org`).
 - `PAYMENT_SERVICE_API_KEY` — product API key sent as `X-Api-Key` by Jalwa server requests only.
 - `PAYMENT_SERVICE_WEBHOOK_SECRET` — HMAC-SHA256 product webhook secret.
-- `PAYMENT_SERVICE_APP_RETURN_URL` — server-configured Jalwa wallet-return URL.
-- `PAYMENT_SERVICE_TIMEOUT_MS` — bounded upstream timeout, default 12 seconds.
+- `PAYMENT_SERVICE_APP_RETURN_URL` — server-configured Jalwa wallet-return URL (`/billing/wallet-return`).
+- `PAYMENT_SERVICE_TIMEOUT_MS` — bounded upstream timeout, default 20 seconds.
+- `PAYMENT_PLAN_MONTHLY_CODE` / `PAYMENT_PLAN_YEARLY_CODE` — Digisphere plan codes (default `monthly` / `yearly`); Jalwa `premium-*-pkr` codes are mapped before link/subscribe.
 
 No payment-service credential may use a `NEXT_PUBLIC_*` name.
+
+Agent playbook: `docs/DIGISPHERE_PAYMENT_SERVICE_INTEGRATION_PLAYBOOK.md`.
+
+### Digisphere return + TikTok Subscribe
+
+Digisphere success returns to `/billing/wallet-return?wallet=linked&userId=…&subscriptionStatus=…` (no JazzCash `order`/`cv`). Jalwa:
+
+1. Stores pending `{ requestId, checkoutMode, planCode }` in `sessionStorage` at wallet-link start.
+2. Bridges JazzCash merchant posts on `/callback?productId&userId` to Digisphere `/v1/jazzcash/wallet-return` (no redirect follow; pass through Digisphere `302`).
+3. Fires TikTok `Subscribe` once on `wallet=linked` using pending `requestId` or synthesized `digisphere:{userId}:{trialEndsAt}`.
+4. Still grants Premium only from webhooks + `/api/payments/status` reconcile — never from the return URL alone.
 
 ## Jalwa BFF routes
 

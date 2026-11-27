@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { saveDigispherePendingCheckout } from "@/lib/digisphere-subscribe-conversion.mjs";
 import { trackLandingCheckoutIntent } from "@/lib/landing-analytics.mjs";
 import { attributionForBilling } from "@/lib/landing-campaign.mjs";
 import { rememberLandingMsisdn, stampUtmAttribution } from "@/lib/utm-attribution.mjs";
@@ -89,6 +90,18 @@ export function LandingSubscribe({
       if (typeof payload.actionUrl !== "string" || !payload.fields || typeof payload.fields !== "object") {
         setError("JazzCash returned an invalid checkout form.");
         return;
+      }
+
+      // Digisphere Subscribe needs requestId after wallet=linked (no JazzCash order/cv).
+      if (typeof payload.requestId === "string" && payload.requestId.trim()) {
+        saveDigispherePendingCheckout({
+          requestId: payload.requestId,
+          checkoutMode: typeof payload.checkoutMode === "string" ? payload.checkoutMode : "payment-service",
+          planCode: campaign.planCode,
+          landing: campaign.landing,
+          utm: campaign.utm,
+          parameter: campaign.parameter,
+        });
       }
 
       // POST server-signed fields verbatim — never recompute pp_SecureHash in the browser.
