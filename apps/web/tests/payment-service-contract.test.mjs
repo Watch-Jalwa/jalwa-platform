@@ -86,8 +86,22 @@ test("wallet return polls authoritative Jalwa APIs and does not trust redirect p
   assert.match(poller, /fetch\("\/api\/payments\/status"/);
   assert.match(poller, /statusResponse\.status === 429/);
   assert.match(poller, /Do not start another payment/);
-  assert.doesNotMatch(poller, /URLSearchParams|searchParams|get\("subscriptionStatus"\)/);
+  assert.match(poller, /fireDigisphereSubscribeFromReturn/);
+  assert.match(poller, /return URL itself never activates Premium/);
+  assert.doesNotMatch(poller, /get\("subscriptionStatus"\)/);
   assert.match(page, /PaymentStatusPoller/);
+});
+
+test("callback bridges Digisphere JazzCash return without requiring DIY order/cv", async () => {
+  const callback = await file("apps/web/app/callback/route.ts");
+  const client = await file("apps/web/lib/payments/payment-service.ts");
+  assert.match(callback, /forwardJazzcashWalletReturnToPaymentService/);
+  assert.match(callback, /productId/);
+  assert.match(callback, /billing\/wallet-return/);
+  assert.match(client, /forwardJazzcashWalletReturnToPaymentService/);
+  assert.match(client, /redirect: "manual"/);
+  assert.match(client, /toPaymentServicePlanCode/);
+  assert.match(client, /PREMIUM_PREFERRED_CHECKOUT/);
 });
 
 test("v1 customer UX keeps cancel and wallet unlink separate and omits pause, switch and charge-now controls", async () => {

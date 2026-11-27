@@ -18,4 +18,5 @@ export function trackLandingPaymentSuccess(args: {
   landing?: string;
   utm?: string;
   parameter?: string;
+  checkoutMode?: string;
 }): void;

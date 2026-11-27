@@ -1,8 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useId, useRef, useState } from "react";
+import { fireDigisphereSubscribeFromReturn } from "@/lib/digisphere-subscribe-conversion.mjs";
+import { readLandingMsisdn } from "@/lib/utm-attribution.mjs";
+
+// Entitlement still comes only from /api/payments/* — URL query is marketing + UX hints.
 
 type WalletState = { status?: "none" | "pending" | "linked" | "unlinked" | "failed"; msisdn_masked?: string | null };
 type StatusState = {
@@ -11,14 +15,33 @@ type StatusState = {
   subscriptions?: Array<{ status?: string; trial_ends_at?: string | null; current_period_end?: string | null; charge_tier?: string | null }>;
 };
 
-type ViewState = "checking" | "ready" | "failed" | "delayed";
+type ViewState = "checking" | "ready" | "failed" | "delayed" | "guest_ready";
 const MAX_ATTEMPTS = 48;
 
 export function PaymentStatusPoller() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const titleId = useId();
   const [view, setView] = useState<ViewState>("checking");
   const [detail, setDetail] = useState("Waiting for JazzCash and Jalwa billing to confirm your wallet.");
+  const [claimMsisdn, setClaimMsisdn] = useState("");
   const attempts = useRef(0);
+  const subscribeFired = useRef(false);
+
+  // Playbook §7: Digisphere return has no order/cv — fire Subscribe from wallet=linked + pending requestId.
+  useEffect(() => {
+    if (subscribeFired.current) return;
+    const wallet = searchParams.get("wallet")?.trim().toLowerCase() || "";
+    if (wallet !== "linked" && wallet !== "succeeded" && wallet !== "success") return;
+    subscribeFired.current = true;
+    fireDigisphereSubscribeFromReturn(searchParams);
+    try {
+      const msisdn = readLandingMsisdn?.() || "";
+      if (msisdn) setClaimMsisdn(String(msisdn));
+    } catch {
+      /* optional */
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let cancelled = false;
@@ -35,7 +58,16 @@ export function PaymentStatusPoller() {
           fetch("/api/payments/status", { cache: "no-store" }),
         ]);
         if (walletResponse.status === 401 || statusResponse.status === 401) {
-          router.push("/login?next=/billing/wallet-return");
+          // Guest pay-first Digisphere return: Subscribe already fired; show claim UI.
+          const walletHint = searchParams.get("wallet")?.trim().toLowerCase() || "";
+          if (walletHint === "linked" || walletHint === "succeeded" || walletHint === "success") {
+            setView("guest_ready");
+            setDetail(
+              "Your JazzCash wallet is linked. Sign up or sign in with the same JazzCash number to open Jalwa Premium.",
+            );
+            return;
+          }
+          router.push(`/login?next=${encodeURIComponent("/billing/wallet-return")}`);
           return;
         }
         if (walletResponse.status === 429 || statusResponse.status === 429) {
@@ -104,17 +136,61 @@ export function PaymentStatusPoller() {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [router]);
+  }, [router, searchParams]);
 
-  return <section className="panel billing-result" aria-live="polite">
-    <span className={view === "failed" ? "status-mark status-mark-error" : "success-mark"}>{view === "checking" ? "…" : view === "failed" ? "!" : "✓"}</span>
-    <span className="eyebrow">{view === "checking" ? "Confirming securely" : view === "ready" ? "Billing confirmed" : view === "failed" ? "Action needed" : "Still processing"}</span>
-    <h1>{view === "ready" ? "Jalwa Premium is ready" : view === "failed" ? "Payment is not confirmed" : view === "delayed" ? "Confirmation is taking longer" : "Confirming your JazzCash wallet"}</h1>
-    <p>{detail}</p>
-    <p className="policy-notice">Jalwa grants access only from verified server-side payment state. The return URL itself never activates Premium.</p>
-    <div className="action-row">
-      <Link className="button button-primary" href="/billing">View billing</Link>
-      <Link className="button button-secondary" href="/pricing">Premium plans</Link>
-    </div>
-  </section>;
+  const signupHref = claimMsisdn
+    ? `/signup?next=${encodeURIComponent("/")}&prefill=${encodeURIComponent(claimMsisdn)}`
+    : `/signup?next=${encodeURIComponent("/")}`;
+  const loginHref = claimMsisdn
+    ? `/login?next=${encodeURIComponent("/")}&prefill=${encodeURIComponent(claimMsisdn)}`
+    : `/login?next=${encodeURIComponent("/")}`;
+
+  return (
+    <section className="panel billing-result" aria-live="polite" aria-labelledby={titleId}>
+      <span className={view === "failed" ? "status-mark status-mark-error" : "success-mark"}>
+        {view === "checking" ? "…" : view === "failed" ? "!" : "✓"}
+      </span>
+      <span className="eyebrow">
+        {view === "checking"
+          ? "Confirming securely"
+          : view === "ready" || view === "guest_ready"
+            ? "Billing confirmed"
+            : view === "failed"
+              ? "Action needed"
+              : "Still processing"}
+      </span>
+      <h1 id={titleId}>
+        {view === "ready" || view === "guest_ready"
+          ? "Jalwa Premium is ready"
+          : view === "failed"
+            ? "Payment is not confirmed"
+            : view === "delayed"
+              ? "Confirmation is taking longer"
+              : "Confirming your JazzCash wallet"}
+      </h1>
+      <p>{detail}</p>
+      <p className="policy-notice">
+        Jalwa grants access only from verified server-side payment state. The return URL itself never activates Premium.
+      </p>
+      {view === "guest_ready" ? (
+        <div className="action-row">
+          <Link className="button button-primary" href={loginHref}>
+            Sign in
+          </Link>
+          <Link className="button button-secondary" href={signupHref}>
+            Signup
+          </Link>
+        </div>
+      ) : (
+        <div className="action-row">
+          <Link className="button button-primary" href="/billing">
+            View billing
+          </Link>
+          <Link className="button button-secondary" href="/pricing">
+            Premium plans
+          </Link>
+        </div>
+      )}
+    </section>
+  );
 }

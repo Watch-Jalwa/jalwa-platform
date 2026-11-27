@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { saveDigispherePendingCheckout } from "@/lib/digisphere-subscribe-conversion.mjs";
 
 type ErrorPayload = { error?: string; message?: string };
 
@@ -90,6 +91,13 @@ export function WalletSubscribe({ planCode, children }: { planCode: string; chil
       if (linkPayload.method !== "POST" || typeof linkPayload.portalUrl !== "string" || !linkPayload.fields || typeof linkPayload.fields !== "object" || Array.isArray(linkPayload.fields)) {
         setError("JazzCash wallet linking returned an invalid response.");
         return;
+      }
+      if (typeof linkPayload.requestId === "string" && linkPayload.requestId.trim()) {
+        saveDigispherePendingCheckout({
+          requestId: linkPayload.requestId,
+          checkoutMode: "payment-service",
+          planCode,
+        });
       }
 
       const form = document.createElement("form");
